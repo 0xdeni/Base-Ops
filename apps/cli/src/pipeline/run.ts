@@ -1,6 +1,9 @@
 /**
  * `run`: discover → [positions] → snapshot → volume → score, every `interval` seconds, until the
- * abort signal fires (SIGINT/SIGTERM in main). The order is the data's: `volume` values swaps at
+ * abort signal fires (SIGINT/SIGTERM in main). Positions runs for the concentrated pools of the
+ * active mandates (`mandatedConcentratedPools`), so the snapshot that follows attributes their
+ * scorecards from the first pass on, and with `--with-positions` for every tracked pool; with
+ * neither a mandate nor the flag the step is left out. The order is the data's: `volume` values swaps at
  * the prices the snapshot just stored, and `score` runs straight after `volume` because the 24 h
  * volume window ends at the hour of the last block `volume` read (docs/METRICS.md, "24 h
  * volume"), so nothing runs between them to age it. With `--seed` the discover step seeds from the
@@ -15,7 +18,7 @@ import { isLogRangeLimitError } from '@depthwatch/chain'
 import { errorMessage, type Logger } from '../log.js'
 import type { PipelineContext } from './context.js'
 import { discoverStep } from './discover.js'
-import { positionsStep } from './positions.js'
+import { mandatedConcentratedPools, positionsStep } from './positions.js'
 import { scoreStep } from './score.js'
 import { seedStep } from './seed.js'
 import { snapshotStep } from './snapshot.js'
@@ -25,7 +28,7 @@ export interface RunOptions {
   intervalSeconds?: number
   /** Run one iteration and return. */
   once?: boolean
-  /** Include the positions step before each snapshot. */
+  /** Index the positions of every tracked pool before each snapshot, not only the mandated pools'. */
   withPositions?: boolean
   signal?: AbortSignal
   /** Injectable for tests; defaults to a real timer. */
@@ -81,8 +84,12 @@ export async function runIteration(
     ['volume', (step) => volumeStep({ ...ctx, log: step })],
     ['score', (step) => scoreStep({ ...ctx, log: step })],
   ]
-  if (withPositions)
-    steps.splice(1, 0, ['positions', (step) => positionsStep({ ...ctx, log: step })])
+  const mandated = withPositions ? [] : mandatedConcentratedPools(ctx.db)
+  if (withPositions || mandated.length > 0)
+    steps.splice(1, 0, [
+      'positions',
+      (step) => positionsStep({ ...ctx, log: step }, withPositions ? {} : { pools: mandated }),
+    ])
   for (const [name, fn] of steps) {
     try {
       await log.timed(name, (step) => fn(step))

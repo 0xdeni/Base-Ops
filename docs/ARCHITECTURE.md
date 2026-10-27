@@ -125,8 +125,9 @@ Each step reads what the previous one stored, so any step can be rerun on its ow
     HTTP implementation and a mock implementation (`VITE_MOCK=1`, or the dev server when the API
     is down; never a production build) backed by JSON in `apps/web/src/mock`. Bigint strings are formatted with BigInt arithmetic in `lib/format.ts`.
 
-`depthwatch positions` is a separate, less frequent step (`run --with-positions` folds it into
-every pass): it indexes LP positions (owner, range, liquidity) for tracked concentrated pools, and
+`depthwatch positions` is a separate, less frequent step (`run` folds it into every pass for the
+concentrated pools of active mandates, `run --with-positions` for every tracked pool): it indexes
+LP positions (owner, range, liquidity) for tracked concentrated pools, and
 for concentrated pools with an active mandate whether or not they are tracked yet, so that the next
 `snapshot` can compute owner concentration and attribute the mandates. Without it
 `concentration.owners` is null and the health score falls back to the structural range HHI.
@@ -196,8 +197,9 @@ Sampling reuses the snapshot's state read, so a concentrated mandate adds no RPC
 Slipstream positions are gauge-staked: then one `stakedContains` call per gauge-owned position and
 registered address, multicall batched. An Aerodrome v2 mandate adds `totalSupply`, one `Voter.gauges`
 lookup and one or two `balanceOf` per address, in one multicall. The positions themselves come from
-the `positions` table, so `run --with-positions` (or a separate `depthwatch positions` schedule)
-is what keeps concentrated attribution current.
+the `positions` table, which `run` and `start` refresh for mandated pools (`run --with-positions`
+or a separate `depthwatch positions` schedule covers every tracked pool), so that is what keeps
+concentrated attribution current.
 
 ## RPC cost model
 
@@ -321,8 +323,9 @@ valued as a full rescan would value it.
 Position events on the NonfungiblePositionManager (`IncreaseLiquidity`, `DecreaseLiquidity`,
 `Transfer`) do not carry the pool address, so position indexing reads the events over a block
 range, then `positions(tokenId)` through multicall to learn each position's pool, owner, range and
-liquidity. This is the most expensive reader per block, so it is not part of a default `run` pass:
-opt in per pass with `run --with-positions`, or run `depthwatch positions` on its own schedule.
+liquidity. This is the most expensive reader per block, so a default `run` pass reads it only for
+the concentrated pools of active mandates: opt in for every tracked pool with
+`run --with-positions`, or run `depthwatch positions` on its own schedule.
 Uniswap v4 uses the PositionManager; Aerodrome v2 pools have no positions (LP tokens are fungible)
 and return `[]`.
 
