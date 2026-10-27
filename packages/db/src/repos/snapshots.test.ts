@@ -298,5 +298,15 @@ describe('SnapshotsRepo', () => {
     expect(db.snapshots.seriesForPool(A, 0).map((s) => s.timestamp)).toEqual([20])
     expect(db.snapshots.pruneBefore(100)).toBe(2)
     expect(db.snapshots.latestTimestamp()).toBeNull()
+    // With a limit, the oldest rows go first and the count says when a batch loop is done.
+    db.snapshots.insertMany([
+      fixtureSnapshot({ poolId: A, timestamp: 10, blockNumber: 10n }),
+      fixtureSnapshot({ poolId: B, timestamp: 20, blockNumber: 20n }),
+      fixtureSnapshot({ poolId: A, timestamp: 30, blockNumber: 30n }),
+    ])
+    expect(db.snapshots.pruneBefore(100, 2)).toBe(2)
+    expect(db.snapshots.seriesForPool(A, 0).map((s) => s.timestamp)).toEqual([30])
+    expect(db.snapshots.pruneBefore(100, 2)).toBe(1)
+    expect(db.snapshots.count()).toBe(0)
   })
 })

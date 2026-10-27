@@ -2,7 +2,7 @@
  * The pipeline scheduler of `depthwatch start`. It runs one pass every snapshot interval, and the
  * steps of a pass one after the other, so no two steps ever overlap:
  *
- *   [seed] → snapshot → [volume] → score → [positions] → [discover]
+ *   [seed] → snapshot → [volume] → score → [positions] → [discover] → [prune]
  *
  * - seed (`discover --seed`) runs at the start of every pass until one has succeeded: on an empty
  *   database the first pass seeds, snapshots and scores, so the site has data within minutes.
@@ -15,6 +15,8 @@
  * - discover (the log scan from the factories' deployment blocks, resumable) every pass, within
  *   its budget and never past the time the next pass is due, so a first full discovery spreads
  *   over passes and never delays a snapshot by more than one window.
+ * - prune (retention, pipeline/prune.ts) closes the pass once a day (`needsPrune`: a day since the
+ *   last one, or never); database only, so no budget.
  *
  * Budgets are also cut to the time left before the next pass; under MIN_BUDGET_MS the step waits
  * for the next pass. A step that throws is logged and the pass goes on; it is tried again at its
@@ -29,7 +31,15 @@ import { errorMessage, type LogFields, type Logger } from '../log.js'
 import { type RequestMeter, usageSince } from './meter.js'
 import type { ScheduleSettings } from './settings.js'
 
-export const STEPS = ['seed', 'snapshot', 'volume', 'score', 'positions', 'discover'] as const
+export const STEPS = [
+  'seed',
+  'snapshot',
+  'volume',
+  'score',
+  'positions',
+  'discover',
+  'prune',
+] as const
 export type Step = (typeof STEPS)[number]
 /** Steps with their own cadence, whose last run is kept across restarts. */
 export type CadencedStep = 'volume' | 'positions'
@@ -51,12 +61,15 @@ export interface SchedulerSteps {
   needsSeed(): boolean
   /** True while an active mandate's concentrated pool has no positions: positions runs this pass. */
   needsPositions(): boolean
+  /** True once a day has passed since the last prune (or none ran): prune closes this pass. */
+  needsPrune(): boolean
   seed(log: Logger): Promise<StepReport>
   snapshot(log: Logger): Promise<StepReport>
   volume(log: Logger): Promise<StepReport>
   score(log: Logger): Promise<StepReport>
   positions(log: Logger, budgetMs: number): Promise<StepReport>
   discover(log: Logger, budgetMs: number): Promise<StepReport>
+  prune(log: Logger): Promise<StepReport>
 }
 
 /** When the cadenced steps last ran (unix ms); undefined: due now. */
@@ -198,6 +211,7 @@ export async function runScheduler(opts: SchedulerOptions): Promise<number> {
       const budget = budgetFor('discover', settings.discoverBudgetSeconds, nextPassAt)
       if (budget !== undefined) await run('discover', (l) => steps.discover(l, budget))
     }
+    if (!signal.aborted && steps.needsPrune()) await run('prune', (l) => steps.prune(l))
     return failed
   }
 

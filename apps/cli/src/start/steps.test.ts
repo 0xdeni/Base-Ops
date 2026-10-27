@@ -77,6 +77,7 @@ function recording(steps: SchedulerSteps): { steps: SchedulerSteps; calls: Call[
     steps: {
       needsSeed: steps.needsSeed,
       needsPositions: steps.needsPositions,
+      needsPrune: steps.needsPrune,
       seed: (log: Logger) => record('seed', steps.seed(log)),
       snapshot: (log: Logger) => {
         pass++
@@ -86,6 +87,7 @@ function recording(steps: SchedulerSteps): { steps: SchedulerSteps; calls: Call[
       score: (log: Logger) => record('score', steps.score(log)),
       positions: (log: Logger, budget: number) => record('positions', steps.positions(log, budget)),
       discover: (log: Logger, budget: number) => record('discover', steps.discover(log, budget)),
+      prune: (log: Logger) => record('prune', steps.prune(log)),
     },
   }
 }
@@ -119,6 +121,9 @@ describe('pipelineSteps: a mandate on a pool without positions', () => {
 
     const calls = await run(w, 2, clock)
     expect(passesOf(calls, 'positions')).toEqual([1])
+    // Never pruned: pass 1 closes with prune, pass 2 (the same day) does not.
+    expect(passesOf(calls, 'prune')).toEqual([1])
+    expect(w.db.syncState.get(syncKeys.pruneLastRun())).toBe(String(w.latestTimestamp))
     expect(positionsPublished(w.db, SLIPSTREAM)).toBe(true)
     // Pass 1's snapshot reported the Slipstream mandate as an attribution failure, no sample.
     expect(w.lines.some((l) => /\[snapshot\] done .*samples=1 sampleFailures=1 /.test(l))).toBe(

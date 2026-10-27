@@ -12,6 +12,8 @@
  * stored before the cap holds the uncapped spread.
  *
  * Version 2 adds the market-maker scorecard tables (`mandates`, `mm_samples`, `mm_alerts`).
+ * Version 3 adds `timestamp` indexes on `mm_samples` and `mm_alerts`, so retention deletes
+ * (`pruneBefore`) seek instead of scanning the tables.
  */
 import type { DatabaseSync } from 'node:sqlite'
 import { toCount } from './sql.js'
@@ -162,6 +164,11 @@ export const MIGRATIONS: readonly string[] = [
     error TEXT
   );
   CREATE INDEX mm_alerts_mandate_timestamp ON mm_alerts(mandate_id, timestamp);
+  `,
+  // Version 3: retention deletes by timestamp across all mandates.
+  `
+  CREATE INDEX mm_samples_timestamp ON mm_samples(timestamp);
+  CREATE INDEX mm_alerts_timestamp ON mm_alerts(timestamp);
   `,
 ]
 

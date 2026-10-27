@@ -367,7 +367,9 @@ a provider that accepts wider spans.
   backoff (`internal/backoff.ts`) serves every request: `eth_getLogs` (retried on the same range,
   which is not split), the main endpoint's multicalls and block headers (so a free-tier 429 during
   `readState` costs a wait, not the pool), and the seed's archive probes. A `run` pass logs a
-  failed step and goes on. A gateway's answer is never read as a rejected
+  failed step and goes on (`run --once` then exits 1, naming the step; the loop stops with exit 1
+  after three passes in a row in which every step that reads the chain failed, so a supervisor
+  notices a revoked key). A gateway's answer is never read as a rejected
   range, whatever its text says ("timed out"): viem raises `HttpRequestError` only for a body that
   is not a JSON-RPC error, so it comes from a proxy, not from the node. Both HTTP transports the
   reader builds from URLs have viem's own retries off, so a rate-limited endpoint is not hit again
@@ -412,7 +414,7 @@ Every `DEPTHWATCH_SNAPSHOT_INTERVAL` (default 30 min) the scheduler runs one pas
 one after the other, so no two steps ever overlap:
 
 ```
-[seed] → snapshot → [volume] → score → [positions] → [discover]
+[seed] → snapshot → [volume] → score → [positions] → [discover] → [prune]
 ```
 
 - **seed** (`discover --seed`) opens every pass until one has succeeded. On an empty database the
@@ -433,6 +435,9 @@ one after the other, so no two steps ever overlap:
   `DEPTHWATCH_DISCOVER_BUDGET` (default 15 min; `off` leaves discovery to the seed). It resumes at
   its cursors, so a first full discovery spreads over passes; once it reaches the head a pass costs
   one request per factory.
+- **prune** closes the pass once a day (`prune:lastRunAt` a day old or unset): the retention of
+  the [storage model](#storage-model), database only, no budget (a day's snapshots delete in
+  seconds).
 
 A cadence is rounded up to a pass (volume every other pass at the defaults). Budgets are also cut
 to the time left before the next pass, and a step with under 30 s left waits for the next pass. A
@@ -522,10 +527,10 @@ migrations are never edited, only appended.
 | `positions`     | `(pool_id, token_id)`   | owner, tick range, liquidity, last updated block; rows under `<pool id>#catch-up` hold a first windowed scan until it reaches the head                                                                                              |
 | `prices`        | `token`                 | USD price, `via_json` route, `updated_at`                                                                                                                                                                                           |
 | `scores`        | `pool_id`               | `health_json`, `gap_json`, `persistence_24h_json`, `persistence_7d_json`, `volume_24h_usd`, `depth2_usd`, denormalised `health_total`, `gap_score`                                                                                  |
-| `sync_state`    | `key`                   | pipeline cursors, e.g. `discover:uniswap-v3:lastBlock`, `positions:<pool>:lastBlock` (`:catchUpBlock` while a first windowed scan is staged), `start:volume:lastRunAt`                                                              |
+| `sync_state`    | `key`                   | pipeline cursors, e.g. `discover:uniswap-v3:lastBlock`, `positions:<pool>:lastBlock` (`:catchUpBlock` while a first windowed scan is staged), `start:volume:lastRunAt`, `prune:lastRunAt`                                           |
 | `mandates`      | `id`                    | name, `pool_id`, `market_maker`, `addresses_json`, `kpis_json`, `alert_webhook_url`, `alert_after_samples`, `active`, `created_at`, `notes`; index on `(pool_id)`                                                                   |
-| `mm_samples`    | autoincrement `id`      | per mandate and block: `pool_id`, `block_number` (TEXT), `timestamp`, `attribution_json` (`MmAttribution`), `within_kpi` (NULL = not evaluable), `breaches_json`; index on `(mandate_id, timestamp)`                                |
-| `mm_alerts`     | autoincrement `id`      | per delivery attempt: `mandate_id`, `timestamp`, `kind` (`breach` / `recovered`), `streak_samples`, `payload_json`, `delivered`, `response_status`, `error`; index on `(mandate_id, timestamp)`                                     |
+| `mm_samples`    | autoincrement `id`      | per mandate and block: `pool_id`, `block_number` (TEXT), `timestamp`, `attribution_json` (`MmAttribution`), `within_kpi` (NULL = not evaluable), `breaches_json`; indexes on `(mandate_id, timestamp)` and `timestamp`              |
+| `mm_alerts`     | autoincrement `id`      | per delivery attempt: `mandate_id`, `timestamp`, `kind` (`breach` / `recovered`), `streak_samples`, `payload_json`, `delivered`, `response_status`, `error`; indexes on `(mandate_id, timestamp)` and `timestamp`                   |
 
 Conventions:
 - Bigints are stored as TEXT decimal strings; SQLite REAL would lose precision above 2^53.
@@ -542,9 +547,21 @@ Conventions:
   `volume.sumUsd(poolId, fromTs)`, `scores.upsert`, `scores.topBy(sort, options)`,
   `scores.gaps`, `scores.statsByDex`, …) and never leak rows.
 
-Retention: `snapshots.pruneBefore(ts)`, `volume.pruneBefore(ts)` and `mmSamples.pruneBefore(ts)`
-exist so an operator can keep the file bounded; the 7 d persistence window is the longest series
-the scores need, and the 30 d uptime window the longest the scorecards need.
+Retention: nothing reads past the 7 d persistence and history windows of the snapshots and the
+30 d uptime window of the scorecard samples, but the tables grow for as long as the pipeline runs:
+a snapshot row is about 1.4 KB (`depth_json`, `depth_usd_json` and `spreads_json` make most of
+it), so 200 tracked pools every 5 minutes (`run` at its default interval) add about 80 MB a day,
+about 2.5 GB a month, and every 30 minutes (`start`) a sixth of that. `depthwatch prune` deletes
+snapshots and hourly volume older than `DEPTHWATCH_KEEP_DAYS` (default 30; snapshots keep at least
+8 days), scorecard samples older than 35 days, alerts older than 90, and the volume cursors of
+pools no longer tracked; a tracked pool's `volume:<pool>:fromTs` moves up to the cutoff so a later
+`volume --hours` never trusts a pruned hour as covered. Snapshots are deleted in batches of 10,000
+rows, each its own short transaction, so the API keeps answering between them under `start`;
+`mm_samples` and `mm_alerts` carry `timestamp` indexes (schema version 3) so their deletes seek
+instead of scanning. The run ends with `PRAGMA wal_checkpoint(TRUNCATE)`, which folds the deletes
+into the main file and empties the WAL; the main file keeps its size (SQLite reuses the freed
+pages, so it stops growing) unless an operator runs `VACUUM`. `run` and `start` prune once a day
+(`prune:lastRunAt`), at the end of the pass.
 
 ## Transports
 

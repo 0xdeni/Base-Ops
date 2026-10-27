@@ -1,8 +1,9 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createFakeRpcFetch, createSyntheticFixture } from '@depthwatch/chain'
 import { fixturePool, openDatabase } from '@depthwatch/db'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { COMMANDS, DEFAULTS } from './config.js'
 import { createLogger } from './log.js'
 import {
@@ -188,8 +189,101 @@ describe('main', () => {
   it('documents the defaults in the usage text', () => {
     expect(usage()).toContain(String(DEFAULTS.port))
     expect(usage()).toContain(DEFAULTS.dbPath)
+    expect(usage()).toContain(`DEPTHWATCH_KEEP_DAYS (default ${DEFAULTS.keepDays})`)
     expect(usage()).toContain('Exit codes: 0 ok, 1 error, 2 usage')
   })
+
+  it('prune runs against an empty database and reports what it deleted', async () => {
+    const result = await run(['prune', '--db', ':memory:', '--keep-days', '14'])
+    expect(result.code).toBe(EXIT_OK)
+    expect(result.stderr).toEqual([])
+    expect(
+      result.logs.some((line) =>
+        /\[prune\] done ms=\d+ keepDays=14 snapshots=0 batches=1 volume=0 /.test(line),
+      ),
+    ).toBe(true)
+  })
+})
+
+/** A JSON-RPC endpoint that refuses everything, as a revoked key does. */
+const unauthorized = () => new Response('Unauthorized', { status: 401 })
+
+describe('exit codes of a pass that failed', () => {
+  const env = { DEPTHWATCH_RPC_URL: 'http://rpc.example' }
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('run --once exits 1 with one line naming the failed steps', async () => {
+    const fake = createFakeRpcFetch(createSyntheticFixture(), {
+      respond: unauthorized,
+      getLogs: unauthorized,
+    })
+    vi.stubGlobal('fetch', fake.fetch)
+    const result = await run(['run', '--once', '--db', ':memory:'], env)
+    expect(result.code).toBe(EXIT_ERROR)
+    expect(result.stderr).toHaveLength(1)
+    expect(result.stderr[0]).toMatch(
+      /^error: run --once: 3 steps failed: discover \(.*401.*\); snapshot \(.*401.*\); volume \(.*401.*\)$/,
+    )
+    expect(result.logs.some((line) => line.includes('[score] done'))).toBe(true)
+    expect(result.logs.some((line) => line.includes('[prune] done'))).toBe(true)
+  })
+
+  it('snapshot exits 1 when every tracked pool failed and nothing was stored, 0 once one is', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'depthwatch-main-snapshot-'))
+    try {
+      const file = join(dir, 'live.db')
+      const fake = createFakeRpcFetch(createSyntheticFixture())
+      // The overview phase works; from the moment the tracked pools are chosen, every `eth_call`
+      // (the state reads) is refused, so each pool fails and no snapshot can be built.
+      let refuse = false
+      const fetch = async (input: string | URL | Request, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { method?: string } | { method?: string }[]
+        const methods = (Array.isArray(body) ? body : [body]).map((b) => b.method)
+        if (refuse && methods.includes('eth_call')) return unauthorized()
+        return fake.fetch(input, init)
+      }
+      vi.stubGlobal('fetch', fetch)
+      expect((await run(['discover', '--db', file], env)).code).toBe(EXIT_OK)
+
+      const stderr: string[] = []
+      const logs: string[] = []
+      const log = createLogger({
+        write: (line) => {
+          logs.push(line)
+          if (line.includes('selected tracked pools')) refuse = true
+        },
+        now: () => new Date(0),
+      })
+      const code = await main(['snapshot', '--db', file], {
+        env,
+        log,
+        signal: new AbortController().signal,
+        stdout: () => {},
+        stderr: (line) => stderr.push(line),
+      })
+      expect(code).toBe(EXIT_ERROR)
+      expect(stderr).toHaveLength(1)
+      expect(stderr[0]).toMatch(
+        /^error: snapshot: every item failed \(\d+\), nothing stored; .*401/,
+      )
+      expect(logs.some((line) => /\[snapshot\] done .*snapshots=0 /.test(line))).toBe(true)
+      const db = openDatabase(file)
+      try {
+        expect(db.snapshots.count()).toBe(0)
+      } finally {
+        db.close()
+      }
+
+      refuse = false
+      const ok = await run(['snapshot', '--db', file], env)
+      expect(ok.code).toBe(EXIT_OK)
+      expect(ok.stderr).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
 })
 
 describe('loadDotEnv', () => {

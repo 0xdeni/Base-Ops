@@ -24,6 +24,19 @@ describe('SyncStateRepo', () => {
     expect(db.syncState.entries()).toEqual([['discover:uniswap-v3:lastBlock', '456']])
   })
 
+  it('lists the keys under a prefix, literally (no LIKE wildcards)', () => {
+    db.syncState.set('volume:lastBlock', '1')
+    db.syncState.set('volume:uniswap-v3:0xab:fromTs', '2')
+    db.syncState.set('volume_x', '3')
+    db.syncState.set('discover:uniswap-v3:lastBlock', '4')
+    expect(db.syncState.keys('volume:')).toEqual([
+      'volume:lastBlock',
+      'volume:uniswap-v3:0xab:fromTs',
+    ])
+    expect(db.syncState.keys('volume_')).toEqual(['volume_x'])
+    expect(db.syncState.keys('none:')).toEqual([])
+  })
+
   it('round-trips bigints and rejects malformed values', () => {
     db.syncState.setBigInt('block', 2n ** 100n)
     expect(db.syncState.getBigInt('block')).toBe(2n ** 100n)
