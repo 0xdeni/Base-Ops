@@ -13,6 +13,7 @@ import {
   type MandateKpis,
   type PublicMandate,
 } from './types.js'
+import { WEBHOOK_URL_PROBLEM, webhookUrlProblem } from './webhookUrl.js'
 
 /** The registration JSON: `Mandate` with every defaulted field optional. */
 export interface MandateRegistration {
@@ -107,17 +108,12 @@ function parseKpis(value: unknown, problems: string[]): MandateKpis {
   return kpis
 }
 
+/** An http(s) URL at a public host without user info (`webhookUrlProblem`), or null. */
 function parseWebhookUrl(value: unknown, problems: string[]): string | null {
   if (value === undefined || value === null) return null
-  if (typeof value === 'string') {
-    try {
-      const url = new URL(value)
-      if (url.protocol === 'http:' || url.protocol === 'https:') return value
-    } catch {
-      // reported below
-    }
-  }
-  problems.push('alertWebhookUrl must be null or an http(s) URL')
+  const problem = typeof value === 'string' ? webhookUrlProblem(value) : WEBHOOK_URL_PROBLEM
+  if (problem === null) return value as string
+  problems.push(problem)
   return null
 }
 

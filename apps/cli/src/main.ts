@@ -74,7 +74,7 @@ Commands
   volume      hourly swap volume of tracked pools    [--hours 24]
   positions   LP positions of tracked and mandated concentrated pools
   score       persistence, health score and gaps for tracked pools
-  run         loop: discover → snapshot → volume → score
+  run         loop: discover → [positions] → snapshot → volume → score
                                                      [--interval 300|5m] [--once] [--with-positions]
                                                      [--seed]
   start       the server: serve + the pipeline on a schedule, in one process (docs/DEPLOY.md)
