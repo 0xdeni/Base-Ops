@@ -33,6 +33,7 @@ curl -s "$DW/api/health"
   "poolCount": 6,
   "trackedCount": 6,
   "latestSnapshotAt": 1792713600,
+  "snapshotAgeSeconds": 0,
   "latestBlock": "52950000",
   "source": "demo"
 }
@@ -123,8 +124,8 @@ from a live deployment have not yet been validated against Base mainnet at scale
 - **Times** are unix seconds (UTC). **Freshness**: `updatedAt` (pool lists) and
   `latest.timestamp` / `latest.blockNumber` (pool detail) are the pool's newest snapshot;
   `scoredAt` is when its score was computed; `latestSnapshotAt` / `latestBlock` in
-  `GET /api/health` are the newest snapshot of any pool. Compare them with the current time
-  before relying on a number.
+  `GET /api/health` are the newest snapshot of any pool and `snapshotAgeSeconds` its age by the
+  server's clock. Compare them with the current time before relying on a number.
 - **`null` means not known (yet), never zero.**
 - **Which pools appear**: the pipeline tracks the top pools by TVL (200 unless the operator set
   `--top` / `DEPTHWATCH_TOP_POOLS`; Uniswap v4 pools are ranked by ±2 % depth instead), plus
@@ -143,9 +144,17 @@ value is a 400, not clamped. `/openapi.json` has the full response schemas.
 ### `GET /api/health`
 
 Database counts and the newest snapshot. Fields: `ok`, `poolCount` (discovered pools),
-`trackedCount`, `latestSnapshotAt` (unix seconds or `null`), `latestBlock` (decimal string or
-`null`), `source` (`demo` | `live`). Answers 503 with `ok: false`, zero counts and `error` when
+`trackedCount`, `latestSnapshotAt` (unix seconds or `null`), `snapshotAgeSeconds` (the server's
+clock minus `latestSnapshotAt`; `null` before the first snapshot), `latestBlock` (decimal string
+or `null`), `source` (`demo` | `live`). Answers 503 with `ok: false`, zero counts and `error` when
 the database cannot be read.
+
+| Parameter | Values                     | Default | Effect                                                                                                                                                                     |
+| --------- | -------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `maxAge`  | positive integer (seconds) | none    | Answers 503 with `ok: false` and `error: "stale: …"` (counts still filled) when `snapshotAgeSeconds` is `null` or above `maxAge`, so a liveness probe fails on stale data. |
+
+`GET /api/health?maxAge=3600` is a probe that fails once the pipeline has not written a snapshot
+for an hour (`depthwatch start` snapshots every 30 minutes by default).
 
 ### `GET /api/stats`
 
@@ -416,8 +425,9 @@ curl -s -o badge.svg "$DW/api/mm/demo-aero-usdc-aero/badge.svg"
 ## How to pick a pool for a trade
 
 Say the trade is: buy token X with N USD worth of token Y on Base.
-1. **Check the server.** `GET /api/health`: `source` must be `live` and `latestSnapshotAt` recent
-   (the pipeline's default loop runs every 300 s; the operator sets the interval).
+1. **Check the server.** `GET /api/health`: `source` must be `live` and `snapshotAgeSeconds` small
+   (`depthwatch start` snapshots every 1800 s by default, `run` every 300 s; the operator sets the
+   interval); `?maxAge=<seconds>` makes the server answer 503 itself when the data are older.
 2. **List the candidates.** `GET /api/tokens/<X address>?sort=depth&limit=200`, keep the pools
    whose other token is Y. If X has more than 200 scored pools, page with `offset` up to `total`.
    Each listed pool already carries its ±2 % depth per side (`depth2UpUsd`, `depth2DownUsd`) for
@@ -453,14 +463,14 @@ Say the trade is: buy token X with N USD worth of token Y on Base.
 Every error body is JSON: `{ "error": "<message>" }`, plus `issues: [{ path, message }]` on query
 validation errors.
 
-| Status | When                                                                           | `error`                                                  |
-| ------ | ------------------------------------------------------------------------------ | -------------------------------------------------------- |
-| 400    | A query parameter is invalid (one `issues` entry per parameter)                | `invalid query: <path>: <message>; …`                    |
-| 400    | `/api/tokens/:address` with a malformed address                                | `invalid token address: expected 0x + 40 hex chars`      |
-| 404    | Unknown pool id, token or mandate id                                           | `pool not found`, `token not found`, `mandate not found` |
-| 404    | Unknown `/api` route (any unknown path when the dashboard is not served)       | `not found`                                              |
-| 500    | Unexpected server error                                                        | `internal error`                                         |
-| 503    | `GET /api/health` only: the database cannot be read (body is the health shape) | the database error                                       |
+| Status | When                                                                                                                                              | `error`                                                  |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| 400    | A query parameter is invalid (one `issues` entry per parameter)                                                                                   | `invalid query: <path>: <message>; …`                    |
+| 400    | `/api/tokens/:address` with a malformed address                                                                                                   | `invalid token address: expected 0x + 40 hex chars`      |
+| 404    | Unknown pool id, token or mandate id                                                                                                              | `pool not found`, `token not found`, `mandate not found` |
+| 404    | Unknown `/api` route (any unknown path when the dashboard is not served)                                                                          | `not found`                                              |
+| 500    | Unexpected server error                                                                                                                           | `internal error`                                         |
+| 503    | `GET /api/health` only: the database cannot be read, or `maxAge` was given and the newest snapshot is older or missing (body is the health shape) | the database error, or `stale: …`                        |
 
 Example: `curl -s "$DW/api/pools?limit=500"` answers 400 with
 `{"error":"invalid query: limit: Too big: expected number to be <=200","issues":[{"path":"limit","message":"Too big: expected number to be <=200"}]}`.
@@ -473,7 +483,13 @@ The `message` wording comes from the validator and may change; match on status a
 - Pool data only change when the pipeline writes a new snapshot or score, so polling faster than
   the snapshot interval returns the same numbers; compare `latestSnapshotAt` to detect new data.
   Scorecards are computed on each request over windows that end at the server's clock.
-- No `Cache-Control` header is sent, except on `/api/mm/:id/badge.svg` (`public, max-age=300`).
+- Responses are gzip- or deflate-compressed when `Accept-Encoding` allows it (`Vary:
+  Accept-Encoding`), and every `GET` response carries an `ETag`: send it back as `If-None-Match`
+  and an unchanged answer is a bodiless 304.
+- `Cache-Control`: successful `GET /api/*` responses say `public, max-age=30`, except
+  `/api/mm/:id/badge.svg` (`public, max-age=300`) and `GET /api/health`, which sends none so a
+  probe always sees the server as it is. The dashboard's hashed `/assets/*` files are
+  `public, max-age=31536000, immutable`; `index.html` and the other files are `no-cache`.
 - `/api/*` allows any origin (`Access-Control-Allow-Origin: *`) for `GET`, `HEAD` and `OPTIONS`,
   with preflight responses cached for 600 s. The documents at the root carry no CORS headers.
 

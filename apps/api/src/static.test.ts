@@ -1,16 +1,20 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { gunzipSync } from 'node:zlib'
 import type { Database } from '@depthwatch/db'
 import type { Hono } from 'hono'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from './app.js'
+import { ASSET_CACHE_CONTROL, STATIC_CACHE_CONTROL } from './caching.js'
 import { isApiPath, staticDirExists, wantsSpaFallback } from './static.js'
 import { createSeededDatabase } from './testing/seed.js'
 
 const INDEX_HTML = '<!doctype html><html><body><div id="root"></div></body></html>'
 const APP_JS = 'console.log("depthwatch")'
 const STYLE_CSS = ':root{--bg:#fff}'
+/** Above hono's 1 KiB compression threshold, which applies to files (they have a length). */
+const BUNDLE_JS = `const depthwatch = ${JSON.stringify('x'.repeat(4000))}`
 
 describe('static serving', () => {
   let dir: string
@@ -23,6 +27,7 @@ describe('static serving', () => {
     writeFileSync(join(dir, 'index.html'), INDEX_HTML)
     writeFileSync(join(dir, 'assets', 'app.js'), APP_JS)
     writeFileSync(join(dir, 'assets', 'style.css'), STYLE_CSS)
+    writeFileSync(join(dir, 'assets', 'index-1gtripqj.js'), BUNDLE_JS)
     writeFileSync(join(dir, 'favicon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>')
     writeFileSync(join(dir, 'secret.json'), '{"secret":true}')
   })
@@ -110,6 +115,60 @@ describe('static serving', () => {
     const res = await app.request('/assets/app.js', { method: 'POST' })
     expect(res.status).toBe(404)
     expect(await res.json()).toEqual({ error: 'not found' })
+  })
+
+  describe('cache headers', () => {
+    it('marks hashed assets immutable and everything else no-cache', async () => {
+      const cases: Array<[string, string]> = [
+        ['/assets/app.js', ASSET_CACHE_CONTROL],
+        ['/assets/style.css', ASSET_CACHE_CONTROL],
+        ['/', STATIC_CACHE_CONTROL],
+        ['/index.html', STATIC_CACHE_CONTROL],
+        ['/pools/uniswap-v3:0x1', STATIC_CACHE_CONTROL],
+        ['/favicon.svg', STATIC_CACHE_CONTROL],
+      ]
+      for (const [path, expected] of cases) {
+        const res = await app.request(path)
+        expect(res.status, path).toBe(200)
+        expect(res.headers.get('cache-control'), path).toBe(expected)
+      }
+      expect(ASSET_CACHE_CONTROL).toBe('public, max-age=31536000, immutable')
+      expect(STATIC_CACHE_CONTROL).toBe('no-cache')
+    })
+
+    it('answers a matching If-None-Match with 304 for files and the fallback', async () => {
+      for (const path of ['/assets/app.js', '/', '/pools/x']) {
+        const first = await app.request(path)
+        const tag = first.headers.get('etag')
+        expect(tag, path).toMatch(/^"[0-9a-f]{40}"$/)
+        const again = await app.request(path, { headers: { 'if-none-match': tag ?? '' } })
+        expect(again.status, path).toBe(304)
+        expect(await again.text()).toBe('')
+        expect(again.headers.get('cache-control'), path).toBe(first.headers.get('cache-control'))
+      }
+    })
+
+    it('compresses a bundle for a client that accepts gzip, not otherwise', async () => {
+      const plain = await app.request('/assets/index-1gtripqj.js')
+      expect(plain.headers.get('content-encoding')).toBeNull()
+      expect(await plain.text()).toBe(BUNDLE_JS)
+      const zipped = await app.request('/assets/index-1gtripqj.js', {
+        headers: { 'accept-encoding': 'gzip' },
+      })
+      expect(zipped.status).toBe(200)
+      expect(zipped.headers.get('content-encoding')).toBe('gzip')
+      expect(zipped.headers.get('vary')).toBe('Accept-Encoding')
+      expect(zipped.headers.get('cache-control')).toBe(ASSET_CACHE_CONTROL)
+      const raw = Buffer.from(await zipped.arrayBuffer())
+      expect(raw.length).toBeLessThan(BUNDLE_JS.length)
+      expect(gunzipSync(raw).toString('utf8')).toBe(BUNDLE_JS)
+    })
+
+    it('leaves a 404 uncached', async () => {
+      const res = await app.request('/assets/missing.js', { headers: { accept: '*/*' } })
+      expect(res.status).toBe(404)
+      expect(res.headers.get('cache-control')).toBeNull()
+    })
   })
 
   it('ignores a missing static dir', async () => {

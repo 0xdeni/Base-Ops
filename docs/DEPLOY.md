@@ -79,11 +79,14 @@ docker compose -f deploy/compose.yaml up -d --build
   (`stop_grace_period: 10s`, Docker's default) gives `docker stop` 10 seconds before SIGKILL,
   more than the 8 seconds of `DEPTHWATCH_SHUTDOWN_GRACE` the server takes at most to end the step
   in flight, close the database and exit 0.
-- The image's health check asks `GET /api/health` every 30 seconds (after a 60-second start
-  period; three failures in a row mark the container `unhealthy` in `docker ps`, and an
-  orchestrator restarts it). A healthy container proves that the process is up and reads its
-  database, not that the pipeline runs or that the data is fresh: `latestSnapshotAt` in that
-  response and the `done` lines in the logs show that.
+- The image's health check asks `GET /api/health?maxAge=3600` every 30 seconds (after a
+  5-minute start period, which covers the first pass on an empty database; three failures in a
+  row mark the container `unhealthy` in `docker ps`, and an orchestrator restarts it). It fails
+  when the process is down, the database cannot be read, or the newest snapshot is more than an
+  hour old (two default passes), so a stalled pipeline shows up as `unhealthy`; the response's
+  `snapshotAgeSeconds` and the `done` lines in the logs say how far behind it is. An operator who
+  raises `DEPTHWATCH_SNAPSHOT_INTERVAL` above 30 minutes overrides the check (`healthcheck:` in
+  Compose) with a `maxAge` of about twice the interval.
 - The container's `depthwatch` entrypoint takes the other commands too, for the ones that only
   touch the database: `docker compose exec -u node depthwatch depthwatch mm list` (`docker exec
   -u node depthwatch depthwatch mm list` without Compose). `docker exec` defaults to root; `-u

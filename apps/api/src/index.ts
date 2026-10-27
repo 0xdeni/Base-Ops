@@ -10,6 +10,12 @@ export {
   formatUptimePct,
   renderBadge,
 } from './badge.js'
+export {
+  API_CACHE_CONTROL,
+  ASSET_CACHE_CONTROL,
+  STATIC_CACHE_CONTROL,
+  staticCacheControl,
+} from './caching.js'
 export type { ApiContext } from './context.js'
 export type {
   DataSource,
@@ -47,6 +53,7 @@ export {
 } from './history.js'
 export type {
   GapsQuery,
+  HealthQuery,
   HistoryQuery,
   PoolsQuery,
   SamplesQuery,

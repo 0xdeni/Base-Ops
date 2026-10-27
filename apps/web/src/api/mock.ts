@@ -160,6 +160,7 @@ export function createMockClient(opts: MockOptions = {}): ApiClient {
         poolCount,
         trackedCount: pools.length,
         latestSnapshotAt: now,
+        snapshotAgeSeconds: 0,
         latestBlock: LATEST_BLOCK,
         // The mock stands in for a live server; the mock badge and footer say it is mock data.
         source: 'live',

@@ -3,12 +3,14 @@
  * agent documents (`/AGENTS.md`, `/llms.txt`, `/openapi.json`, see `routes/agentDocs.ts`), JSON
  * errors everywhere (404 for unknown routes, 400 for bad queries, 500 for bugs) and, when
  * `opts.staticDir` exists, the built dashboard with an SPA fallback. `opts.adminToken` unlocks
- * mandate registration over the API (`POST /api/mm`, `DELETE /api/mm/:id`).
+ * mandate registration over the API (`POST /api/mm`, `DELETE /api/mm/:id`). Responses are
+ * compressed, tagged and given their `Cache-Control` by `caching.ts`.
  */
 import type { Database } from '@depthwatch/db'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
+import { apiCacheControl, compressAndTag } from './caching.js'
 import type { ApiContext } from './context.js'
 import type { DataSource, ErrorResponse } from './dto.js'
 import { agentDocsRoutes } from './routes/agentDocs.js'
@@ -48,6 +50,7 @@ export function createApp(db: Database, opts: CreateAppOptions = {}): Hono {
   const app = new Hono()
 
   app.use('/api/*', cors({ origin: '*', allowMethods: ['GET', 'HEAD', 'OPTIONS'], maxAge: 600 }))
+  app.use('/api/*', ...compressAndTag(), apiCacheControl())
   app.route('/api', createApiRouter(ctx))
   // Before the static dashboard, so its SPA fallback never answers for these documents.
   app.route('/', agentDocsRoutes())

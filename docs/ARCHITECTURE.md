@@ -572,7 +572,10 @@ sizes), which the readers guarantee.
 DESIGN.md lists the layer-1 ones and [design/scorecards.md](design/scorecards.md) §6 the scorecard
 ones. The scorecard routes (`/api/mm…`) compute each `ScorecardSummary` on request from the
 mandate's samples of the last 30 days through core's `summarizeScorecard`; the badge is an SVG
-with a 5-minute cache header. `POST /api/mm` and `DELETE /api/mm/:id` require
+with a 5-minute cache header. Responses are compressed when the client accepts it, carry an
+`ETag`, and `GET /api/*` reads other than `/api/health` a 30-second `Cache-Control`
+(`apps/api/src/caching.ts`); `/api/health?maxAge=<seconds>` answers 503 when the newest snapshot
+is older, so a probe can fail on stale data. `POST /api/mm` and `DELETE /api/mm/:id` require
 `Authorization: Bearer <adminToken>` (`DEPTHWATCH_ADMIN_TOKEN`, which `serve` and `demo` pass
 through; environment only, no flag); without a configured token they answer 403, so a public
 deployment that does not set the token is read-only. `DELETE` removes the mandate's samples and
