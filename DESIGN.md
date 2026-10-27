@@ -234,7 +234,13 @@ Repositories expose typed methods (`pools.upsertMany`, `snapshots.insert`, `snap
 ## API (apps/api)
 
 `createApp(db, opts?: { staticDir?: string })` returns a Hono app. All responses JSON, bigints as decimal strings.
-- `GET /api/health` → `{ ok, poolCount, trackedCount, latestSnapshotAt, latestBlock }`
+Every response is gzip- or deflate-compressed when `Accept-Encoding` allows it and carries an `ETag` that answers a
+matching `If-None-Match` with `304`. A successful `GET /api/*` response carries `Cache-Control: public, max-age=30`
+unless the route sets its own (the badge: `public, max-age=300`); `/api/health` sends none.
+- `GET /api/health?maxAge=` → `{ ok, poolCount, trackedCount, latestSnapshotAt, snapshotAgeSeconds, latestBlock, source }`;
+  `snapshotAgeSeconds` is the server clock minus `latestSnapshotAt` (`null` before the first snapshot). `503 { ok: false, error }`
+  when the database cannot be read (zero counts) or, with `maxAge` (a positive integer of seconds), when `snapshotAgeSeconds`
+  is `null` or above it (`error: stale: …`, counts filled); `400` for an invalid `maxAge`
 - `GET /api/stats` → totals by dex: pools, tracked, scored, rated, depth2Usd sum, volume24hUsd sum, median health over rated pools
 - `GET /api/pools?sort=health|depth|volume|gap|tvl&dir=asc|desc&dex=&q=&minVolume=&rated=true|false&limit=&offset=` → `{ items: PoolSummary[], total }` (sorting by health puts unrated pools last in both directions)
 - `GET /api/pools/:id` → `{ pool, latest: PoolSnapshot, score: HealthScore, gap, persistence24h, persistence7d, volume24hUsd }`
@@ -245,7 +251,8 @@ Repositories expose typed methods (`pools.upsertMany`, `snapshots.insert`, `snap
   hand-written OpenAPI 3.1 of the GET routes), written once in `apps/api/src/agentDocs/` and registered before the static
   fallback; the web build copies the files into `dist` unchanged and into `dist-static` with a generated static-site
   note.
-- Static: when `staticDir` exists serve it with SPA fallback to `index.html`.
+- Static: when `staticDir` exists serve it with SPA fallback to `index.html`; the hashed `/assets/*` files carry
+  `Cache-Control: public, max-age=31536000, immutable`, `index.html` and every other file `no-cache` (revalidated by `ETag`).
 
 `PoolSummary = { pool: PoolMeta, price, tvlUsd, depth2Usd, depth2UpUsd, depth2DownUsd, spread10kBps, health: { total, grade, rated, unratedReason }, gapScore, volume24hUsd, ownerTop1Share, updatedAt }`
 (`grade: HealthGrade | null`, `unratedReason: 'thin' | 'one-sided' | 'unpriced' | null`; `HealthScore` carries the same two fields).

@@ -36,13 +36,19 @@ export interface ErrorResponse {
   issues?: Array<{ path: string; message: string }>
 }
 
-/** `GET /api/health`. Never throws; `ok` is false (status 503) when the database is unreadable. */
+/**
+ * `GET /api/health`. Never throws; `ok` is false (status 503) when the database is unreadable
+ * (zero counts) or, with `?maxAge=<seconds>`, when `snapshotAgeSeconds` is null or above it
+ * (counts filled, `error` starts with `stale: `).
+ */
 export interface HealthResponse {
   ok: boolean
   poolCount: number
   trackedCount: number
   /** Unix seconds of the newest snapshot; null before the first snapshot. */
   latestSnapshotAt: number | null
+  /** The server's clock minus `latestSnapshotAt`; null before the first snapshot. */
+  snapshotAgeSeconds: number | null
   /** Block number of the newest snapshot as a decimal string; null before the first snapshot. */
   latestBlock: string | null
   /**

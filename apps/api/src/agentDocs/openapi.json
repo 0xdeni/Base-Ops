@@ -4,7 +4,7 @@
     "title": "Depthwatch API",
     "version": "0.1.0",
     "summary": "Read-only liquidity metrics for Uniswap v3/v4 and Aerodrome pools on Base mainnet (chain id 8453).",
-    "description": "Depthwatch measures executable liquidity: USD depth at ±1/2/5 % per side, round-trip effective spread at $1k/$10k/$100k (fees included), LP concentration, liquidity persistence over 24 h and 7 d, a 0–100 Liquidity Health Score and a liquidity gaps feed. Conventions: price is token1 per token0, decimal adjusted; the up side is buy pressure on token0 (input token1), the down side sell pressure (input token0); raw token amounts and block numbers are decimal strings; times are unix seconds; null means not known, never zero; USD prices are derived from the pools and are not an oracle. Check GET /api/health first: source \"demo\" means synthetic data. Errors are JSON { error, issues? }. This document lists every GET route; the operator-only write routes POST /api/mm and DELETE /api/mm/{id} (bearer DEPTHWATCH_ADMIN_TOKEN) are not described here. The full guide is GET /AGENTS.md; metric definitions are in docs/METRICS.md of the repository.",
+    "description": "Depthwatch measures executable liquidity: USD depth at ±1/2/5 % per side, round-trip effective spread at $1k/$10k/$100k (fees included), LP concentration, liquidity persistence over 24 h and 7 d, a 0–100 Liquidity Health Score and a liquidity gaps feed. Conventions: price is token1 per token0, decimal adjusted; the up side is buy pressure on token0 (input token1), the down side sell pressure (input token0); raw token amounts and block numbers are decimal strings; times are unix seconds; null means not known, never zero; USD prices are derived from the pools and are not an oracle. Check GET /api/health first: source \"demo\" means synthetic data; snapshotAgeSeconds says how old the newest snapshot is, and ?maxAge=<seconds> makes it answer 503 when older. Responses are compressed when Accept-Encoding allows it and carry an ETag (304 on If-None-Match); GET /AGENTS.md \"Caching\" has the Cache-Control values. Errors are JSON { error, issues? }. This document lists every GET route; the operator-only write routes POST /api/mm and DELETE /api/mm/{id} (bearer DEPTHWATCH_ADMIN_TOKEN) are not described here. The full guide is GET /AGENTS.md; metric definitions are in docs/METRICS.md of the repository.",
     "license": { "name": "MIT", "identifier": "MIT" }
   },
   "externalDocs": {
@@ -27,14 +27,23 @@
       "get": {
         "operationId": "getHealth",
         "tags": ["observatory"],
-        "summary": "Database counts, newest snapshot and data source",
+        "summary": "Database counts, newest snapshot and its age, data source; a liveness probe with maxAge",
+        "parameters": [
+          {
+            "name": "maxAge",
+            "in": "query",
+            "description": "Seconds. When given, the server answers 503 (ok false, error \"stale: …\", counts still filled) when snapshotAgeSeconds is null or above this value, so a liveness probe fails on stale data; 2 x the pipeline's snapshot interval (3600 for the default 30 minutes) is a sensible value.",
+            "schema": { "type": "integer", "minimum": 1 }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "The database is readable.",
+            "description": "The database is readable and, when maxAge is given, the newest snapshot is at most maxAge seconds old.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "503": {
-            "description": "The database cannot be read: ok is false, counts are 0 and error is set.",
+            "description": "The database cannot be read (ok is false, counts are 0, error is the database error), or maxAge was given and the newest snapshot is older than that or missing (ok is false, counts filled, error starts with \"stale: \").",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
           }
         }
@@ -436,12 +445,24 @@
       },
       "HealthResponse": {
         "type": "object",
-        "required": ["ok", "poolCount", "trackedCount", "latestSnapshotAt", "latestBlock", "source"],
+        "required": [
+          "ok",
+          "poolCount",
+          "trackedCount",
+          "latestSnapshotAt",
+          "snapshotAgeSeconds",
+          "latestBlock",
+          "source"
+        ],
         "properties": {
           "ok": { "type": "boolean" },
           "poolCount": { "type": "integer", "description": "Discovered pools." },
           "trackedCount": { "type": "integer", "description": "Pools the pipeline snapshots and scores." },
           "latestSnapshotAt": { "type": ["integer", "null"], "description": "Unix seconds of the newest snapshot." },
+          "snapshotAgeSeconds": {
+            "type": ["integer", "null"],
+            "description": "The server's clock minus latestSnapshotAt; null before the first snapshot."
+          },
           "latestBlock": {
             "anyOf": [{ "$ref": "#/components/schemas/DecimalString" }, { "type": "null" }],
             "description": "Block number of the newest snapshot."

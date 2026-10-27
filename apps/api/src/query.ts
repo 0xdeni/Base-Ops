@@ -63,6 +63,12 @@ export const poolsQuerySchema = z.object({
 })
 export type PoolsQuery = z.infer<typeof poolsQuerySchema>
 
+export const healthQuerySchema = z.object({
+  /** Seconds: answer 503 when the newest snapshot is older than this, or there is none. */
+  maxAge: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).optional()),
+})
+export type HealthQuery = z.infer<typeof healthQuerySchema>
+
 export const historyQuerySchema = z.object({
   window: z.preprocess(emptyToUndefined, z.enum(HISTORY_WINDOWS).default('24h')),
 })

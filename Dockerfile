@@ -61,8 +61,10 @@ RUN chmod 0755 /usr/local/bin/depthwatch \
 VOLUME /data
 # The port when neither DEPTHWATCH_PORT nor a platform's PORT is set.
 EXPOSE 8787
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD ["node", "-e", "const p = process.env.DEPTHWATCH_PORT || process.env.PORT || 8787; fetch(`http://127.0.0.1:${p}/api/health`).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+# Fails when the process is down, the database unreadable or the newest snapshot older than an
+# hour (two default passes); the start period covers the first pass on an empty database.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5m --retries=3 \
+  CMD ["node", "-e", "const p = process.env.DEPTHWATCH_PORT || process.env.PORT || 8787; fetch(`http://127.0.0.1:${p}/api/health?maxAge=3600`).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 # Starts as root only to hand /data to `node`, then runs as `node` with no way back to root
 # (deploy/docker-entrypoint.sh); `docker exec -u node` for the database-only commands.
 ENTRYPOINT ["depthwatch"]
