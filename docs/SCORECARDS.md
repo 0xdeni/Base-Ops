@@ -284,7 +284,9 @@ pool is tracked whether or not it ranks in the top N. A pool the database does n
 until the pool is discovered and the scorecard reads `no-data` meanwhile. `sample` reads the latest
 block, the pool state and the stored positions, and inserts one sample per active mandate of each
 mandated pool without writing a snapshot row and without waiting for the next pipeline pass; it
-needs `DEPTHWATCH_RPC_URL`. Exit codes follow the rest of the CLI: 0 ok, 1 error, 2 usage.
+needs `DEPTHWATCH_RPC_URL`. Exit codes follow the rest of the CLI: 0 ok, 1 error, 2 usage; a
+`sample` whose every mandate failed stored nothing and exits 1, while a partial failure is a
+warning per mandate and exit 0.
 
 ### With the API
 
@@ -326,8 +328,8 @@ dashboard's `VITE_MOCK=1` mode mirrors the same two.
 | `DELETE /api/mm/:id`                                 | Remove a mandate; same authorization as `POST`                                                                                                    |
 
 Summaries are computed on request from the samples of the last 30 days, so `uptime.d30` is the
-full history the API keeps in view; older samples remain in the database until an operator prunes
-them. Bigints (`blockNumber`) are decimal strings. A sample on the wire:
+full history the API keeps in view; samples older than 35 days and alerts older than 90 are
+deleted by `depthwatch prune`, which `run` and `start` run once a day. Bigints (`blockNumber`) are decimal strings. A sample on the wire:
 
 ```json
 {

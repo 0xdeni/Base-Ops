@@ -214,9 +214,18 @@ export class SnapshotsRepo {
     return row ? colBigint(row, 'block_number') : null
   }
 
-  /** Deletes snapshots with `timestamp < ts`. Returns the number deleted. */
-  pruneBefore(ts: number): number {
-    return this.ctx.run('DELETE FROM snapshots WHERE timestamp < ?', [ts]).changes
+  /**
+   * Deletes snapshots with `timestamp < ts`: all of them, or the oldest `limit` when given, so
+   * retention can delete in batches that each hold the write lock briefly. Returns the number
+   * deleted.
+   */
+  pruneBefore(ts: number, limit?: number): number {
+    if (limit === undefined)
+      return this.ctx.run('DELETE FROM snapshots WHERE timestamp < ?', [ts]).changes
+    return this.ctx.run(
+      'DELETE FROM snapshots WHERE id IN (SELECT id FROM snapshots WHERE timestamp < ? ORDER BY timestamp, id LIMIT ?)',
+      [ts, limit],
+    ).changes
   }
 
   count(): number {

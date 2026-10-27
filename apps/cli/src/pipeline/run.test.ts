@@ -18,7 +18,7 @@ import { createLogger } from '../log.js'
 import { createPipelineContext } from './context.js'
 import { discoverStep } from './discover.js'
 import { positionsPublished } from './positions.js'
-import { runIteration, runLoop, sleep } from './run.js'
+import { PipelineStalledError, runIteration, runLoop, STALL_PASSES, sleep } from './run.js'
 import { volumeStep } from './volume.js'
 
 /** A reader whose every request misses the (empty) fixture, so each step throws. */
@@ -57,6 +57,13 @@ describe('runIteration', () => {
       ])
       expect(lines.filter((line) => line.includes('failed')).length).toBeGreaterThanOrEqual(4)
       expect(lines.some((line) => line.includes('[score] done'))).toBe(true)
+      // The first pass prunes (nothing to delete here); every chain step failed: a stalled pass.
+      expect(lines.some((line) => line.includes('[prune] done'))).toBe(true)
+      expect(result.stalled).toBe(true)
+      // Pruned a moment ago: the next pass leaves prune out.
+      const next = await runIteration(ctx, 2, true)
+      expect(next.failed.map((f) => f.step)).toEqual(result.failed.map((f) => f.step))
+      expect(lines.filter((line) => line.includes('[prune] done'))).toHaveLength(1)
     } finally {
       ctx.db.close()
     }
@@ -101,6 +108,7 @@ describe('runIteration and the positions of mandated pools', () => {
       db.mandates.upsert(mandate)
       const pass = await runIteration(ctx, 1, false)
       expect(pass.failed).toEqual([])
+      expect(pass.stalled).toBe(false)
       const done = (step: string) => lines.findIndex((line) => line.includes(`[${step}] done`))
       expect(done('positions')).toBeGreaterThanOrEqual(0)
       expect(done('positions')).toBeLessThan(done('snapshot'))
@@ -179,14 +187,17 @@ describe('runIteration on a logs endpoint that keeps timing out', () => {
 })
 
 describe('runLoop', () => {
-  it('runs once with --once and stops on abort between iterations', async () => {
+  it('runs once with --once, returning the failed steps, and stops on abort between iterations', async () => {
     const lines: string[] = []
     const ctx = brokenContext(lines)
     try {
-      expect(await runLoop(ctx, { once: true, intervalSeconds: 1 })).toBe(1)
+      const once = await runLoop(ctx, { once: true, intervalSeconds: 1 })
+      expect(once.iterations).toBe(1)
+      expect(once.lastFailed.map((f) => f.step)).toEqual(['discover', 'snapshot', 'volume'])
+      for (const failure of once.lastFailed) expect(failure.error).toMatch(/fixture/i)
       const controller = new AbortController()
       let sleeps = 0
-      const iterations = await runLoop(ctx, {
+      const loop = await runLoop(ctx, {
         intervalSeconds: 1,
         signal: controller.signal,
         sleep: async () => {
@@ -194,8 +205,33 @@ describe('runLoop', () => {
           if (sleeps === 2) controller.abort()
         },
       })
-      expect(iterations).toBe(2)
+      expect(loop.iterations).toBe(2)
+      expect(loop.lastFailed.map((f) => f.step)).toEqual(['discover', 'snapshot', 'volume'])
       expect(sleeps).toBe(2)
+    } finally {
+      ctx.db.close()
+    }
+  })
+
+  it('stops with PipelineStalledError once every chain step failed in three passes in a row', async () => {
+    const lines: string[] = []
+    const ctx = brokenContext(lines)
+    try {
+      let sleeps = 0
+      const error = await runLoop(ctx, {
+        intervalSeconds: 1,
+        sleep: async () => {
+          sleeps++
+        },
+      }).catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(PipelineStalledError)
+      expect((error as Error).message).toMatch(
+        /^run: every step that reads the chain failed in 3 passes in a row; last errors: discover: /,
+      )
+      expect(STALL_PASSES).toBe(3)
+      expect(sleeps).toBe(2)
+      expect(lines.filter((line) => line.includes('iteration done'))).toHaveLength(3)
+      expect(lines.some((line) => line.includes('stalledPasses=3'))).toBe(true)
     } finally {
       ctx.db.close()
     }

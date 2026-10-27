@@ -34,6 +34,7 @@ export const COMMANDS = [
   'volume',
   'positions',
   'score',
+  'prune',
   'run',
   'start',
   'serve',
@@ -42,6 +43,9 @@ export const COMMANDS = [
   'mm',
 ] as const
 export type Command = (typeof COMMANDS)[number]
+
+/** Commands that prune (`run` and `start` once a day), the only ones `--keep-days` applies to. */
+export const PRUNING_COMMANDS: readonly Command[] = ['prune', 'run', 'start']
 
 /** Subcommands of `depthwatch mm` (market-maker scorecards, docs/design/scorecards.md §5). */
 export const MM_SUBCOMMANDS = ['register', 'list', 'show', 'deactivate', 'sample'] as const
@@ -69,6 +73,7 @@ export const DEFAULTS = Object.freeze({
   topPools: 200,
   logChunkSize: 2_000,
   intervalSeconds: 300,
+  keepDays: 30,
   hours: 24,
   bandPct: 5,
   concurrency: 4,
@@ -84,6 +89,7 @@ export interface CliFlags extends ScheduleFlags {
   pool?: string[]
   hours?: string
   interval?: string
+  keepDays?: string
   once?: boolean
   withPositions?: boolean
   seed?: boolean
@@ -127,6 +133,8 @@ export interface Config {
   topPools: number
   logChunkSize: number
   intervalSeconds: number
+  /** `prune`: days of snapshots and hourly volume kept (snapshots at least 8; pipeline/prune.ts). */
+  keepDays: number
   runOnce: boolean
   withPositions: boolean
   /** `discover --seed` / `run --seed`: discovery from factory views, no logs (pipeline/seed.ts). */
@@ -163,6 +171,7 @@ const PARSE_OPTIONS = {
   pool: { type: 'string', multiple: true },
   hours: { type: 'string' },
   interval: { type: 'string' },
+  'keep-days': { type: 'string' },
   once: { type: 'boolean' },
   'with-positions': { type: 'boolean' },
   seed: { type: 'boolean' },
@@ -265,6 +274,9 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
     throw new ConfigError('--seed only applies to discover and run')
   if (values.seed === true && values['from-block'] !== undefined)
     throw new ConfigError('--from-block only applies to the log scan, not to --seed')
+  const keepDays = values['keep-days']
+  if (keepDays !== undefined && command !== undefined && !PRUNING_COMMANDS.includes(command))
+    throw new ConfigError('--keep-days only applies to prune, run and start')
   const scheduleFlag = SCHEDULE_FLAGS.find((flag) => values[flag] !== undefined)
   if (scheduleFlag !== undefined && command !== undefined && command !== 'start')
     throw new ConfigError(`--${scheduleFlag} only applies to start`)
@@ -287,6 +299,7 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
       pool: values.pool,
       hours: values.hours,
       interval: values.interval,
+      keepDays: values['keep-days'],
       once: values.once,
       withPositions: values['with-positions'],
       seed: values.seed,
@@ -323,6 +336,7 @@ export function loadConfig(env: Env, flags: CliFlags = {}): Config {
     pick(flags.logsRpcUrl, env.DEPTHWATCH_LOGS_RPC_URL),
   )
   const envDb = pick(undefined, env.DEPTHWATCH_DB)
+  const keepDays = pick(flags.keepDays, env.DEPTHWATCH_KEEP_DAYS)
   return {
     rpcUrl,
     logsRpcUrl: logsRpcUrl ?? rpcUrl,
@@ -339,6 +353,10 @@ export function loadConfig(env: Env, flags: CliFlags = {}): Config {
       flags.interval === undefined
         ? DEFAULTS.intervalSeconds
         : parseDuration('interval', flags.interval, { min: 1, max: 86_400 * 7 }),
+    keepDays:
+      keepDays === undefined
+        ? DEFAULTS.keepDays
+        : parseInteger('keep days', keepDays, { min: 2, max: 3650 }),
     runOnce: flags.once === true,
     withPositions: flags.withPositions === true,
     seed: flags.seed === true,

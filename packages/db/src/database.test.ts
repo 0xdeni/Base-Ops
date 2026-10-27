@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -32,7 +32,9 @@ const EXPECTED_TABLES = [
 const EXPECTED_INDEXES = [
   'mandates_pool_id',
   'mm_alerts_mandate_timestamp',
+  'mm_alerts_timestamp',
   'mm_samples_mandate_timestamp',
+  'mm_samples_timestamp',
   'pools_dex',
   'pools_token0',
   'pools_token1',
@@ -72,8 +74,8 @@ describe('openDatabase', () => {
   it('creates the schema and records every migration once', () => {
     const db = memory()
     expect(db.migration).toEqual({ from: 0, to: SCHEMA_VERSION })
-    expect(MIGRATIONS.length).toBe(2)
-    expect(SCHEMA_VERSION).toBe(2)
+    expect(MIGRATIONS.length).toBe(3)
+    expect(SCHEMA_VERSION).toBe(3)
     expect(names(db, 'table')).toEqual(EXPECTED_TABLES)
     expect(names(db, 'index')).toEqual(EXPECTED_INDEXES)
     const versions = db.raw
@@ -118,6 +120,20 @@ describe('openDatabase', () => {
     expect(readdirSync(dir)).toContain('test.sqlite')
   })
 
+  it('checkpoint folds the WAL into the file and empties it', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'depthwatch-db-'))
+    tempDirs.push(dir)
+    const path = join(dir, 'wal.sqlite')
+    const db = openDatabase(path, { now: () => NOW })
+    open.push(db)
+    db.tokens.upsertMany([fixtureToken()])
+    expect(statSync(`${path}-wal`).size).toBeGreaterThan(0)
+    db.checkpoint()
+    expect(statSync(`${path}-wal`).size).toBe(0)
+    expect(db.tokens.get(fixtureToken().address)).toEqual(fixtureToken())
+    expect(() => memory().checkpoint()).not.toThrow()
+  })
+
   it('upgrades a version-1 database to the scorecard schema and keeps its rows', () => {
     const dir = mkdtempSync(join(tmpdir(), 'depthwatch-db-'))
     tempDirs.push(dir)
@@ -143,6 +159,7 @@ describe('openDatabase', () => {
     ).toEqual([
       { version: 1, applied_at: NOW },
       { version: 2, applied_at: NOW + 5 },
+      { version: 3, applied_at: NOW + 5 },
     ])
     expect(upgraded.tokens.get(fixtureToken().address)).toEqual(fixtureToken())
     upgraded.mandates.upsert(fixtureMandate())
@@ -153,6 +170,38 @@ describe('openDatabase', () => {
     open.push(again)
     expect(again.migration).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION })
     expect(again.mandates.get(fixtureMandate().id)).toEqual(fixtureMandate())
+  })
+
+  it('upgrades a version-2 database with the timestamp indexes and keeps its rows', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'depthwatch-db-'))
+    tempDirs.push(dir)
+    const path = join(dir, 'v2.sqlite')
+
+    // A version-2 file: the scorecard tables without the timestamp indexes.
+    const fresh = openDatabase(path, { now: () => NOW })
+    fresh.mandates.upsert(fixtureMandate())
+    fresh.mmSamples.insert(fixtureMmSample())
+    fresh.mmAlerts.insert(fixtureMmAlert())
+    fresh.raw.exec('DROP INDEX mm_samples_timestamp; DROP INDEX mm_alerts_timestamp')
+    fresh.raw.prepare('DELETE FROM schema_version WHERE version > 2').run()
+    expect(currentVersion(fresh.raw)).toBe(2)
+    fresh.close()
+
+    const upgraded = openDatabase(path, { now: () => NOW + 7 })
+    open.push(upgraded)
+    expect(upgraded.migration).toEqual({ from: 2, to: 3 })
+    expect(names(upgraded, 'index')).toEqual(EXPECTED_INDEXES)
+    expect(upgraded.mmSamples.latestFor(fixtureMandate().id)).toEqual(fixtureMmSample())
+    expect(upgraded.mmAlerts.latestFor(fixtureMandate().id)).toEqual(fixtureMmAlert())
+    // The retention deletes seek on the new indexes instead of scanning the tables.
+    for (const table of ['mm_samples', 'mm_alerts']) {
+      const plan = upgraded.raw
+        .prepare(`EXPLAIN QUERY PLAN DELETE FROM ${table} WHERE timestamp < ?`)
+        .all(NOW)
+        .map((row) => String(row.detail))
+        .join(' ')
+      expect(plan).toContain(`SEARCH ${table} USING INDEX ${table}_timestamp`)
+    }
   })
 
   it('refuses a database written by a newer schema', () => {

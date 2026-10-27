@@ -48,6 +48,20 @@ describe('parseCliArgs', () => {
     })
   })
 
+  it('parses --keep-days for prune, run and start and refuses it elsewhere', () => {
+    expect(parseCliArgs(['prune', '--keep-days', '14']).flags.keepDays).toBe('14')
+    expect(parseCliArgs(['run', '--keep-days', '14']).command).toBe('run')
+    expect(parseCliArgs(['start', '--keep-days', '14']).command).toBe('start')
+    expect(() => parseCliArgs(['snapshot', '--keep-days', '14'])).toThrow(
+      /--keep-days only applies to prune, run and start/,
+    )
+    expect(loadConfig({}).keepDays).toBe(DEFAULTS.keepDays)
+    expect(loadConfig({ DEPTHWATCH_KEEP_DAYS: '9' }).keepDays).toBe(9)
+    expect(loadConfig({ DEPTHWATCH_KEEP_DAYS: '9' }, { keepDays: '14' }).keepDays).toBe(14)
+    expect(() => loadConfig({}, { keepDays: '1' })).toThrow(/keep days/)
+    expect(() => loadConfig({}, { keepDays: '1.5' })).toThrow(/keep days must be an integer/)
+  })
+
   it('parses export --out and --demo, and keeps --demo to export', () => {
     const args = parseCliArgs(['export', '--out', 'site/bundle.json', '--demo'])
     expect(args.command).toBe('export')

@@ -48,6 +48,11 @@ export interface Database {
   readonly mmAlerts: MmAlertsRepo
   /** Runs `fn` in `BEGIN IMMEDIATE … COMMIT`, rolling back on throw; nested calls join the outer one. */
   transaction<T>(fn: () => T): T
+  /**
+   * `PRAGMA wal_checkpoint(TRUNCATE)`: folds the WAL into the main file and empties it, so a large
+   * delete does not leave a WAL of its size on disk. A no-op outside WAL mode (`:memory:`).
+   */
+  checkpoint(): void
   /** Closes the connection. Safe to call more than once. */
   close(): void
   readonly isOpen: boolean
@@ -105,6 +110,10 @@ class SqliteDatabase implements Database {
 
   transaction<T>(fn: () => T): T {
     return this.ctx.transaction(fn)
+  }
+
+  checkpoint(): void {
+    this.raw.exec('PRAGMA wal_checkpoint(TRUNCATE)')
   }
 
   close(): void {
