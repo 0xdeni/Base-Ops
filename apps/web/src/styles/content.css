@@ -1,0 +1,351 @@
+/* Content blocks (docs/design/visual-v3.md §5.5–§5.7): grades, status words and chips, facts,
+   sections with the Details trigger in the head (K10), and About / Mandate definition lists. */
+
+/* ---------- Grades and status (C4, K5): shape plus word, never colour alone ---------- */
+.grade {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 28px;
+  height: 20px;
+  border-radius: var(--r-chip);
+  font-size: var(--t-caption);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  flex: none;
+}
+.grade svg {
+  width: 6px;
+  height: 6px;
+  flex: none;
+}
+.tone-ok {
+  --tone: var(--ok);
+  --tone-bg: var(--ok-bg);
+}
+.tone-warn {
+  --tone: var(--warn);
+  --tone-bg: var(--warn-bg);
+}
+.tone-bad {
+  --tone: var(--bad);
+  --tone-bg: var(--bad-bg);
+}
+.tone-none {
+  --tone: var(--text-2);
+  --tone-bg: var(--well);
+}
+.grade,
+.status-chip {
+  background: var(--tone-bg);
+  color: var(--tone);
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-small);
+  font-weight: 500;
+  line-height: 1.385;
+  white-space: nowrap;
+  color: var(--tone);
+}
+.status svg,
+.status-chip svg {
+  width: 8px;
+  height: 8px;
+  flex: none;
+}
+.grade.is-fact {
+  width: 32px;
+  height: 24px;
+  font-size: var(--t-small);
+}
+.grade.is-fact svg {
+  width: 7px;
+  height: 7px;
+}
+/* A pool with no grade: the words instead of a letter, neutral, as tall as the glyph. */
+.grade.is-unrated {
+  width: auto;
+  padding: 0 8px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--r-chip);
+  font-size: var(--t-small);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.status-chip.is-compact {
+  height: 22px;
+}
+.breach-mark {
+  width: 10px;
+  height: 10px;
+  color: var(--bad);
+  flex: none;
+}
+
+/* ---------- Facts (D3): value first, label second, no icons, no boxes ---------- */
+.facts {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--s6);
+}
+.fact {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+.fact dd {
+  font-size: var(--t-kpi);
+  line-height: 1.05;
+  font-weight: 400;
+  letter-spacing: -0.028em;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  white-space: nowrap;
+}
+.fact dd .fv-words {
+  font-size: var(--t-h2);
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  white-space: normal;
+}
+.fact dt {
+  font-size: var(--t-small);
+  line-height: 1.385;
+  color: var(--text-2);
+}
+.fact .fv {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+.fact dd.has-bullet {
+  display: grid;
+  gap: var(--s2);
+  justify-items: start;
+}
+.fact .bullet {
+  width: 100%;
+  max-width: 220px;
+}
+@media (max-width: 52.49em) {
+  /* Home: rows with hairlines, value then label, baseline-aligned. */
+  .facts.is-rows {
+    grid-auto-flow: row;
+    gap: 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .facts.is-rows .fact {
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+    align-items: baseline;
+    gap: var(--s4);
+    padding-block: var(--s4);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .facts.is-rows .fact dd {
+    min-width: 6.2ch;
+  }
+  .facts.is-rows .fact dt {
+    font-size: var(--t-data);
+  }
+  /* Pool: a 2 × 2 grid. */
+  .facts.is-grid {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s4);
+  }
+  /* Scorecard: one column, value left, bullet right (max 160 px), label below. */
+  .facts.is-stack {
+    grid-auto-flow: row;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s4);
+  }
+  .facts.is-stack .fact dd.has-bullet {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: var(--s4);
+  }
+  .facts.is-stack .fact .bullet {
+    max-width: 160px;
+    justify-self: end;
+  }
+}
+
+/* ---------- Sections (D4): heading and takeaway left, visual right ---------- */
+.secs {
+  margin-top: var(--s8);
+}
+.sec {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+  gap: var(--s5) var(--s6);
+  padding-block: var(--s7);
+  border-top: 1px solid var(--border-subtle);
+}
+.sec-head {
+  display: grid;
+  gap: var(--s2);
+  align-content: start;
+}
+.sec-head .takeaway {
+  max-width: 32ch;
+}
+.sec-ctl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s5);
+  align-items: center;
+  margin-top: var(--s2);
+}
+.sec-body {
+  min-width: 0;
+  display: grid;
+  /* One bounded column: a wide table scrolls inside its wrapper instead of widening the page. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s4);
+  align-content: start;
+}
+.sec-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s5);
+  align-items: center;
+}
+@media (min-width: 52.5em) {
+  /* Sticky section headings: the question stays in view beside long visuals. */
+  .sec-head {
+    position: sticky;
+    top: calc(var(--appbar-h) + var(--s5));
+    align-self: start;
+  }
+}
+@media (max-width: 52.49em) {
+  .secs {
+    margin-top: var(--s6);
+  }
+  .sec {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s3);
+    padding-block: 20px var(--s3);
+  }
+  /* The title left, its control right (thumb-reachable), the takeaway below at full width. */
+  .sec-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--s3);
+  }
+  .sec-head .h2 {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+  }
+  .sec-head .sec-ctl {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0 -8px 0 0;
+  }
+  .sec-head .takeaway {
+    grid-column: 1 / -1;
+    max-width: none;
+  }
+  .sec-body {
+    gap: var(--s3);
+  }
+  /* About and Mandate lists: the disclosure itself is the section; its heading is visually hidden. */
+  .sec.is-about {
+    padding-block: var(--s3);
+  }
+  .sec.is-about .sec-head {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .sec.is-about .disc-btn {
+    font-size: var(--t-title);
+    height: 48px;
+  }
+  /* A section that ends on a ruled row list (Mandates on Pool, the token's pools) already draws
+     the rule above the About disclosure; a second one 12 px lower would double it. */
+  .sec:has(> .sec-body > .rowlist:last-child) + .sec.is-about,
+  .sec:has(> .sec-body > .refetch:last-child > .refetch-body > .rowlist:last-child)
+    + .sec.is-about {
+    border-top: 0;
+  }
+}
+
+/* ---------- Definition lists for About and Mandate (L3) ---------- */
+.about {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--s6);
+}
+.about > div {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr);
+  gap: var(--s4);
+  padding-block: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--t-data);
+  line-height: 1.43;
+  align-items: baseline;
+}
+.about dt {
+  color: var(--text-2);
+}
+.about dd {
+  color: var(--text-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+}
+.about.is-one-col {
+  grid-template-columns: minmax(0, 1fr);
+}
+.about > div.is-full {
+  grid-column: 1 / -1;
+}
+@media (max-width: 52.49em) {
+  .about {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .about > div {
+    grid-template-columns: 8rem minmax(0, 1fr);
+  }
+}
+
+/* Glossary term (D8): a dotted underline, focusable. */
+.gloss {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--text-3);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+/* The "Not rated" chip's reason opens on hover, focus or tap, so its button sits above a row's
+   stretched link (as ".dash .gloss" does) and, on touch, gains the 44 px hit area of a standalone
+   trigger (A5, `touch-hit`). */
+.grade.is-unrated .gloss {
+  position: relative;
+  z-index: 1;
+}

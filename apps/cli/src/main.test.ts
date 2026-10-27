@@ -1,0 +1,224 @@
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fixturePool, openDatabase } from '@depthwatch/db'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { COMMANDS, DEFAULTS } from './config.js'
+import { createLogger } from './log.js'
+import {
+  EXIT_ERROR,
+  EXIT_OK,
+  EXIT_USAGE,
+  loadDotEnv,
+  type MainOptions,
+  main,
+  usage,
+  version,
+} from './main.js'
+
+interface Run {
+  code: number
+  stdout: string[]
+  stderr: string[]
+  logs: string[]
+}
+
+/** A short demo history keeps `demo` / `export --demo` runs fast here. */
+const DEMO_POINTS = 3
+
+async function run(
+  argv: string[],
+  env: Record<string, string> = {},
+  signal: AbortSignal = new AbortController().signal,
+  extra: Pick<MainOptions, 'demoHistoryPoints'> = { demoHistoryPoints: DEMO_POINTS },
+): Promise<Run> {
+  const stdout: string[] = []
+  const stderr: string[] = []
+  const logs: string[] = []
+  const log = createLogger({ write: (line) => logs.push(line), now: () => new Date(0) })
+  const code = await main(argv, {
+    env,
+    log,
+    signal,
+    stdout: (line) => stdout.push(line),
+    stderr: (line) => stderr.push(line),
+    ...extra,
+  })
+  return { code, stdout, stderr, logs }
+}
+
+describe('main', () => {
+  it('prints usage and version with exit 0', async () => {
+    const help = await run(['--help'])
+    expect(help.code).toBe(EXIT_OK)
+    expect(help.stdout[0]).toBe(usage())
+    for (const command of COMMANDS) expect(usage()).toContain(`  ${command}`)
+    const v = await run(['-v'])
+    expect(v.code).toBe(EXIT_OK)
+    expect(v.stdout).toEqual([version()])
+    expect(version()).toMatch(/^\d+\.\d+\.\d+/)
+  })
+
+  it('exits 2 on usage errors with a one-line message', async () => {
+    const none = await run([])
+    expect(none.code).toBe(EXIT_USAGE)
+    expect(none.stderr[0]).toMatch(/^error: missing command/)
+    const unknown = await run(['explode'])
+    expect(unknown.code).toBe(EXIT_USAGE)
+    expect(unknown.stderr[0]).toBe('error: unknown command "explode"')
+    const badFlag = await run(['serve', '--port', 'abc'])
+    expect(badFlag.code).toBe(EXIT_USAGE)
+    expect(badFlag.stderr[0]).toMatch(/port must be an integer/)
+  })
+
+  it('refuses live commands without an RPC url with exit 1, naming the variable', async () => {
+    for (const command of ['discover', 'snapshot', 'volume', 'positions', 'run']) {
+      const result = await run([command, '--db', ':memory:'])
+      expect(result.code).toBe(EXIT_ERROR)
+      expect(result.stderr).toHaveLength(1)
+      expect(result.stderr[0]).toMatch(/DEPTHWATCH_RPC_URL/)
+    }
+  })
+
+  it('runs score against an empty in-memory database and logs structured lines', async () => {
+    const result = await run(['score', '--db', ':memory:'])
+    expect(result.code).toBe(EXIT_OK)
+    expect(result.stderr).toEqual([])
+    expect(
+      result.logs.some((line) =>
+        /^1970-01-01T00:00:00\.000Z INFO {2}database open path=:memory:/.test(line),
+      ),
+    ).toBe(true)
+    expect(result.logs.some((line) => line.includes('[score] start'))).toBe(true)
+    expect(result.logs.some((line) => line.includes('WARN  [score] no tracked pools'))).toBe(true)
+    expect(result.logs.some((line) => /\[score\] done ms=\d+ pools=0 scored=0/.test(line))).toBe(
+      true,
+    )
+  })
+
+  it('reports runtime failures with exit 1', async () => {
+    const result = await run(['score', '--db', '/nonexistent-dir/depthwatch.sqlite'])
+    expect(result.code).toBe(EXIT_ERROR)
+    expect(result.stderr).toHaveLength(1)
+    expect(result.stderr[0]).toMatch(/^error: /)
+  })
+
+  it('demo exits 1 on a --db file holding live data and never opens DEPTHWATCH_DB', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'depthwatch-main-demo-'))
+    try {
+      const file = join(dir, 'live.db')
+      const live = openDatabase(file)
+      try {
+        live.pools.upsertMany([fixturePool()])
+        live.syncState.setBigInt('discover:uniswap-v3:lastBlock', 60_000_000n)
+      } finally {
+        live.close()
+      }
+
+      const refused = await run(['demo', '--db', file, '--port', '0'])
+      expect(refused.code).toBe(EXIT_ERROR)
+      expect(refused.stderr).toHaveLength(1)
+      expect(refused.stderr[0]).toMatch(/^error: demo: .*already holds/)
+
+      // README quick start: .env sets DEPTHWATCH_DB; an aborted signal skips serving.
+      const controller = new AbortController()
+      controller.abort()
+      const inMemory = await run(
+        ['demo', '--port', '0'],
+        { DEPTHWATCH_DB: file },
+        controller.signal,
+      )
+      expect(inMemory.code).toBe(EXIT_OK)
+      expect(inMemory.stderr).toEqual([])
+      expect(inMemory.logs.some((line) => line.includes('db=:memory:'))).toBe(true)
+
+      const db = openDatabase(file)
+      try {
+        expect(db.pools.count()).toBe(1)
+        expect(db.syncState.getBigInt('discover:uniswap-v3:lastBlock')).toBe(60_000_000n)
+        expect(db.syncState.getBigInt('discover:uniswap-v4:lastBlock')).toBeUndefined()
+      } finally {
+        db.close()
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 20_000)
+
+  it('export: usage error without --out, runtime error on a missing database', async () => {
+    const noOut = await run(['export', '--demo'])
+    expect(noOut.code).toBe(EXIT_USAGE)
+    expect(noOut.stderr[0]).toBe('error: export needs --out <file>')
+    const dir = mkdtempSync(join(tmpdir(), 'depthwatch-main-export-'))
+    try {
+      const missing = await run([
+        'export',
+        '--db',
+        join(dir, 'absent.db'),
+        '--out',
+        join(dir, 'b.json'),
+      ])
+      expect(missing.code).toBe(EXIT_ERROR)
+      expect(missing.stderr).toHaveLength(1)
+      expect(missing.stderr[0]).toMatch(/^error: export: database .* does not exist/)
+      expect(existsSync(join(dir, 'absent.db'))).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('export --demo writes the bundle and prints one summary line', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'depthwatch-main-export-'))
+    try {
+      const out = join(dir, 'static-data', 'bundle.json')
+      const result = await run(['export', '--demo', '--out', out])
+      expect(result.code).toBe(EXIT_OK)
+      expect(result.stderr).toEqual([])
+      expect(result.stdout).toHaveLength(1)
+      expect(result.stdout[0]).toMatch(
+        /^exported demo bundle to .*bundle\.json: 6 pools, 2 scorecards/,
+      )
+      const bundle = JSON.parse(readFileSync(out, 'utf8')) as { v: number; source: string }
+      expect(bundle).toMatchObject({ v: 1, source: 'demo' })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 20_000)
+
+  it('documents the defaults in the usage text', () => {
+    expect(usage()).toContain(String(DEFAULTS.port))
+    expect(usage()).toContain(DEFAULTS.dbPath)
+    expect(usage()).toContain('Exit codes: 0 ok, 1 error, 2 usage')
+  })
+})
+
+describe('loadDotEnv', () => {
+  const KEY_NEW = 'DEPTHWATCH_TEST_DOTENV_NEW'
+  const KEY_SET = 'DEPTHWATCH_TEST_DOTENV_SET'
+  let dir = ''
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'depthwatch-dotenv-'))
+  })
+
+  afterEach(() => {
+    delete process.env[KEY_NEW]
+    delete process.env[KEY_SET]
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('loads the file without overriding variables already in the environment', () => {
+    const path = join(dir, '.env')
+    writeFileSync(path, `${KEY_NEW}=from-file\n${KEY_SET}=from-file\n`)
+    process.env[KEY_SET] = 'from-env'
+    expect(loadDotEnv(path)).toBe(true)
+    expect(process.env[KEY_NEW]).toBe('from-file')
+    expect(process.env[KEY_SET]).toBe('from-env')
+  })
+
+  it('tolerates a missing file and nothing else', () => {
+    expect(loadDotEnv(join(dir, 'absent.env'))).toBe(false)
+    // A directory is not ENOENT: that error must surface.
+    expect(() => loadDotEnv(dir)).toThrow()
+  })
+})

@@ -1,0 +1,106 @@
+/**
+ * Shared SELECT fragments, filter builder and row mapper for pools joined with their tokens.
+ * Used by PoolsRepo and ScoresRepo so a PoolMeta is materialised in exactly one place.
+ */
+import type { Address, Dex, Hex, PoolKind, PoolMeta, TokenInfo } from '@depthwatch/core'
+import {
+  type BindValue,
+  colBigint,
+  colBool,
+  colNumber,
+  colNumberOrNull,
+  colText,
+  colTextOrNull,
+  likeContains,
+  type Row,
+} from '../sql.js'
+
+export const POOL_SELECT = `
+  p.id AS p_id, p.dex AS p_dex, p.kind AS p_kind, p.address AS p_address, p.pool_id AS p_pool_id,
+  p.token0 AS p_token0, p.token1 AS p_token1, p.fee_pips AS p_fee_pips,
+  p.tick_spacing AS p_tick_spacing, p.stable AS p_stable, p.hooks AS p_hooks,
+  p.created_at_block AS p_created_at_block, p.tracked AS p_tracked, p.first_seen_at AS p_first_seen_at,
+  t0.symbol AS t0_symbol, t0.name AS t0_name, t0.decimals AS t0_decimals,
+  t1.symbol AS t1_symbol, t1.name AS t1_name, t1.decimals AS t1_decimals`
+
+export const POOL_FROM = `pools p
+  JOIN tokens t0 ON t0.address = p.token0
+  JOIN tokens t1 ON t1.address = p.token1`
+
+export interface PoolFilter {
+  dex?: Dex
+  tracked?: boolean
+  /** Case-insensitive substring of a token symbol, token address, pool address or v4 pool id. */
+  q?: string
+}
+
+export interface PoolRecord {
+  pool: PoolMeta
+  tracked: boolean
+  firstSeenAt: number
+}
+
+const LIKE = `LIKE ? ESCAPE '\\'`
+
+/** WHERE conditions (without the keyword) and their bound parameters for a PoolFilter. */
+export function poolFilterClauses(filter: PoolFilter): { clauses: string[]; params: BindValue[] } {
+  const clauses: string[] = []
+  const params: BindValue[] = []
+  if (filter.dex !== undefined) {
+    clauses.push('p.dex = ?')
+    params.push(filter.dex)
+  }
+  if (filter.tracked !== undefined) {
+    clauses.push('p.tracked = ?')
+    params.push(filter.tracked)
+  }
+  const q = filter.q?.trim()
+  if (q) {
+    const pattern = likeContains(q)
+    clauses.push(
+      `(t0.symbol ${LIKE} OR t1.symbol ${LIKE} OR t0.address ${LIKE} OR t1.address ${LIKE} OR p.address ${LIKE} OR p.pool_id ${LIKE})`,
+    )
+    params.push(pattern, pattern, pattern, pattern, pattern, pattern)
+  }
+  return { clauses, params }
+}
+
+export function whereSql(clauses: readonly string[]): string {
+  return clauses.length === 0 ? '' : `WHERE ${clauses.join(' AND ')}`
+}
+
+function tokenFromRow(row: Row, prefix: 't0' | 't1', address: Address): TokenInfo {
+  return {
+    address,
+    symbol: colText(row, `${prefix}_symbol`),
+    name: colText(row, `${prefix}_name`),
+    decimals: colNumber(row, `${prefix}_decimals`),
+  }
+}
+
+export function rowToPoolMeta(row: Row): PoolMeta {
+  const token0 = colText(row, 'p_token0') as Address
+  const token1 = colText(row, 'p_token1') as Address
+  return {
+    id: colText(row, 'p_id'),
+    dex: colText(row, 'p_dex') as Dex,
+    kind: colText(row, 'p_kind') as PoolKind,
+    address: colTextOrNull(row, 'p_address') as Address | null,
+    poolId: colTextOrNull(row, 'p_pool_id') as Hex | null,
+    token0: tokenFromRow(row, 't0', token0),
+    token1: tokenFromRow(row, 't1', token1),
+    feePips: colNumber(row, 'p_fee_pips'),
+    tickSpacing: colNumberOrNull(row, 'p_tick_spacing'),
+    stable: colBool(row, 'p_stable'),
+    hooks: colTextOrNull(row, 'p_hooks') as Address | null,
+    createdAtBlock: colBigint(row, 'p_created_at_block'),
+  }
+}
+
+export function rowToPoolRecord(row: Row): PoolRecord {
+  return {
+    pool: rowToPoolMeta(row),
+    tracked: colBool(row, 'p_tracked'),
+    firstSeenAt: colNumber(row, 'p_first_seen_at'),
+  }
+}

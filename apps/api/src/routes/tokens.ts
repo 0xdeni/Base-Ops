@@ -1,0 +1,46 @@
+import { Hono } from 'hono'
+import type { ApiContext } from '../context.js'
+import type { ErrorResponse, TokenDetail } from '../dto.js'
+import { parseAddress, parseQuery, tokenQuerySchema } from '../query.js'
+import { toPoolSummary } from '../summary.js'
+
+const TOKEN_NOT_FOUND: ErrorResponse = { error: 'token not found' }
+const BAD_ADDRESS: ErrorResponse = { error: 'invalid token address: expected 0x + 40 hex chars' }
+
+/**
+ * `GET /api/tokens/:address`: token info, derived USD price and the scored pools containing the
+ * token (sorted like `/api/pools`, default deepest first). The address is lowercased first.
+ */
+export function tokensRoutes(ctx: ApiContext): Hono {
+  const app = new Hono()
+  app.get('/:address', (c) => {
+    const address = parseAddress(c.req.param('address'))
+    if (!address) return c.json(BAD_ADDRESS, 400)
+    const parsed = parseQuery(tokenQuerySchema, c.req.query())
+    if (!parsed.ok) return c.json(parsed.error, 400)
+    const token = ctx.db.tokens.get(address)
+    if (!token) return c.json(TOKEN_NOT_FOUND, 404)
+
+    const q = parsed.data
+    const price = ctx.db.prices.get(address)
+    // `q` matches the full lowercase address against token0/token1, which is an exact match in
+    // practice (a 40-hex substring of another address or v4 pool id does not occur).
+    const scored = ctx.db.scores.topBy(q.sort, {
+      dir: q.dir,
+      q: address,
+      limit: q.limit,
+      offset: q.offset,
+    })
+    const body: TokenDetail = {
+      token,
+      usd: price?.usd ?? null,
+      via: price?.via ?? [],
+      priceUpdatedAt: price?.updatedAt ?? null,
+      pools: scored.items.map(toPoolSummary),
+      total: scored.total,
+      poolCount: ctx.db.pools.count({ q: address }),
+    }
+    return c.json(body)
+  })
+  return app
+}

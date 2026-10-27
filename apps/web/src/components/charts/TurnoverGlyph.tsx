@@ -1,0 +1,47 @@
+/**
+ * The turnover glyph of the gap rows (docs/design/visual-v3.md §5.9): the gap score on its own log
+ * scale (core's `computeGap`: 1× turnover is 0, 10× is 50, 100× is 100) as a 96 × 4 meter, with a
+ * 1 × 12 `text-3` tick at the meaningful-gap threshold (3× turnover, a score of 24), then the
+ * score. Rows under 3× are drawn quiet (a `control` fill).
+ */
+import { computeGap } from '@depthwatch/core'
+import { score } from '../../lib/format.js'
+import { vars } from './useChartWidth.js'
+import './glyphs.css'
+
+/** A pool trading 3× its ±2 % depth a day or more has a meaningful gap (TB9), on every screen. */
+export const MEANINGFUL_GAP_TURNOVER = 3
+
+/** The threshold's gap score (23.9) from core, so the tick can never disagree with the scores. */
+export const MEANINGFUL_GAP_SCORE = computeGap(MEANINGFUL_GAP_TURNOVER, 1).gapScore ?? 0
+
+export function turnoverLabel(gapScore: number | null): string {
+  return `Gap score ${score(gapScore)} of 100; ${MEANINGFUL_GAP_TURNOVER}× turnover is ${Math.round(MEANINGFUL_GAP_SCORE)}`
+}
+
+export function TurnoverGlyph({
+  gapScore,
+  quiet = false,
+}: {
+  gapScore: number | null
+  /** A row under the 3× threshold. */
+  quiet?: boolean
+}) {
+  const v = gapScore === null ? 0 : Math.min(1, Math.max(0, gapScore / 100))
+  return (
+    <span className={`gap-meter${quiet ? ' quiet' : ''}`}>
+      <span
+        className="meter tmeter"
+        role="img"
+        aria-label={turnoverLabel(gapScore)}
+        style={vars({ '--v': v, '--t': MEANINGFUL_GAP_SCORE / 100 })}
+      >
+        <i className="m-fill" />
+        <b className="m-tick" />
+      </span>
+      <span className="num" aria-hidden="true">
+        {score(gapScore)}
+      </span>
+    </span>
+  )
+}

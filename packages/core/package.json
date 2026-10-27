@@ -1,0 +1,17 @@
+{
+  "name": "@depthwatch/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pure liquidity math: depth at ±%, effective spread, concentration, persistence, Liquidity Health Score, USD price graph. No I/O.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

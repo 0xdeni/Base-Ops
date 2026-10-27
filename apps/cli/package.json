@@ -1,0 +1,25 @@
+{
+  "name": "@depthwatch/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "depthwatch CLI: discover, snapshot, volume, positions, score, serve, run, demo.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "depthwatch": "./src/main.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@depthwatch/api": "workspace:*",
+    "@depthwatch/chain": "workspace:*",
+    "@depthwatch/core": "workspace:*",
+    "@depthwatch/db": "workspace:*",
+    "viem": "^2.37.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0"
+  }
+}

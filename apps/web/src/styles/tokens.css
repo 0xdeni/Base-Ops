@@ -1,0 +1,199 @@
+/* Depthwatch v3 design tokens: docs/design/visual-v3.md §3 (colour §3.1, type §3.3,
+   space and chrome §3.4, radii §3.5, elevation §3.6, the field of light §3.7, motion §3.8).
+   The product follows the system appearance (PH2); [data-theme] exists only for screenshots and tests.
+   The dark block is repeated verbatim under :root[data-theme="dark"] (styles.test.ts keeps them equal). */
+
+:root {
+  color-scheme: light;
+  --canvas: oklch(0.982 0.004 271); /* #f8f9fc */
+  --well: oklch(0.965 0.005 275); /* #f2f3f7 */
+  --raised: oklch(1 0 0); /* #ffffff */
+  --overlay: oklch(1 0 0); /* #ffffff, with --shadow-pop */
+  --hover: oklch(0.949 0.007 269); /* #eceef3 */
+  --border-subtle: oklch(0.93 0.007 261); /* #e5e8ed */
+  --border: oklch(0.891 0.009 265); /* #d8dbe1 */
+  --control: oklch(0.639 0.016 264); /* #878c96, 3.21:1 */
+  --text-1: oklch(0.221 0.017 260); /* #161b23, 16.4:1 */
+  --text-2: oklch(0.449 0.021 268); /* #505561, 7.09:1 */
+  --text-3: oklch(0.53 0.019 263); /* #666c77, 5.01:1 */
+  --focus: oklch(0.52 0.199 262); /* #1f5ed9 */
+  --sell: oklch(0.52 0.12 245); /* #196ea9, 5.18:1 */
+  --buy: oklch(0.621 0.15 55); /* #c9690c, 3.62:1 */
+  --ok: oklch(0.449 0.109 155); /* #036639 */
+  --ok-bg: oklch(0.95 0.04 155); /* #daf7e3 */
+  --warn: oklch(0.501 0.1 70); /* #875814 */
+  --warn-bg: oklch(0.958 0.05 88); /* #fff0cc */
+  --bad: oklch(0.501 0.17 25); /* #b02a2d, 6.2:1 */
+  --bad-bg: oklch(0.947 0.027 23); /* #ffe7e5 */
+  --bad-mark: oklch(0.585 0.12 25); /* #b85c57, 4.22:1: breach bands and strip cells */
+  --band-op: 0.06;
+  --dot: oklch(0.891 0.009 265 / 0.9); /* background lattice (E6) */
+  --scrim: rgb(14 19 28 / 0.32);
+  --shadow-pop:
+    0 0 0 1px var(--border-subtle), 0 1px 2px rgb(22 27 35 / 0.06), 0 6px 16px rgb(22 27 35 / 0.08);
+  --shadow-dialog:
+    0 0 0 1px var(--border-subtle), 0 2px 4px rgb(22 27 35 / 0.06), 0 16px 40px rgb(22 27 35 / 0.12);
+  --thumb-edge: drop-shadow(0 0 0.5px rgb(22 27 35 / 0.32))
+    drop-shadow(0 1px 1px rgb(22 27 35 / 0.06));
+  /* Field of light (§3.7) */
+  --ht-pitch: 3px;
+  --ht-r: 1px;
+  --field-top: 1;
+  --field-low: 0.12;
+  --field-under: 0.14;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --canvas: oklch(0.186 0.02 262); /* #0e131c */
+    --well: oklch(0.213 0.021 264); /* #141923 */
+    --raised: oklch(0.243 0.021 264); /* #1b202a */
+    --overlay: oklch(0.272 0.02 264); /* #222731, with a 1 px --border ring, no shadow */
+    --hover: oklch(0.289 0.021 266); /* #262b36 */
+    --border-subtle: oklch(0.301 0.019 264); /* #292e38 */
+    --border: oklch(0.344 0.019 264); /* #343943 */
+    --control: oklch(0.53 0.02 264); /* #666c78, 3.53:1 */
+    --text-1: oklch(0.96 0.005 258); /* #f0f2f5, 16.6:1 */
+    --text-2: oklch(0.869 0.012 265); /* #d0d4dc, 12.5:1 */
+    --text-3: oklch(0.756 0.017 263); /* #aab0bb, 8.54:1 */
+    --focus: oklch(0.825 0.095 244); /* #8fcdff */
+    --sell: oklch(0.721 0.11 242); /* #61ade4, 7.63:1 */
+    --buy: oklch(0.781 0.14 68); /* #f2a548, 9.09:1 */
+    --ok: oklch(0.82 0.13 155); /* #79dd9f */
+    --ok-bg: oklch(0.3 0.049 156); /* #173523 */
+    --warn: oklch(0.86 0.12 85); /* #f5cb70 */
+    --warn-bg: oklch(0.31 0.05 85); /* #3c2e0f */
+    --bad: oklch(0.797 0.116 22); /* #ff9e9b */
+    --bad-bg: oklch(0.299 0.06 21); /* #472020 */
+    --bad-mark: oklch(0.68 0.09 22); /* #ca827f, 6.2:1 */
+    --band-op: 0.09;
+    --dot: oklch(0.344 0.019 264 / 0.75);
+    --shadow-pop: 0 0 0 1px var(--border);
+    --shadow-dialog: 0 0 0 1px var(--border);
+    --thumb-edge: drop-shadow(0 0 0.5px oklch(0.5 0.02 264));
+    --field-top: 1;
+    --field-low: 0.1;
+    --field-under: 0.12;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: oklch(0.186 0.02 262); /* #0e131c */
+  --well: oklch(0.213 0.021 264); /* #141923 */
+  --raised: oklch(0.243 0.021 264); /* #1b202a */
+  --overlay: oklch(0.272 0.02 264); /* #222731, with a 1 px --border ring, no shadow */
+  --hover: oklch(0.289 0.021 266); /* #262b36 */
+  --border-subtle: oklch(0.301 0.019 264); /* #292e38 */
+  --border: oklch(0.344 0.019 264); /* #343943 */
+  --control: oklch(0.53 0.02 264); /* #666c78, 3.53:1 */
+  --text-1: oklch(0.96 0.005 258); /* #f0f2f5, 16.6:1 */
+  --text-2: oklch(0.869 0.012 265); /* #d0d4dc, 12.5:1 */
+  --text-3: oklch(0.756 0.017 263); /* #aab0bb, 8.54:1 */
+  --focus: oklch(0.825 0.095 244); /* #8fcdff */
+  --sell: oklch(0.721 0.11 242); /* #61ade4, 7.63:1 */
+  --buy: oklch(0.781 0.14 68); /* #f2a548, 9.09:1 */
+  --ok: oklch(0.82 0.13 155); /* #79dd9f */
+  --ok-bg: oklch(0.3 0.049 156); /* #173523 */
+  --warn: oklch(0.86 0.12 85); /* #f5cb70 */
+  --warn-bg: oklch(0.31 0.05 85); /* #3c2e0f */
+  --bad: oklch(0.797 0.116 22); /* #ff9e9b */
+  --bad-bg: oklch(0.299 0.06 21); /* #472020 */
+  --bad-mark: oklch(0.68 0.09 22); /* #ca827f, 6.2:1 */
+  --band-op: 0.09;
+  --dot: oklch(0.344 0.019 264 / 0.75);
+  --shadow-pop: 0 0 0 1px var(--border);
+  --shadow-dialog: 0 0 0 1px var(--border);
+  --thumb-edge: drop-shadow(0 0 0.5px oklch(0.5 0.02 264));
+  --field-top: 1;
+  --field-low: 0.1;
+  --field-under: 0.12;
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --text-3: var(--text-2);
+    --border: var(--control);
+    --border-subtle: var(--control);
+  }
+}
+
+/* Type (§3.3, T4): the only sizes. Line-heights and weights live with the roles in base.css. */
+:root {
+  --t-caption: 0.75rem; /* 12 / 16 */
+  --t-small: 0.8125rem; /* 13 / 18 */
+  --t-data: 0.875rem; /* 14 / 20 */
+  --t-body: 0.9375rem; /* 15 / 24, 16 below 600 */
+  --t-prose: 1rem; /* 16 / 26 */
+  --t-lead: 1.125rem; /* 18 / 28 */
+  --t-title: 1rem; /* 16 / 22 */
+  --t-h2: clamp(1.25rem, 1.152rem + 0.4348vw, 1.5rem); /* 20 -> 24 */
+  --t-h1: clamp(1.625rem, 1.429rem + 0.8696vw, 2.125rem); /* 26 -> 34 */
+  --t-kpi: clamp(1.75rem, 1.457rem + 1.304vw, 2.5rem); /* 28 -> 40 */
+  --t-display: clamp(2.25rem, 1.761rem + 2.174vw, 3.5rem); /* 36 -> 56 */
+
+  /* Space (§3.4, S1). The only other lengths are 1 px hairlines and 2 px indicators. */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+  --s8: 64px;
+  --s9: 96px;
+  --gutter: max(16px, env(safe-area-inset-left));
+  --content: 1200px;
+
+  /* Chrome (§3.4): desktop app bar 56; phone 52 + a 44 px tab strip. */
+  --demo-h: 28px;
+  --appbar-h: 56px;
+
+  /* Radii (§3.5) */
+  --r-chip: 4px;
+  --r-ctl: 6px;
+  --r-code: 8px;
+  --r-pop: 10px;
+  --r-sheet: 12px;
+
+  /* Motion (§3.8). Springs: none. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1); /* enter, exit, press, popovers, intro */
+  --ease-in-out: cubic-bezier(
+    0.77,
+    0,
+    0.175,
+    1
+  ); /* on-screen movement: thumb, indicator, morphs, lens */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); /* phone sheet */
+  --dur-press: 160ms;
+  --dur-hover: 120ms;
+  --dur-tooltip: 140ms;
+  --dur-popover: 180ms;
+  --dur-exit: 100ms;
+  --dur-disclosure: 200ms;
+  --dur-dialog: 240ms;
+  --dur-route: 180ms;
+  --dur-morph: 280ms;
+  --dur-sheet: 500ms;
+  --stagger: 30ms;
+  --press-scale: 0.97;
+  --enter-scale: 0.96;
+}
+
+@media (min-width: 37.5em) {
+  :root {
+    --gutter: 24px;
+  }
+}
+@media (min-width: 75em) {
+  :root {
+    --gutter: 32px;
+  }
+}
+@media (max-width: 52.49em) {
+  :root {
+    --appbar-h: 96px;
+    --ht-r: 0.9px;
+  }
+}

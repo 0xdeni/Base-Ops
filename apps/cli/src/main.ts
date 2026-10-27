@@ -1,0 +1,335 @@
+#!/usr/bin/env tsx
+/**
+ * `depthwatch <command>`: the Depthwatch pipeline and server for Base mainnet.
+ *
+ * Exit codes: 0 ok, 1 runtime error (one line on stderr; this includes a live command started
+ * without an RPC endpoint), 2 usage error (one line + hint).
+ * Logs go to stderr; stdout carries only program output: the `--help`/`--version` text, the
+ * server URL line of `serve`/`demo`, the summary line of `export`, and the scorecard URL, listing
+ * and JSON of `mm register`, `mm list` and `mm show`.
+ * When started as a program, `./.env` (see `.env.example`) is read first; variables already set
+ * in the environment win over the file.
+ */
+import { realpathSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
+import { openDatabase } from '@depthwatch/db'
+import {
+  COMMANDS,
+  type Command,
+  type Config,
+  ConfigError,
+  DEFAULTS,
+  type Env,
+  LIVE_COMMANDS,
+  loadConfig,
+  MM_LIVE_SUBCOMMANDS,
+  MM_SUBCOMMANDS,
+  type MmArgs,
+  parseCliArgs,
+} from './config.js'
+import { demoCommand } from './demo.js'
+import { exportCommand } from './export.js'
+import { createLogger, errorMessage, type LogFields, type Logger } from './log.js'
+import { mmCommand } from './mm.js'
+import { createPipelineContext, type PipelineContext } from './pipeline/context.js'
+import { discoverStep } from './pipeline/discover.js'
+import { positionsStep } from './pipeline/positions.js'
+import { runLoop } from './pipeline/run.js'
+import { scoreStep } from './pipeline/score.js'
+import { seedStep } from './pipeline/seed.js'
+import { snapshotStep } from './pipeline/snapshot.js'
+import { volumeStep } from './pipeline/volume.js'
+import { createCliChainReader, describeError } from './rpc.js'
+import { serveUntilAborted } from './serve.js'
+
+export const EXIT_OK = 0
+export const EXIT_ERROR = 1
+export const EXIT_USAGE = 2
+
+const require = createRequire(import.meta.url)
+
+export function version(): string {
+  const pkg = require('../package.json') as { version?: string }
+  return pkg.version ?? '0.0.0'
+}
+
+export function usage(): string {
+  return `depthwatch ${version()} — liquidity observatory for Base mainnet
+
+Usage: depthwatch <command> [options]
+
+Commands
+  discover    scan factory logs for new pools        [--dex <dex,...>] [--from-block N]
+                --seed                   no logs: ask each DEX for the reference-token pools
+                                         and date them by archive-state binary search
+  snapshot    prices, TVL ranking, depth/spread/concentration for the top pools
+                                                     [--top N] [--pool <id> ...]
+  volume      hourly swap volume of tracked pools    [--hours 24]
+  positions   LP positions of tracked and mandated concentrated pools
+  score       persistence, health score and gaps for tracked pools
+  run         loop: discover → snapshot → volume → score
+                                                     [--interval 300] [--once] [--with-positions]
+                                                     [--seed]
+  serve       REST API + dashboard (apps/web/dist when built)   [--port N] [--host H]
+  demo        offline: synthetic Base world, 7 days of history → in-memory DB → serve
+                                                     [--port N] [--db <new file>]
+  export      static dashboard bundle (JSON) of the database, read through the API
+                                                     --out <file> [--demo] [--note <text>]
+                --demo                   bundle the offline demo instead (runs it in memory)
+                --note <text>            the bundle's note, shown by a live static snapshot
+  mm          market-maker scorecards (docs/SCORECARDS.md):
+                register --file <json>   validate and store a mandate, print its scorecard URL
+                list                     every mandate with its status
+                show <id>                the scorecard summary as JSON
+                deactivate <id>          stop sampling (the scorecard stays served as inactive)
+                sample                   sample every active mandate now (live command)
+
+Options
+  --db <path>         SQLite file (DEPTHWATCH_DB, default ${DEFAULTS.dbPath}; demo ignores the variable)
+  --rpc-url <url>     Base JSON-RPC endpoint (DEPTHWATCH_RPC_URL; required by live commands)
+  --logs-rpc-url <url>
+                      endpoint for eth_getLogs only (DEPTHWATCH_LOGS_RPC_URL, default: the
+                      --rpc-url endpoint), e.g. https://mainnet.base.org next to a keyed provider
+  --public-url <url>  public base URL of this deployment for scorecard links
+                      (DEPTHWATCH_PUBLIC_URL, default http://<host>:<port>)
+  --log-chunk <n>     blocks per eth_getLogs (DEPTHWATCH_LOG_CHUNK, default ${DEFAULTS.logChunkSize}); on a plan
+                      that caps log ranges, its limit (e.g. 10) for small scans such as volume
+  --log-level <lvl>   debug|info|warn|error|silent (DEPTHWATCH_LOG_LEVEL, default ${DEFAULTS.logLevel})
+  --port <n>          DEPTHWATCH_PORT (default ${DEFAULTS.port}); --host (DEPTHWATCH_HOST, default ${DEFAULTS.hostname})
+  --top <n>           DEPTHWATCH_TOP_POOLS (default ${DEFAULTS.topPools})
+  -h, --help          this text;  -v, --version
+
+Environment only: DEPTHWATCH_ADMIN_TOKEN, the bearer token serve and demo require for
+POST /api/mm and DELETE /api/mm/:id (unset: those routes answer 403 "registration disabled").
+
+Exit codes: 0 ok, 1 error, 2 usage.`
+}
+
+export interface MainOptions {
+  env?: Env
+  log?: Logger
+  signal?: AbortSignal
+  stdout?: (line: string) => void
+  stderr?: (line: string) => void
+  /** History points of `demo` and `export --demo` (default seven days); tests run a short one. */
+  demoHistoryPoints?: number
+}
+
+function isLiveCommand(command: Command, mm: MmArgs | undefined): boolean {
+  if (command === 'mm') return mm !== undefined && MM_LIVE_SUBCOMMANDS.includes(mm.subcommand)
+  return LIVE_COMMANDS.includes(command)
+}
+
+/** First SIGINT/SIGTERM aborts (steps finish, loops stop); a second one exits immediately. */
+export function installSignalHandlers(log: Logger): { signal: AbortSignal; dispose: () => void } {
+  const controller = new AbortController()
+  const onSignal = (name: NodeJS.Signals) => {
+    if (controller.signal.aborted) {
+      log.warn('second signal, exiting now', { signal: name })
+      process.exit(130)
+    }
+    log.info('signal received, finishing the current step', { signal: name })
+    controller.abort()
+  }
+  process.on('SIGINT', onSignal)
+  process.on('SIGTERM', onSignal)
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      process.off('SIGINT', onSignal)
+      process.off('SIGTERM', onSignal)
+    },
+  }
+}
+
+function createContext(
+  command: Command,
+  mm: MmArgs | undefined,
+  config: Config,
+  log: Logger,
+): PipelineContext {
+  const name = command === 'mm' && mm !== undefined ? `mm ${mm.subcommand}` : command
+  const chain = createCliChainReader(
+    config,
+    { command: name, live: isLiveCommand(command, mm) },
+    log,
+  )
+  const db = openDatabase(config.dbPath)
+  log.info('database open', { path: config.dbPath, schemaVersion: db.migration.to })
+  return createPipelineContext({ db, chain, config, log })
+}
+
+interface RunContext {
+  log: Logger
+  signal: AbortSignal
+  stdout: (line: string) => void
+  demoHistoryPoints: number | undefined
+}
+
+async function runCommand(
+  command: Command,
+  mm: MmArgs | undefined,
+  config: Config,
+  run: RunContext,
+): Promise<void> {
+  const { log, signal, stdout } = run
+  if (command === 'demo') {
+    await demoCommand({ config, log, signal, stdout, historyPoints: run.demoHistoryPoints })
+    return
+  }
+  if (command === 'export') {
+    await exportCommand({ config, log, stdout, historyPoints: run.demoHistoryPoints })
+    return
+  }
+  const ctx = createContext(command, mm, config, log)
+  try {
+    switch (command) {
+      case 'discover':
+        if (config.seed)
+          await log.timed(command, (step) => seedStep({ ...ctx, log: step }), summarize)
+        else
+          await log.timed(
+            command,
+            (step) => discoverStep({ ...ctx, log: step }),
+            (r) => ({ found: r.found }),
+          )
+        return
+      case 'snapshot':
+        await log.timed(command, (step) => snapshotStep({ ...ctx, log: step }), summarize)
+        return
+      case 'volume':
+        await log.timed(command, (step) => volumeStep({ ...ctx, log: step }), summarize)
+        return
+      case 'positions':
+        await log.timed(
+          command,
+          (step) => positionsStep({ ...ctx, log: step }),
+          (r) => ({ positions: r.positions }),
+        )
+        return
+      case 'score':
+        await log.timed(command, (step) => scoreStep({ ...ctx, log: step }), summarize)
+        return
+      case 'run':
+        await runLoop(ctx, { signal })
+        return
+      case 'serve':
+        await serveUntilAborted({
+          db: ctx.db,
+          port: config.port,
+          hostname: config.hostname,
+          adminToken: config.adminToken,
+          log,
+          signal,
+          stdout,
+        })
+        return
+      case 'mm':
+        if (mm === undefined) throw new ConfigError('missing mm subcommand')
+        await mmCommand({ ctx, args: mm, config, log, stdout })
+        return
+    }
+  } finally {
+    ctx.db.close()
+  }
+}
+
+/** Fields of a step result worth one log line (numbers and bigints only). */
+function summarize(result: object): LogFields {
+  const fields: LogFields = {}
+  for (const [key, value] of Object.entries(result)) {
+    if (typeof value === 'number' || typeof value === 'bigint') fields[key] = value
+    if (Array.isArray(value) && key === 'failed') fields[key] = value.length
+  }
+  return fields
+}
+
+export async function main(argv: readonly string[], opts: MainOptions = {}): Promise<number> {
+  const env = opts.env ?? process.env
+  const stdout = opts.stdout ?? ((line: string) => process.stdout.write(`${line}\n`))
+  const stderr = opts.stderr ?? ((line: string) => process.stderr.write(`${line}\n`))
+
+  let args: ReturnType<typeof parseCliArgs>
+  let config: Config
+  try {
+    args = parseCliArgs(argv)
+    if (args.help) {
+      stdout(usage())
+      return EXIT_OK
+    }
+    if (args.version) {
+      stdout(version())
+      return EXIT_OK
+    }
+    if (args.command === undefined) {
+      throw new ConfigError(`missing command (one of ${COMMANDS.join(', ')})`)
+    }
+    if (args.command === 'mm' && args.mm === undefined) {
+      throw new ConfigError(`missing mm subcommand (one of ${MM_SUBCOMMANDS.join(', ')})`)
+    }
+    if (args.command === 'export' && args.flags.out === undefined) {
+      throw new ConfigError('export needs --out <file>')
+    }
+    config = loadConfig(env, args.flags)
+  } catch (error) {
+    stderr(`error: ${errorMessage(error)}`)
+    stderr('run "depthwatch --help" for usage')
+    return EXIT_USAGE
+  }
+
+  const log = opts.log ?? createLogger({ level: config.logLevel })
+  const handlers = opts.signal === undefined ? installSignalHandlers(log) : undefined
+  const signal = opts.signal ?? handlers?.signal ?? new AbortController().signal
+  try {
+    await runCommand(args.command, args.mm, config, {
+      log,
+      signal,
+      stdout,
+      demoHistoryPoints: opts.demoHistoryPoints,
+    })
+    return EXIT_OK
+  } catch (error) {
+    stderr(`error: ${describeError(error)}`)
+    return error instanceof ConfigError ? EXIT_USAGE : EXIT_ERROR
+  } finally {
+    handlers?.dispose()
+  }
+}
+
+/**
+ * Loads a dotenv file into `process.env` when it exists (`cp .env.example .env` from the README).
+ * Variables already present in the environment are kept; only a missing file is tolerated.
+ */
+export function loadDotEnv(path = '.env'): boolean {
+  try {
+    process.loadEnvFile(path)
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw error
+  }
+}
+
+function isEntryPoint(): boolean {
+  const script = process.argv[1]
+  if (script === undefined) return false
+  try {
+    return realpathSync(script) === realpathSync(fileURLToPath(import.meta.url))
+  } catch {
+    return false
+  }
+}
+
+if (isEntryPoint()) {
+  loadDotEnv()
+  main(process.argv.slice(2)).then(
+    (code) => {
+      process.exitCode = code
+    },
+    (error: unknown) => {
+      process.stderr.write(`error: ${errorMessage(error)}\n`)
+      process.exitCode = EXIT_ERROR
+    },
+  )
+}

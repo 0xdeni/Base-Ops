@@ -1,0 +1,391 @@
+/* App shell (docs/design/visual-v3.md §5.1): skip link, demo line, app bar with the one <nav>,
+   freshness, main and footer. Monochrome chrome; colour only in the logo mark and the status dot. */
+
+.skip {
+  position: absolute;
+  left: 8px;
+  top: -100px;
+  z-index: 50;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 16px;
+  background: var(--text-1);
+  color: var(--canvas);
+  border-radius: var(--r-ctl);
+  font-size: var(--t-data);
+  font-weight: 500;
+}
+.skip:focus-visible {
+  top: 8px;
+}
+
+/* Demo line: 28 px, one line at every width, never wraps. */
+.demo-line {
+  height: var(--demo-h);
+  background: var(--well);
+  color: var(--text-2);
+  font-size: var(--t-small);
+  line-height: var(--demo-h);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.demo-inner {
+  display: flex;
+  gap: var(--s3);
+  align-items: center;
+  height: var(--demo-h);
+}
+/* Touch (A5): "About the demo" sits on the 28 px line at the top of the page, so its 44 px hit area
+   reaches down 16 px over the app bar's empty top edge, stopping short of the freshness button. The
+   line clips sideways only, and sits above the app bar while it is in view. */
+@media (pointer: coarse) {
+  .demo-line {
+    position: relative;
+    z-index: 21;
+    overflow: clip visible;
+  }
+  .demo-inner .touch-hit::after {
+    left: -8px;
+    top: 0;
+    width: calc(100% + 8px);
+    height: 44px;
+    translate: none;
+  }
+}
+/* Below 360 px the link shortens to "About" so the line still fits on one line (ia-v3 §3.1), and
+   the snapshot line drops its year. */
+@media (max-width: 22.49em) {
+  .demo-more,
+  .snap-year {
+    display: none;
+  }
+}
+/* Snapshot line (a published live snapshot, web-v2 §4): the long sentence from 840 px, the short
+   one and "About" below. Should it still not fit, the text takes the ellipsis, not the link. */
+.snap-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.demo-inner .quiet-link {
+  flex: none;
+}
+@media (max-width: 52.49em) {
+  .snap-wide,
+  .snap-more {
+    display: none;
+  }
+}
+@media (min-width: 52.5em) {
+  .snap-narrow {
+    display: none;
+  }
+}
+
+/* App bar: sticky, canvas; its hairline fades in past 36 px of scroll (§4 row 18). */
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: var(--appbar-h);
+  background: var(--canvas);
+}
+.appbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--border-subtle);
+  opacity: 0;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+}
+.appbar.is-scrolled::after {
+  opacity: 1;
+}
+.appbar-inner {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  gap: var(--s6);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  color: var(--text-1);
+}
+.mark .m-spine {
+  fill: var(--text-1);
+}
+.mark .m-sell {
+  fill: var(--sell);
+}
+.mark .m-buy {
+  fill: var(--buy);
+}
+.wordmark {
+  font-size: var(--t-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.375;
+}
+
+.nav {
+  position: relative;
+  display: flex;
+  gap: var(--s5);
+  align-self: stretch;
+}
+.nav a {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-2);
+  font-size: var(--t-data);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.nav a[aria-current="page"] {
+  color: var(--text-1);
+}
+/* The link keeps the bar's full height as its hit area and reaches 6 px past its label on each
+   side; its focus ring is drawn on a label-sized layer (32 px high, radius 6), not around the
+   whole 56 px box. */
+.nav a {
+  position: relative;
+  padding-inline: 6px;
+  margin-inline: -6px;
+  border-radius: var(--r-ctl);
+}
+.nav a:focus-visible {
+  outline: none;
+}
+.nav a:focus-visible::before {
+  content: "";
+  position: absolute;
+  inset: 12px 0;
+  border-radius: var(--r-ctl);
+  outline: 2px solid var(--focus);
+  pointer-events: none;
+}
+/* The 2 px indicator: translateX(x) scaleX(width) from a 1 px bar (§4 row 8). */
+.nav-ind {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 1px;
+  background: var(--text-1);
+  transform-origin: 0 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.nav-ind.is-on {
+  opacity: 1;
+}
+
+.fresh {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--text-3);
+  font-size: var(--t-small);
+  min-height: 32px;
+  padding: 0 var(--s2);
+  margin-right: calc(-1 * var(--s2));
+  border-radius: var(--r-ctl);
+  white-space: nowrap;
+}
+.fresh-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex: none;
+}
+/* A published snapshot is not live: a hollow `text-3` dot instead of the `ok` one. */
+.fresh-dot.is-snapshot {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--text-3);
+}
+.fresh-off {
+  width: 8px;
+  height: 8px;
+  color: var(--bad);
+  flex: none;
+}
+.fresh.is-offline {
+  color: var(--text-2);
+}
+/* Booting on a slow API: "Connecting…" in words, no dot, not a button. */
+.fresh.is-connecting {
+  margin-right: calc(-1 * var(--s2));
+}
+
+/* Phone chrome (PH2): a 52 px top bar plus the same <nav> as a 44 px tab strip. */
+@media (max-width: 52.49em) {
+  .appbar-inner {
+    flex-wrap: wrap;
+    gap: 0;
+    align-content: flex-start;
+  }
+  .appbar .brand {
+    height: 52px;
+  }
+  .fresh {
+    order: 2;
+    min-height: 44px;
+    min-width: 44px;
+    justify-content: center;
+    margin-right: -12px;
+  }
+  .fresh-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .nav {
+    order: 3;
+    flex: 1 0 100%;
+    height: 44px;
+    gap: 20px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-inline: calc(-1 * var(--gutter));
+    padding-inline: var(--gutter);
+  }
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+  .nav a {
+    font-size: var(--t-body);
+    min-height: 44px;
+    white-space: nowrap;
+  }
+  .nav a:focus-visible::before {
+    inset: 6px 0;
+  }
+}
+/* Below 360 px the tab strip scrolls; its trailing edge fades to say so (PH2). */
+@media (max-width: 22.49em) {
+  .nav {
+    mask-image: linear-gradient(to right, #000 calc(100% - var(--gutter)), transparent);
+  }
+}
+/* <main> takes the room #root (a 100dvh flex column) leaves, so on a short page the footer rests
+   at the viewport bottom and never below the fold. Only while a route's skeleton shows, and during
+   the route cross-fade, does <main> fill the first viewport under the chrome, so the footer never
+   flashes up before the content arrives. `:is()` keeps the rule valid where the view-transition
+   pseudo-class is unknown. */
+main {
+  flex: 1;
+  outline: none;
+}
+main:is(:has(.skel-stack), :root:active-view-transition *) {
+  min-height: calc(100dvh - var(--appbar-h));
+}
+:root:has(.demo-line) main:is(:has(.skel-stack), :root:active-view-transition *) {
+  min-height: calc(100dvh - var(--appbar-h) - var(--demo-h));
+}
+
+/* Footer: wordmark and promise, links, data source. A two-column grid on phones. */
+.foot {
+  margin-top: var(--s8);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-2);
+  font-size: var(--t-small);
+}
+.foot-inner {
+  display: flex;
+  gap: var(--s6);
+  align-items: center;
+  padding-block: var(--s6) calc(var(--s6) + env(safe-area-inset-bottom));
+  flex-wrap: wrap;
+}
+.foot-a {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+}
+.foot-a .brand {
+  min-height: 0;
+}
+@media (pointer: coarse) {
+  .foot-a .brand {
+    min-height: 44px;
+  }
+}
+.foot-a .wordmark {
+  font-size: var(--t-data);
+}
+.foot-links {
+  display: flex;
+  gap: var(--s5);
+}
+.foot-links a {
+  color: var(--text-2);
+}
+/* Touch (A5): every footer link is a 44 × 44 target ("API" alone is 19 px wide). The width comes
+   from a centred hit layer, not the box, so the row still fits at 320 px and the links keep their
+   16 px rhythm; no two layers overlap. */
+@media (pointer: coarse) {
+  .foot-links a {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .foot-links a::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(44px, 100%);
+    height: max(44px, 100%);
+    translate: -50% -50%;
+  }
+}
+.foot-data {
+  margin-left: auto;
+  color: var(--text-3);
+}
+@media (max-width: 52.49em) {
+  .foot {
+    margin-top: var(--s7);
+  }
+  .foot-inner {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--s1) var(--s4);
+    padding-block: var(--s3) calc(var(--s5) + env(safe-area-inset-bottom));
+  }
+  .foot-a {
+    display: contents;
+  }
+  .foot-a p {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .foot-links {
+    justify-self: end;
+    gap: var(--s4);
+  }
+  .foot-links a {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+  }
+  .foot-data {
+    grid-column: 1 / -1;
+    margin-left: 0;
+  }
+}

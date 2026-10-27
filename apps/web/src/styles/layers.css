@@ -1,0 +1,163 @@
+/* Floating layers (docs/design/visual-v3.md §5.10): popover, glossary and chart tooltips, the phone
+   sheet. They live in portals outside <main>, so route transitions never touch them. Shadows only
+   here (E4); in dark an overlay surface plus a 1 px border ring. Motion is WAAPI (ui/*.tsx). */
+
+.pop {
+  position: fixed;
+  z-index: 40;
+  min-width: min(220px, calc(100vw - 16px));
+  max-width: min(320px, calc(100vw - 16px));
+  padding: var(--s3) var(--s4);
+  background: var(--overlay);
+  border-radius: var(--r-pop);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--t-small);
+  line-height: 1.5;
+  color: var(--text-1);
+}
+.pop-dl {
+  display: grid;
+  gap: 6px;
+}
+.pop-dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s5);
+}
+.pop-dl dt {
+  color: var(--text-2);
+}
+.pop-dl dd {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.pop-actions {
+  margin-top: var(--s3);
+}
+/* "About this snapshot": the exporter's note in paragraphs, then the block and export time. */
+.pop-note p + p {
+  margin-top: var(--s2);
+}
+.pop-meta {
+  color: var(--text-2);
+}
+
+.tip {
+  position: fixed;
+  z-index: 45;
+  max-width: min(340px, calc(100vw - 16px));
+  padding: var(--s2) 10px;
+  background: var(--overlay);
+  border-radius: var(--r-pop);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--t-small);
+  line-height: 1.45;
+  color: var(--text-1);
+}
+.tip.is-chart {
+  min-width: 150px;
+  pointer-events: none;
+}
+.tip .tt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s4);
+}
+.tip .tt-k {
+  color: var(--text-2);
+}
+.tip .tt-h {
+  font-weight: 500;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------- Sheet (PH4) ---------- */
+.sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+.sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+}
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: calc(100dvh - env(safe-area-inset-top) - 24px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--overlay);
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  box-shadow: var(--shadow-dialog);
+  padding: 0 var(--gutter) calc(16px + env(safe-area-inset-bottom));
+}
+.sheet:focus-visible {
+  outline-offset: -2px;
+}
+.sheet-grip {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  margin: 8px auto 4px;
+}
+.sheet-drag {
+  touch-action: none;
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+}
+.sheet-title {
+  font-size: var(--t-title);
+  line-height: 1.375;
+  font-weight: 600;
+  letter-spacing: -0.008em;
+}
+.opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 52px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 1rem;
+  text-align: left;
+}
+.opt svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0;
+  flex: none;
+}
+.opt[aria-checked="true"] svg {
+  opacity: 1;
+}
+.opt:focus-visible {
+  outline-offset: -2px;
+}
+.sheet-foot {
+  padding-top: var(--s4);
+}
+.menu-opt {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 32px;
+  font-size: var(--t-data);
+  cursor: pointer;
+}
+
+/* Body scroll lock while a sheet is open. */
+.is-scroll-locked {
+  overflow: hidden;
+}

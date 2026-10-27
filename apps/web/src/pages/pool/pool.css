@@ -1,0 +1,69 @@
+/* Pool page parts (docs/design/visual-v3.md §6.3). Rhythm:
+   answer to curve 32 (24 on phones), curve to Show data 12, Show data to facts 32, facts to the
+   gap callout 16, facts to the first section 64 (32 on phones). Classes are page-prefixed. */
+
+.pool-price {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+}
+.pool-fig {
+  margin-top: var(--s6);
+  min-width: 0;
+}
+.pool-facts {
+  margin-top: var(--s6);
+}
+.pool-gap-callout {
+  margin-top: var(--s4);
+  font-size: var(--t-data);
+  line-height: 1.43;
+  color: var(--text-2);
+}
+.pool-ts-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+.pool-more-series {
+  margin-top: var(--s5);
+}
+
+/* Mandates on this pool: the scorecards-list row. */
+
+/* Loading (ST1): the final heights. */
+.pool-skel-answer {
+  margin-top: var(--s4);
+}
+.pool-skel-curve {
+  margin-top: var(--s6);
+}
+.pool-skel-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s6);
+  margin-top: 44px;
+}
+.pool-skel-facts > span {
+  display: grid;
+  gap: 6px;
+}
+
+@media (max-width: 52.49em) {
+  .pool-fig {
+    margin-top: var(--s5);
+  }
+  /* The rows say it; the takeaway would repeat their status words. */
+  .pool-sec-mm .takeaway {
+    display: none;
+  }
+  .pool-skel-curve {
+    margin-top: var(--s5);
+  }
+  .pool-skel-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s4);
+  }
+}

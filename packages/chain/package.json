@@ -1,0 +1,21 @@
+{
+  "name": "@depthwatch/chain",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Base mainnet adapters (viem): pool discovery, concentrated/constant-product state readers, positions, swap volume, fixture transport.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@depthwatch/core": "workspace:*",
+    "viem": "^2.37.0"
+  }
+}

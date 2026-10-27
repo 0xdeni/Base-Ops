@@ -1,0 +1,79 @@
+import { describe, expect, it } from 'vitest'
+import { createMockClient } from '../api/mock.js'
+import type { PoolSummary } from '../api/types.js'
+import { matchesQuery, sortSummaries } from './sort.js'
+
+const V3_WETH_USDC = 'uniswap-v3:0xd0b53d9277642d899df5c87a3966a349a798f224'
+
+async function summaries(): Promise<PoolSummary[]> {
+  const { items } = await createMockClient({ now: 1_760_000_000 }).pools({ limit: 200 })
+  return items
+}
+
+async function wethUsdc(): Promise<PoolSummary> {
+  const item = (await summaries()).find((s) => s.pool.id === V3_WETH_USDC)
+  if (!item) throw new Error('mock WETH/USDC v3 pool missing')
+  return item
+}
+
+describe('matchesQuery', () => {
+  it('matches the same fields as the API: token symbol, token address, pool address or id', async () => {
+    const item = await wethUsdc()
+    expect(matchesQuery(item, 'weth')).toBe(true)
+    expect(matchesQuery(item, 'USDC')).toBe(true)
+    expect(matchesQuery(item, 'WETH / USDC')).toBe(true)
+    expect(matchesQuery(item, item.pool.token0.address.slice(0, 10))).toBe(true)
+    expect(matchesQuery(item, item.pool.token1.address.toUpperCase())).toBe(true)
+    expect(matchesQuery(item, item.pool.address ?? '')).toBe(true)
+    expect(matchesQuery(item, V3_WETH_USDC)).toBe(true)
+    expect(matchesQuery(item, '  ')).toBe(true)
+    expect(matchesQuery(item, 'cbbtc')).toBe(false)
+  })
+
+  it('does not match token names, exactly like the API filter it mirrors', async () => {
+    const item = await wethUsdc()
+    expect(item.pool.token0.name).toBe('Wrapped Ether')
+    expect(item.pool.token1.name).toBe('USD Coin')
+    expect(matchesQuery(item, 'Wrapped Ether')).toBe(false)
+    expect(matchesQuery(item, 'USD Coin')).toBe(false)
+    // Across the whole mock universe a name query finds nothing, as /api/pools?q= would.
+    const all = await summaries()
+    expect(all.filter((s) => matchesQuery(s, 'Wrapped Ether'))).toEqual([])
+    expect(all.filter((s) => matchesQuery(s, 'WETH')).length).toBeGreaterThan(0)
+  })
+})
+
+describe('sortSummaries', () => {
+  it('sorts nulls last in either direction and keeps ties stable', async () => {
+    const all = await summaries()
+    for (const dir of ['asc', 'desc'] as const) {
+      const depths = sortSummaries(all, 'tvl', dir).map((s) => s.tvlUsd)
+      const nulls = depths.filter((d) => d === null).length
+      expect(nulls).toBeGreaterThan(0) // the unpriced pool has no TVL
+      expect(depths.slice(depths.length - nulls).every((d) => d === null)).toBe(true)
+      const known = depths.filter((d): d is number => d !== null)
+      expect([...known].sort((a, b) => (dir === 'asc' ? a - b : b - a))).toEqual(known)
+    }
+  })
+
+  it('puts the unrated pools after the rated ones when sorting by health, in both directions', async () => {
+    const all = await summaries()
+    const unrated = all.filter((s) => !s.health.rated)
+    expect(unrated.length).toBe(3)
+    for (const dir of ['asc', 'desc'] as const) {
+      const sorted = sortSummaries(all, 'health', dir)
+      const ratedPart = sorted.slice(0, all.length - unrated.length)
+      const unratedPart = sorted.slice(all.length - unrated.length)
+      expect(ratedPart.every((s) => s.health.rated)).toBe(true)
+      expect(unratedPart.every((s) => !s.health.rated)).toBe(true)
+      // each group is ordered by its own totals
+      for (const group of [ratedPart, unratedPart]) {
+        const totals = group.map((s) => s.health.total)
+        expect([...totals].sort((a, b) => (dir === 'asc' ? a - b : b - a))).toEqual(totals)
+      }
+    }
+    // other keys do not care about the rating
+    const byVolume = sortSummaries(all, 'volume', 'desc').map((s) => s.pool.id)
+    expect(byVolume.slice(0, 3).some((id) => unrated.some((u) => u.pool.id === id))).toBe(false)
+  })
+})

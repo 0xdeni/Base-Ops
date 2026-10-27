@@ -1,0 +1,173 @@
+/**
+ * The pools table (TB1–TB8, docs/design/visual-v3.md §5.8), shared by Pools (its focal element) and
+ * Token (its Pools section).
+ *
+ * Desktop: a 40 px sticky header whose sortable cells are buttons (`aria-sort` on the sorted one),
+ * 64 px rows whose pool link stretches over the row (one tab stop), the default columns (pool,
+ * health, depth ±2 % with its row glyph on one shared scale, spread at $10K, 24 h volume) and the
+ * optional ones from Columns. A table wider than the page scrolls inside its wrapper instead of
+ * the page. Phones (TB7): the pool cell, the value of the current sort metric and the grade
+ * glyph, under a head row that names the metric.
+ */
+import { Fragment, useRef } from 'react'
+import type { PoolSummary } from '../../api/types.js'
+import { NB, price } from '../../lib/format.js'
+import { basePrice, baseQuote } from '../../lib/orient.js'
+import {
+  glyphMax,
+  OPTIONAL_COLUMNS,
+  type OptionalColumn,
+  type PoolsSortKey,
+  SORT_LABEL,
+  type TableState,
+} from '../../lib/poolsTable.js'
+import { useOverflowX } from '../../lib/useOverflowX.js'
+import { RatingGlyph } from './GradeGlyph.js'
+import { DepthCell, HealthCell, metricCell } from './PoolCells.js'
+import { PoolCell, SortHeader } from './Table.js'
+
+const COLUMN_LABEL: Readonly<Record<OptionalColumn, string>> = {
+  tvl: 'TVL',
+  gap: 'Gap score',
+  top: 'Top LP',
+  price: 'Price',
+  updated: 'Updated',
+}
+const SORTABLE: ReadonlySet<OptionalColumn> = new Set(['tvl', 'gap', 'top'])
+
+/**
+ * The Price column (N2): the price of the pool's base token in its quote token, "2,460.32 USDC"
+ * for WETH / USDC and "65,712.95 USDC" for USDC / cbBTC, never the inverse below 1. The cell's
+ * title names the pair: "1 cbBTC = 65,712.95 USDC".
+ */
+function PriceCell({ pool }: { pool: PoolSummary }) {
+  const { base, quote } = baseQuote(pool.pool, pool.price)
+  const text = price(basePrice(pool.price))
+  return (
+    <span title={`1${NB}${base.symbol} = ${text}${NB}${quote.symbol}`}>
+      {text}
+      <span className="td-unit">
+        {NB}
+        {quote.symbol}
+      </span>
+    </span>
+  )
+}
+
+export interface PoolsTableProps {
+  rows: readonly PoolSummary[]
+  state: TableState
+  /** The data clock (unix seconds) for the Updated column. */
+  now: number
+  phone: boolean
+  onSort: (key: PoolsSortKey) => void
+  /** The table's (and the phone list's) accessible name. */
+  label: string
+  /** Id of the sentence that describes the table. */
+  describedBy?: string
+  /** A quiet heading before row `at` ("Unrated pools"), where the table changes kind of pool. */
+  divider?: { at: number; label: string }
+}
+
+export function PoolsTable({
+  rows,
+  state,
+  now,
+  phone,
+  onSort,
+  label,
+  describedBy,
+  divider,
+}: PoolsTableProps) {
+  const { sort, dir, cols } = state
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+  const tableRef = useRef<HTMLTableElement | null>(null)
+  const scrolls = useOverflowX(wrapRef, tableRef)
+  if (phone) {
+    return (
+      <>
+        <div className="prow-head" aria-hidden="true">
+          <span>Pool</span>
+          <span>{SORT_LABEL[sort]}</span>
+        </div>
+        <ol className="rowlist prow" aria-label={label}>
+          {rows.map((p, i) => (
+            <Fragment key={p.pool.id}>
+              {divider?.at === i ? <li className="rl-group">{divider.label}</li> : null}
+              <li>
+                <div className="rl-row">
+                  <PoolCell pool={p.pool} />
+                  <span className="metric num">{metricCell(p, sort, now)}</span>
+                  <RatingGlyph health={p.health} />
+                </div>
+              </li>
+            </Fragment>
+          ))}
+        </ol>
+      </>
+    )
+  }
+  const max = glyphMax(rows)
+  const header = (key: PoolsSortKey, text: string = SORT_LABEL[key]) => (
+    <SortHeader key={key} label={text} active={sort === key} dir={dir} onSort={() => onSort(key)} />
+  )
+  const optional = OPTIONAL_COLUMNS.map((c) => c.key).filter((c) => cols.includes(c))
+  return (
+    <div ref={wrapRef} className={`twrap${scrolls ? ' is-scroll' : ''}`}>
+      <table ref={tableRef} className="ptable" aria-describedby={describedBy}>
+        <caption className="sr-only">{label}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Pool</th>
+            {header('health')}
+            {header('depth')}
+            {header('spread')}
+            {header('volume')}
+            {optional.map((c) =>
+              SORTABLE.has(c) ? (
+                header(c as PoolsSortKey, COLUMN_LABEL[c])
+              ) : (
+                <th key={c} scope="col">
+                  {COLUMN_LABEL[c]}
+                </th>
+              ),
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((p, i) => (
+            <Fragment key={p.pool.id}>
+              {divider?.at === i ? (
+                <tr className="group-row">
+                  <td colSpan={5 + optional.length}>{divider.label}</td>
+                </tr>
+              ) : null}
+              <tr>
+                <td>
+                  <PoolCell pool={p.pool} linkClass="row-link" />
+                </td>
+                <td>
+                  <HealthCell health={p.health} />
+                </td>
+                <td>
+                  <DepthCell pool={p} max={max} />
+                </td>
+                <td>{metricCell(p, 'spread')}</td>
+                <td>{metricCell(p, 'volume')}</td>
+                {optional.map((c) => (
+                  <td key={c}>
+                    {c === 'price' && p.price !== null ? (
+                      <PriceCell pool={p} />
+                    ) : (
+                      metricCell(p, c, now)
+                    )}
+                  </td>
+                ))}
+              </tr>
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}

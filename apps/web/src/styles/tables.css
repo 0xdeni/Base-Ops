@@ -1,0 +1,383 @@
+/* Tables and row lists (docs/design/visual-v3.md §5.8, TB1–TB9). Hairlines never move: row hover is
+   an opacity-only layer (motion.css). Numbers right-aligned and tabular. */
+
+/* ---------- Dense tables: Details, Show data, Compare DEXes ---------- */
+:where(.tbl) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-data);
+  line-height: 1.43;
+}
+:where(.tbl) th {
+  text-align: left;
+  font-weight: 500;
+  font-size: var(--t-small);
+  color: var(--text-2);
+  padding: 0 var(--s4) var(--s2) 0;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+:where(.tbl) td {
+  padding: 9px var(--s4) 9px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+:where(.tbl) th:last-child,
+:where(.tbl) td:last-child {
+  padding-right: 0;
+}
+:where(.tbl) .r {
+  text-align: right;
+}
+:where(.tbl) .tot-row td {
+  font-weight: 500;
+  border-bottom-color: var(--border);
+}
+.tbl-note {
+  margin-top: var(--s3);
+  font-size: var(--t-small);
+  line-height: 1.385;
+  color: var(--text-2);
+}
+/* Phones: dense tables scroll inside a gutter-bleeding wrapper; the page never scrolls sideways. */
+.tbl-scroll {
+  overflow-x: auto;
+  margin-inline: calc(-1 * var(--gutter));
+  padding-inline: var(--gutter);
+}
+.tbl-scroll :focus-visible {
+  outline-offset: -2px;
+}
+/* A table that overflows on a phone (TableScroll): its first column stays in place on the canvas
+   and the trailing edge fades, as the Gaps table does, so clipped cells read as "scrolls". The
+   gutter moves into the outer cells, so the sticky column keeps its left edge. */
+@media (max-width: 52.49em) {
+  .tbl-scroll.is-over {
+    padding-inline: 0;
+  }
+  .tbl-scroll.is-over:not(.is-end) {
+    mask-image: linear-gradient(to right, #000 calc(100% - var(--s5)), transparent);
+  }
+  .tbl-scroll.is-over :where(.tbl) :is(th, td):first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    padding-left: var(--gutter);
+    background-color: var(--canvas);
+  }
+  .tbl-scroll.is-over :where(.tbl) :is(th, td):last-child {
+    padding-right: var(--gutter);
+  }
+}
+
+/* ---------- Primary table (Pools) ---------- */
+.ptable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-data);
+  isolation: isolate;
+}
+/* The rows bleed 12 px past the text on both sides, as the row lists do: the outer cells carry
+   12 px of padding and the wrapper pulls the table out by as much, so the text stays on the page
+   edge and the hover layer and focus ring keep clear of it. */
+@media (min-width: 52.5em) {
+  .twrap,
+  .lists-gtable-wrap {
+    margin-inline: -12px;
+  }
+}
+.ptable th {
+  position: sticky;
+  top: var(--appbar-h);
+  z-index: 2;
+  height: 40px;
+  padding: 0 var(--s4);
+  text-align: right;
+  font-weight: 500;
+  font-size: var(--t-small);
+  color: var(--text-2);
+  white-space: nowrap;
+  background-color: var(--canvas);
+  background-image: linear-gradient(var(--border), var(--border));
+  background-size: 100% 1px;
+  background-position: bottom;
+  background-repeat: no-repeat;
+}
+.ptable th:first-child {
+  text-align: left;
+  padding-left: 12px;
+}
+.ptable th:last-child,
+.ptable td:last-child {
+  padding-right: 12px;
+}
+.sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  color: inherit;
+  font-weight: 500;
+}
+.sort-btn svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0;
+}
+th[aria-sort] .sort-btn {
+  color: var(--text-1);
+}
+th[aria-sort] .sort-btn svg {
+  opacity: 1;
+}
+.ptable td {
+  height: 64px;
+  padding: 0 var(--s4);
+  text-align: right;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+  vertical-align: middle;
+  line-height: 20px;
+}
+.ptable td:first-child {
+  text-align: left;
+  padding-left: 12px;
+}
+/* One tab stop per row: the pool link stretches over the whole row (TB3), so the row, not a cell,
+   is the link's containing block. */
+.ptable tr {
+  position: relative;
+}
+.ptable .row-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-ctl);
+}
+/* Row hover is a layer under the cells at radius 6, above the hairline, like the row lists'. */
+.ptable .row-link::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 1px;
+  z-index: -1;
+  border-radius: var(--r-ctl);
+  background: var(--hover);
+  opacity: 0;
+}
+/* Health is the grade glyph plus the truncated score in a 2ch column (N6); depth is the 80 × 20 row
+   glyph plus the value, 16 px apart (§5.8). */
+.td-health {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s3);
+  vertical-align: middle;
+}
+.td-health .n {
+  min-width: 2ch;
+  text-align: right;
+}
+.td-depth {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s4);
+  vertical-align: middle;
+}
+.td-unit {
+  color: var(--text-2);
+}
+/* Wider than the page: the table scrolls in its wrapper, faded at the trailing edge (TB7). Only
+   then, so a table that fits keeps its header sticky under the app bar. */
+.twrap.is-scroll {
+  overflow-x: auto;
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--s5)), transparent);
+}
+.twrap.is-scroll .ptable {
+  width: max-content;
+  min-width: 100%;
+}
+.twrap.is-scroll .ptable th {
+  top: 0;
+}
+.twrap.is-scroll .ptable th:last-child,
+.twrap.is-scroll .ptable td:last-child {
+  padding-right: var(--s5);
+}
+.twrap.is-scroll :focus-visible {
+  outline-offset: -2px;
+}
+/* The caption and the phone head row keep the body's line height (the Pools table starts at
+   y 351, visual-v3.md §6.2). */
+.tbl-caption {
+  margin-top: var(--s5);
+  margin-bottom: var(--s3);
+  font-size: var(--t-small);
+  color: var(--text-3);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s4);
+}
+
+/* Pool cell: pair, then "Aerodrome Slipstream, 0.05 %" in text-2. */
+.cell-pool {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  line-height: 1.43;
+}
+.cell-pool .pp {
+  font-size: var(--t-data);
+  font-weight: 500;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cell-pool .pd {
+  font-size: var(--t-small);
+  line-height: 1.385;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* In the pools table a pair name never ellipsizes; the DEX and fee line may wrap instead. */
+.ptable .cell-pool {
+  min-width: 9rem;
+}
+.ptable .cell-pool .pp {
+  overflow: visible;
+  text-overflow: clip;
+}
+.ptable .cell-pool .pd {
+  white-space: normal;
+  overflow: visible;
+}
+
+/* ---------- Row lists: previews, episodes, mandates, gaps ---------- */
+.rowlist > li {
+  position: relative;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.rowlist.is-ruled {
+  border-top: 1px solid var(--border-subtle);
+}
+.rl-row {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  align-items: center;
+  gap: var(--s4);
+  min-height: 64px;
+  padding: 10px 12px;
+  margin-inline: -12px;
+  border-radius: var(--r-ctl);
+}
+.rl-row::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--r-ctl);
+  background: var(--hover);
+  opacity: 0;
+}
+.rl-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+/* Keyboard focus on a stretched row link rings the row it opens, not the pair name (A2): the
+   table row's stretched link, or the row list's hover layer: both bleed 12 px past the text at
+   radius 6. Instant, like every ring. */
+.ptable .row-link:focus-visible,
+.rl-link:focus-visible {
+  outline: none;
+}
+.ptable .row-link:focus-visible::after {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+/* Where a table or row list changes kind of pool ("Unrated pools"): one quiet heading line. */
+.ptable .group-row td {
+  height: 48px;
+  padding-top: var(--s4);
+  text-align: left;
+  font-size: var(--t-small);
+  font-weight: 500;
+  color: var(--text-2);
+  border-bottom: 1px solid var(--border);
+}
+.rowlist > li.rl-group {
+  padding: var(--s5) 0 var(--s2);
+  font-size: var(--t-small);
+  font-weight: 500;
+  color: var(--text-2);
+  border-bottom: 1px solid var(--border);
+}
+.rl-row:has(.rl-link:focus-visible)::before {
+  opacity: 1;
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+  transition: none;
+}
+/* Row lists keep the body's reading line height, and a row's second line wraps rather than
+   cutting its words off. */
+.rl-row .cell-pool,
+.rl-row .cell-pool .pd,
+.rl-row .status {
+  line-height: inherit;
+}
+.rowlist:not(.prow) .rl-row .cell-pool .pd {
+  white-space: normal;
+}
+/* Mandate rows (Home, Scorecards, Pool): status, name, who and where; the 7 d uptime over its
+   bullet at the end, and on the Scorecards list a 7 d strip between them. */
+.mm-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.mm-row.has-strip {
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr) auto;
+  column-gap: var(--s6);
+}
+.mm-row .cell-pool .pp {
+  white-space: normal;
+}
+.mm-row .status {
+  justify-self: start;
+}
+.mm-up {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  white-space: nowrap;
+}
+.rowlist > li.rl-quiet {
+  border-bottom: 0;
+  padding-block: 14px;
+  color: var(--text-3);
+  font-size: var(--t-small);
+  line-height: 1.385;
+}
+
+/* ---------- Phone rows (TB7): pool, the sort metric, the grade ---------- */
+.prow-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--t-small);
+  color: var(--text-2);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--border);
+}
+.prow-head span:last-child {
+  padding-right: 40px;
+}
+.prow .rl-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+.prow .metric {
+  text-align: right;
+  font-size: var(--t-data);
+}

@@ -1,0 +1,344 @@
+/* Compact charts (CH8, docs/design/visual-v3.md §5.9): the uptime strip, the cost-to-trade
+   lollipop, the weighted health bar, the share bar, the turnover meter, the bullet graph and the
+   row depth glyph. Fills are `text-1` on `border-subtle` tracks; breach cells use `--bad-mark`. */
+
+.strip-wrap,
+.lolli,
+.hbar-wrap,
+.share-wrap {
+  min-width: 0;
+  --v: 0;
+  --t: 0;
+  --x: 0;
+}
+
+/* ---------- Uptime strip ---------- */
+.strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  height: 12px;
+}
+.strip i {
+  border-radius: 1px;
+  background: var(--border);
+}
+.strip i.b {
+  background: var(--bad-mark);
+}
+.strip i.u {
+  background: transparent;
+  border: 1px solid var(--border);
+}
+.strip-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s4);
+  margin-top: var(--s2);
+  font-size: var(--t-caption);
+  line-height: 1.333;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Cost to trade: lollipops from 0 on one bps axis ---------- */
+.dotplot {
+  --x: 0;
+  display: grid;
+}
+.dp-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s4);
+  height: 40px;
+}
+.dp-row .k {
+  font-size: var(--t-small);
+  color: var(--text-2);
+}
+.dp-track {
+  position: relative;
+  height: 1px;
+  background: var(--border-subtle);
+}
+.dp-stem {
+  position: absolute;
+  left: 0;
+  top: -1px;
+  height: 3px;
+  width: calc(var(--x) * 100%);
+  background: var(--text-1);
+  border-radius: 1px;
+}
+.dp-dot,
+.dp-hollow {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+}
+.dp-dot {
+  left: calc(var(--x) * 100%);
+  background: var(--text-1);
+}
+.dp-hollow {
+  left: 0;
+  border: 1.5px solid var(--text-2);
+  background: var(--canvas);
+}
+.dp-val {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--x) * 100% + 14px);
+  translate: 0 -50%;
+  font-size: var(--t-small);
+  line-height: 1.385;
+  color: var(--text-1);
+  white-space: nowrap;
+}
+.dp-val.faint {
+  color: var(--text-3);
+}
+.dp-val.to-left {
+  left: auto;
+  right: calc((1 - var(--x)) * 100% + 10px);
+  padding: 0 6px;
+  background: var(--canvas);
+}
+.dp-axis {
+  position: relative;
+  height: 16px;
+  margin-left: calc(56px + var(--s4));
+  font-size: var(--t-caption);
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+.dp-axis > span {
+  position: absolute;
+  translate: -50% 0;
+  white-space: nowrap;
+}
+.dp-axis > .dp-last {
+  left: 100%;
+  translate: -100% 0;
+}
+
+/* ---------- Weighted health bar ---------- */
+.hbar {
+  --v: 0;
+  display: grid;
+  grid-template-columns: 35fr 25fr 20fr 20fr;
+  gap: 2px;
+  width: 100%;
+}
+.hbar .seg-h {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--border-subtle);
+}
+.hbar .h-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--v) * 100%);
+  background: var(--text-1);
+}
+.hbar.mini {
+  width: 80px;
+}
+.hbar.mini .seg-h {
+  height: 4px;
+}
+.hbar-names {
+  display: grid;
+  grid-template-columns: 35fr 25fr 20fr 20fr;
+  gap: 2px;
+  margin-top: var(--s2);
+  font-size: var(--t-small);
+  line-height: 1.385;
+  color: var(--text-2);
+}
+.hbar-names > span {
+  white-space: nowrap;
+  padding-right: var(--s1);
+}
+.hbar-names .weak {
+  color: var(--text-1);
+}
+@media (max-width: 37.49em) {
+  /* A finance label is never ellipsized: on phones the names stagger onto two rows. */
+  .hbar-names {
+    row-gap: 2px;
+  }
+  .hbar-names > span:nth-child(1) {
+    grid-row: 1;
+    grid-column: 1;
+  }
+  .hbar-names > span:nth-child(2) {
+    grid-row: 2;
+    grid-column: 2 / span 2;
+  }
+  .hbar-names > span:nth-child(3) {
+    grid-row: 1;
+    grid-column: 3 / span 2;
+  }
+  .hbar-names > span:nth-child(4) {
+    grid-row: 2;
+    grid-column: 4;
+    justify-self: end;
+    padding-right: 0;
+  }
+}
+
+/* ---------- Share bar ---------- */
+.share {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+}
+.share .sh {
+  height: 100%;
+  flex-basis: 0;
+  border-radius: 1px;
+}
+.share .s1,
+.share-legend .s1 {
+  background: var(--text-1);
+}
+.share .s2,
+.share-legend .s2 {
+  background: var(--control);
+}
+.share .s3,
+.share-legend .s3 {
+  background: var(--border);
+}
+.share-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s5);
+  margin-top: var(--s3);
+  font-size: var(--t-small);
+  line-height: 1.385;
+  color: var(--text-2);
+}
+.share-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.share-legend .lsw {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+/* ---------- Turnover meter (gap rows) ---------- */
+.gap-meter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s2);
+  font-size: var(--t-data);
+}
+.meter {
+  --v: 0;
+  --t: 0;
+  position: relative;
+  display: block;
+  width: 64px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-subtle);
+}
+.meter .m-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--v) * 100%);
+  border-radius: 2px;
+  background: var(--text-1);
+}
+.tmeter {
+  width: 96px;
+}
+.tmeter .m-tick {
+  position: absolute;
+  top: -4px;
+  left: calc(var(--t) * 100%);
+  width: 1px;
+  height: 12px;
+  background: var(--text-3);
+}
+.gap-meter.quiet .m-fill {
+  background: var(--control);
+}
+
+/* ---------- Bullet graph ---------- */
+.bullet {
+  --v: 0;
+  --t: 0;
+  position: relative;
+  display: block;
+  width: 96px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--border-subtle);
+}
+.bullet .b-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--v) * 100%);
+  border-radius: 1px;
+  background: var(--text-1);
+}
+.bullet .b-tick {
+  position: absolute;
+  top: -4px;
+  left: calc(var(--t) * 100%);
+  width: 2px;
+  height: 14px;
+  margin-left: -1px;
+  background: var(--text-2);
+}
+.bullet.wide {
+  width: 100%;
+  max-width: 220px;
+}
+
+/* ---------- Row depth glyph ---------- */
+.glyph {
+  display: inline-block;
+  width: 80px;
+  height: 20px;
+  vertical-align: middle;
+}
+.glyph .g-sell {
+  fill: var(--sell);
+}
+.glyph .g-buy {
+  fill: var(--buy);
+}
+.glyph .g-spine {
+  fill: var(--border);
+}
+
+@media (forced-colors: active) {
+  .strip i,
+  .m-fill,
+  .b-fill,
+  .b-tick,
+  .h-fill,
+  .sh,
+  .dp-stem,
+  .dp-dot,
+  .glyph {
+    forced-color-adjust: none;
+  }
+}

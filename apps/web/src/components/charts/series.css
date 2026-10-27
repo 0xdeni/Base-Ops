@@ -1,0 +1,252 @@
+/* The SVG focal charts (docs/design/visual-v3.md §5.9, §3.7): the mirrored depth curve, the
+   time-series small multiples and the market-maker chart. Strokes and fills come from the colour
+   tokens only, so both themes and forced colours follow the CSS. */
+
+/* ---------- Mirrored depth curve (CH3, C9) ---------- */
+.curve {
+  position: relative;
+  min-width: 0;
+}
+/* The legend keeps the body's line height (the curve starts at y 394, visual-v3.md §6.3). */
+.curve-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s4);
+  margin-bottom: var(--s2);
+  font-size: var(--t-small);
+  color: var(--text-2);
+}
+.curve-legend > span {
+  display: inline-flex;
+  align-items: center;
+}
+.curve-band {
+  fill: var(--well);
+  opacity: 0.9;
+}
+.curve-spine,
+.curve-base {
+  stroke: var(--border);
+  stroke-width: 1px;
+}
+.c-line {
+  fill: none;
+  stroke-width: 2px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.c-line.sell {
+  stroke: var(--sell);
+}
+.c-line.buy {
+  stroke: var(--buy);
+}
+.c-line.is-exhausted {
+  stroke-dasharray: 4 4;
+}
+.pt {
+  stroke: var(--canvas);
+  stroke-width: 2px;
+}
+.pt.sell {
+  fill: var(--sell);
+}
+.pt.buy {
+  fill: var(--buy);
+}
+.xh {
+  stroke: var(--control);
+  stroke-width: 1px;
+}
+.xd {
+  fill: var(--text-1);
+  stroke: var(--canvas);
+  stroke-width: 2px;
+}
+.xd.buy {
+  fill: var(--buy);
+}
+.xd.sell {
+  fill: var(--sell);
+}
+
+/* ---------- Time-series small multiples (CH5) ---------- */
+.ts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+.ts:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+.mult {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s2);
+}
+.mult + .mult {
+  margin-top: var(--s5);
+}
+.mult-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  font-size: var(--t-small);
+  line-height: 1.385;
+  color: var(--text-2);
+}
+.mult-head .mv {
+  font-size: var(--t-data);
+  font-weight: 500;
+  color: var(--text-1);
+}
+.mult-head .mt {
+  color: var(--text-3);
+}
+/* The metric's name never splits from its range ("Depth ±2 %"). */
+.mult-head .ml,
+.mult-head .mv,
+.mult-head .mt {
+  white-space: nowrap;
+}
+/* Below 360 px the band legend takes its own row under the head. */
+@media (max-width: 22.49em) {
+  .mult-head {
+    flex-wrap: wrap;
+    row-gap: var(--s1);
+  }
+  .mband {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+}
+.mband {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--t-caption);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.mband i {
+  width: 12px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--hover);
+  border: 1px solid var(--border-subtle);
+}
+.mult-band {
+  fill: var(--hover);
+}
+.mult-line {
+  fill: none;
+  stroke: var(--text-1);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+/* A reference level (a KPI) across a multiple, as the market-maker chart draws its KPI. */
+.mult-ref {
+  stroke: var(--text-2);
+  stroke-width: 1px;
+  stroke-dasharray: 4 4;
+}
+.mult-gap {
+  fill: none;
+  stroke: var(--text-3);
+  stroke-width: 1px;
+  stroke-dasharray: 3 3;
+}
+.ts-axis {
+  margin-top: var(--s1);
+}
+
+/* ---------- Market-maker chart (Scorecard focal) ---------- */
+.mmc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s4);
+}
+.mmc-ctl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s4);
+}
+.mmc {
+  margin-top: var(--s4);
+  min-width: 0;
+}
+.mm-band {
+  fill: var(--bad-mark);
+  opacity: var(--band-op);
+}
+.mm-reg {
+  stroke: var(--border);
+  stroke-dasharray: 2 3;
+}
+.mm-zero {
+  stroke: var(--border);
+  stroke-width: 1px;
+}
+.mm-kpi {
+  stroke: var(--text-2);
+  stroke-width: 1px;
+  stroke-dasharray: 4 4;
+}
+.mm-ctx-line {
+  fill: none;
+  stroke: var(--text-3);
+  stroke-width: 1px;
+}
+.mm-line {
+  fill: none;
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}
+.mm-line.buy {
+  stroke: var(--buy);
+}
+.mm-line.sell {
+  stroke: var(--sell);
+}
+.mmc-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s4);
+  min-height: 32px;
+  margin-top: var(--s3);
+}
+.scrub-cap {
+  order: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 20px;
+  margin: 0 0 0 auto;
+  font-size: var(--t-small);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.mmc-foot .disc-btn {
+  order: 1;
+}
+
+@media (max-width: 52.49em) {
+  .mmc-head {
+    gap: var(--s3);
+  }
+}
+@media (forced-colors: active) {
+  .mm-band,
+  .curve-band {
+    forced-color-adjust: none;
+  }
+}

@@ -1,0 +1,47 @@
+/* Fonts (docs/design/visual-v3.md §3.2, T1–T3): self-hosted subsets of the google/fonts TTFs in
+   public/fonts/, licensed under the SIL Open Font License (OFL-*.txt beside them). Hanken Grotesk
+   sets every word and number; IBM Plex Mono only addresses, pool ids, About-list blocks and code.
+   No request to a third-party font host. */
+
+@font-face {
+  font-family: "Hanken Grotesk";
+  src: url("/fonts/hanken-grotesk-var.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/fonts/ibm-plex-mono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/fonts/ibm-plex-mono-500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+/* Metric-matched fallback (fontTools, letter-frequency-weighted advances): identical page heights
+   with fonts blocked. */
+@font-face {
+  font-family: "Hanken Fallback";
+  src: local("Arial"), local("Helvetica"), local("Liberation Sans");
+  size-adjust: 101.7%;
+  ascent-override: 98.3%;
+  descent-override: 29.8%;
+  line-gap-override: 0%;
+}
+
+:root {
+  --sans:
+    "Hanken Grotesk", "Hanken Fallback", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Fallback check only (?nofonts=1, set by index.html): the layout with the web faces dropped
+   (§3.2 "Fallback check"). */
+:root[data-nofonts] {
+  --sans: "Hanken Fallback", ui-sans-serif, system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

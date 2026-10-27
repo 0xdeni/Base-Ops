@@ -1,0 +1,225 @@
+/**
+ * The reader against the HTTP answers of real endpoints, replayed by a fake `fetch` behind viem's
+ * own `http()` transport: Alchemy's free tier (HTTP 400, -32600, 10-block `eth_getLogs`) and Base's
+ * public endpoint (HTTP 429, -32011). Also: `rpcUrl` / `logsRpcUrl` routing by URL, and swap
+ * timestamps that cost a handful of headers however small the log chunk is.
+ */
+import type { Hex } from '@depthwatch/core'
+import { http } from 'viem'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { uniswapV3FactoryAbi } from './abi/uniswapV3Factory.js'
+import { uniswapV3PoolAbi } from './abi/uniswapV3Pool.js'
+import { BASE_ADDRESSES as A } from './addresses.js'
+import { addLogs, makeLog } from './fixtures/builders.js'
+import {
+  alchemyFreeTierGetLogs,
+  alchemyFreeTierMessage,
+  basePublicRateLimitResponse,
+  createFakeRpcFetch,
+  type FakeRpcOptions,
+} from './fixtures/fakeRpc.js'
+import { LogRangeLimitError } from './internal/logErrors.js'
+import { type CreateChainReaderOptions, createChainReader } from './reader.js'
+import { addr, newFixture, poolMeta, TOKEN_A, TOKEN_D } from './test/helpers.js'
+import type { Fixture } from './transport/fixture.js'
+
+const URL = 'https://base-mainnet.example/v2'
+const HEAD = 200_000n
+const HEAD_TS = 1_800_000_000
+const tsOf = (block: bigint) => HEAD_TS - Number(HEAD - block) * 2
+
+const v3 = poolMeta({
+  dex: 'uniswap-v3',
+  address: addr(0x401),
+  token0: TOKEN_A,
+  token1: TOKEN_D,
+  feePips: 500,
+  tickSpacing: 10,
+})
+
+/** Uniswap v3 PoolCreated at blocks 150 and 1 950, and v3 swaps at `swapBlocks`. */
+function world(swapBlocks: readonly bigint[] = []): Fixture {
+  const fixture = newFixture(HEAD, HEAD_TS)
+  addLogs(fixture, [
+    ...[150n, 1_950n].map((blockNumber, i) =>
+      makeLog({
+        address: A.uniswapV3.factory,
+        abi: uniswapV3FactoryAbi,
+        eventName: 'PoolCreated',
+        args: {
+          token0: TOKEN_A.address,
+          token1: TOKEN_D.address,
+          fee: 500,
+          tickSpacing: 10,
+          pool: addr(0x5000 + i),
+        },
+        blockNumber,
+        logIndex: 0,
+      }),
+    ),
+    ...swapBlocks.map((blockNumber) =>
+      makeLog({
+        address: v3.address as Hex,
+        abi: uniswapV3PoolAbi,
+        eventName: 'Swap',
+        args: {
+          sender: addr(0x7007),
+          recipient: addr(0x7007),
+          amount0: 1_000n,
+          amount1: -2_000n,
+          sqrtPriceX96: 1n << 96n,
+          liquidity: 1n,
+          tick: 0,
+        },
+        blockNumber,
+        logIndex: 0,
+      }),
+    ),
+  ])
+  return fixture
+}
+
+/** A reader whose only endpoint is the fake one; backoff sleeps are recorded, not waited. */
+function overHttp(fixture: Fixture, fake: FakeRpcOptions, opts: CreateChainReaderOptions = {}) {
+  const rpc = createFakeRpcFetch(fixture, fake)
+  const sleeps: number[] = []
+  const reader = createChainReader({
+    transport: http(URL, { fetchFn: rpc.fetch, retryCount: 0 }),
+    logRetry: { sleep: async (ms) => void sleeps.push(ms) },
+    ...opts,
+  })
+  const count = (method: string) => rpc.calls.filter((c) => c.method === method).length
+  return { reader, calls: rpc.calls, sleeps, count }
+}
+
+describe('Alchemy free tier: HTTP 400, -32600, at most 10 blocks per eth_getLogs', () => {
+  it('stops after one request at the CLI default chunk, naming the limit', async () => {
+    const { reader, count } = overHttp(
+      world(),
+      { getLogs: alchemyFreeTierGetLogs() },
+      { logChunkSize: 2_000 },
+    )
+    const error = await reader.discoverPools('uniswap-v3', 1n, 40_000n).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(LogRangeLimitError)
+    expect((error as LogRangeLimitError).details).toEqual({
+      reason: 'stated',
+      maxRange: 10n,
+      chunkSize: 2_000n,
+      minRange: 100n,
+      fromBlock: 1n,
+      toBlock: 2_000n,
+      providerMessage: alchemyFreeTierMessage(1n),
+    })
+    expect(alchemyFreeTierMessage(1n)).toContain('this block range should work: [0x1, 0xa]')
+    expect(count('eth_getLogs')).toBe(1)
+  })
+
+  it('also stops when an explicit chunk is above the limit (20 blocks)', async () => {
+    const { reader, count } = overHttp(
+      world(),
+      { getLogs: alchemyFreeTierGetLogs() },
+      { logChunkSize: 20 },
+    )
+    const error = await reader.discoverPools('uniswap-v3', 1n, 2_000n).catch((e: unknown) => e)
+    expect((error as LogRangeLimitError).details).toMatchObject({
+      reason: 'stated',
+      maxRange: 10n,
+      chunkSize: 20n,
+      minRange: 20n,
+    })
+    expect((error as Error).message).toMatch(/set logChunkSize to 10 for small scans\.$/)
+    expect(count('eth_getLogs')).toBe(1)
+  })
+
+  it('works at an explicit 10-block chunk: 24 h of swaps, no fail-fast, six headers', async () => {
+    const swapBlocks = [156_805n, 160_000n, 171_234n, 185_001n, 199_999n, HEAD]
+    const { reader, calls, count } = overHttp(
+      world(swapBlocks),
+      { getLogs: alchemyFreeTierGetLogs() },
+      { logChunkSize: 10 },
+    )
+    const from = HEAD - 43_200n
+    const swaps = await reader.readSwaps([v3], from, HEAD)
+    expect(swaps.map((s) => [s.blockNumber, s.timestamp])).toEqual(
+      swapBlocks.map((b) => [b, tsOf(b)]),
+    )
+    const logs = calls.filter((c) => c.method === 'eth_getLogs')
+    expect(logs).toHaveLength(4_321) // ⌈43 201 / 10⌉, one filter
+    expect(logs.every((c) => (c.toBlock ?? 0n) - (c.fromBlock ?? 0n) < 10n)).toBe(true)
+    // Anchors 150 000, 160 000, …, 200 000: independent of the 10-block log chunk.
+    expect(count('eth_getBlockByNumber')).toBe(6)
+
+    expect(await reader.discoverPools('uniswap-v3', 1n, 2_000n)).toHaveLength(2)
+  })
+})
+
+describe('Base public endpoint: HTTP 429, -32011 "request limit reached"', () => {
+  it('backs off and retries the same range until it is served', async () => {
+    const { reader, calls, sleeps } = overHttp(
+      world(),
+      { getLogs: ({ id, n }) => (n < 3 ? basePublicRateLimitResponse(id) : undefined) },
+      { logChunkSize: 2_000 },
+    )
+    expect(await reader.discoverPools('uniswap-v3', 1n, 2_000n)).toHaveLength(2)
+    expect(sleeps).toEqual([1_000, 2_000, 4_000])
+    const logs = calls.filter((c) => c.method === 'eth_getLogs')
+    expect(logs.map((c) => [c.fromBlock, c.toBlock])).toEqual(Array(4).fill([1n, 2_000n]))
+  })
+
+  it('gives up after the retry cap with one message', async () => {
+    const { reader, count, sleeps } = overHttp(
+      world(),
+      { getLogs: ({ id }) => basePublicRateLimitResponse(id) },
+      { logChunkSize: 2_000, logRetry: { retries: 2, sleep: async () => {} } },
+    )
+    await expect(reader.discoverPools('uniswap-v3', 1n, 2_000n)).rejects.toThrow(
+      'eth_getLogs blocks 1-2000: still rate limited after 2 retries with backoff (provider: "request limit reached")',
+    )
+    expect(count('eth_getLogs')).toBe(3)
+    expect(sleeps).toEqual([])
+  })
+})
+
+describe('rpcUrl and logsRpcUrl', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const MAIN = 'https://main.example/v2'
+  const LOGS = 'https://logs.example/'
+
+  it('sends eth_getLogs to logsRpcUrl and every other request to rpcUrl', async () => {
+    const rpc = createFakeRpcFetch(world([1_010n]))
+    vi.stubGlobal('fetch', rpc.fetch)
+    const reader = createChainReader({ rpcUrl: MAIN, logsRpcUrl: LOGS, logChunkSize: 1_000 })
+    expect(await reader.discoverPools('uniswap-v3', 1n, 2_000n)).toHaveLength(2)
+    expect(await reader.readSwaps([v3], 1_000n, 1_999n)).toHaveLength(1)
+    const byUrl = (url: string) =>
+      new Set(rpc.calls.filter((c) => c.url === url).map((c) => c.method))
+    expect([...byUrl(LOGS)]).toEqual(['eth_getLogs'])
+    expect(byUrl(MAIN).has('eth_getLogs')).toBe(false)
+    expect(byUrl(MAIN).has('eth_call')).toBe(true)
+    expect(byUrl(MAIN).has('eth_getBlockByNumber')).toBe(true)
+  })
+
+  it('uses rpcUrl for logs by default, without viem retries under our backoff', async () => {
+    const rpc = createFakeRpcFetch(world(), {
+      getLogs: ({ n }) =>
+        n === 0
+          ? new Response('Too Many Requests', { status: 429, headers: { 'Retry-After': '3' } })
+          : undefined,
+    })
+    vi.stubGlobal('fetch', rpc.fetch)
+    const sleeps: number[] = []
+    const reader = createChainReader({
+      rpcUrl: MAIN,
+      logChunkSize: 2_000,
+      logRetry: { sleep: async (ms) => void sleeps.push(ms) },
+    })
+    expect(await reader.discoverPools('uniswap-v3', 1n, 2_000n)).toHaveLength(2)
+    expect(new Set(rpc.calls.map((c) => c.url))).toEqual(new Set([MAIN]))
+    // One 429, honoured Retry-After, one retry: viem's own retries would add requests here.
+    expect(rpc.calls.filter((c) => c.method === 'eth_getLogs')).toHaveLength(2)
+    expect(sleeps).toEqual([3_000])
+  })
+})
