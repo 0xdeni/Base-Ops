@@ -1,15 +1,19 @@
 /**
  * Scorecard summaries for the `/api/mm` routes (docs/design/scorecards.md §6): each summary is
- * computed on request with core's `summarizeScorecard` over the mandate's samples of the last
- * 30 days, so `uptime.d30` is exactly the history the API keeps in view.
+ * core's `summarizeScorecard` over the mandate's samples of the last 30 days, so `uptime.d30` is
+ * exactly the history the API keeps in view. Reading and parsing a month of samples costs far
+ * more than summarising them, so `ScorecardCache` keeps the last summary per mandate and serves
+ * it again while nothing it was computed from has changed.
  */
 import {
+  jsonStringify,
   type Mandate,
   type ScorecardSummary,
   summarizeScorecard,
   toJsonSafe,
   toPublicMandate,
 } from '@depthwatch/core'
+import type { Database } from '@depthwatch/db'
 import { type ApiContext, DAY_SECONDS } from './context.js'
 import type { ScorecardSummaryDto } from './dto.js'
 
@@ -21,11 +25,66 @@ export function summaryWindowStart(now: number): number {
   return now - SUMMARY_WINDOW_SECONDS
 }
 
-/** The mandate's scorecard at the context's clock: `mmSamples.seriesFor(id, now − 30 d)`. */
+/** Seconds a summary is served again while the mandate and its samples are unchanged. */
+export const SCORECARD_CACHE_SECONDS = 60
+
+interface CacheEntry {
+  /** The mandate as summarised, serialised: a re-registration (from any process) changes it. */
+  mandateKey: string
+  /** Row id of the mandate's newest sample when summarised; null when it had none. */
+  latestSampleId: number | null
+  /** `floor(now / SCORECARD_CACHE_SECONDS)`: the uptime windows end at the clock. */
+  tick: number
+  summary: ScorecardSummary
+}
+
+/**
+ * One summary per mandate, reused while the mandate, its newest sample (an index lookup) and the
+ * clock's minute are the ones it was computed with: a new sample or a re-registration is seen on
+ * the next request, a pruned sample or the moving windows within a minute. `delete` forgets a
+ * mandate that was removed.
+ */
+export class ScorecardCache {
+  private readonly entries = new Map<string, CacheEntry>()
+
+  constructor(
+    private readonly db: Database,
+    /** Unix seconds. */
+    private readonly now: () => number,
+  ) {}
+
+  /** The mandate's scorecard at the clock: `mmSamples.seriesFor(id, now − 30 d)`, summarised. */
+  get(mandate: Mandate): ScorecardSummary {
+    const now = this.now()
+    const tick = Math.floor(now / SCORECARD_CACHE_SECONDS)
+    const latestSampleId = this.db.mmSamples.latestIdFor(mandate.id)
+    const mandateKey = jsonStringify(mandate)
+    const hit = this.entries.get(mandate.id)
+    if (
+      hit &&
+      hit.tick === tick &&
+      hit.latestSampleId === latestSampleId &&
+      hit.mandateKey === mandateKey
+    )
+      return hit.summary
+    const samples = this.db.mmSamples.seriesFor(mandate.id, summaryWindowStart(now))
+    const summary = summarizeScorecard(mandate, samples, now)
+    this.entries.set(mandate.id, { mandateKey, latestSampleId, tick, summary })
+    return summary
+  }
+
+  delete(mandateId: string): void {
+    this.entries.delete(mandateId)
+  }
+
+  get size(): number {
+    return this.entries.size
+  }
+}
+
+/** The mandate's scorecard at the context's clock, through the context's `ScorecardCache`. */
 export function loadScorecard(ctx: ApiContext, mandate: Mandate): ScorecardSummary {
-  const now = ctx.now()
-  const samples = ctx.db.mmSamples.seriesFor(mandate.id, summaryWindowStart(now))
-  return summarizeScorecard(mandate, samples, now)
+  return ctx.scorecards.get(mandate)
 }
 
 /**

@@ -9,7 +9,8 @@ const BAD_ADDRESS: ErrorResponse = { error: 'invalid token address: expected 0x 
 
 /**
  * `GET /api/tokens/:address`: token info, derived USD price and the scored pools containing the
- * token (sorted like `/api/pools`, default deepest first). The address is lowercased first.
+ * token (sorted like `/api/pools`, default deepest first). The address is lowercased first and
+ * matched exactly against token0/token1 (the `token` filter), never against symbols.
  */
 export function tokensRoutes(ctx: ApiContext): Hono {
   const app = new Hono()
@@ -23,11 +24,9 @@ export function tokensRoutes(ctx: ApiContext): Hono {
 
     const q = parsed.data
     const price = ctx.db.prices.get(address)
-    // `q` matches the full lowercase address against token0/token1, which is an exact match in
-    // practice (a 40-hex substring of another address or v4 pool id does not occur).
     const scored = ctx.db.scores.topBy(q.sort, {
       dir: q.dir,
-      q: address,
+      token: address,
       limit: q.limit,
       offset: q.offset,
     })
@@ -38,7 +37,7 @@ export function tokensRoutes(ctx: ApiContext): Hono {
       priceUpdatedAt: price?.updatedAt ?? null,
       pools: scored.items.map(toPoolSummary),
       total: scored.total,
-      poolCount: ctx.db.pools.count({ q: address }),
+      poolCount: ctx.db.pools.count({ token: address }),
     }
     return c.json(body)
   })

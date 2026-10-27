@@ -106,6 +106,18 @@ export class MmSamplesRepo {
     return row ? rowToMmSample(row) : undefined
   }
 
+  /**
+   * Row id of the newest sample of a mandate (highest timestamp, then insertion order), or null
+   * when it has none: an index lookup that tells whether a summary over its samples is current.
+   */
+  latestIdFor(mandateId: string): number | null {
+    const row = this.ctx.get(
+      'SELECT id FROM mm_samples WHERE mandate_id = ? ORDER BY timestamp DESC, id DESC LIMIT 1',
+      [mandateId],
+    )
+    return row ? colNumber(row, 'id') : null
+  }
+
   /** The newest sample of each mandate, in one query. Mandates without samples are absent. */
   latestForMany(mandateIds: readonly string[]): Map<string, MmSample> {
     const out = new Map<string, MmSample>()

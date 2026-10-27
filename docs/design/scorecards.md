@@ -189,7 +189,10 @@ DTOs in `dto.ts` (`Jsonified` of the core types):
 - `POST /api/mm` and `DELETE /api/mm/:id`: require `Authorization: Bearer <DEPTHWATCH_ADMIN_TOKEN>`
   (`createApp` opt `adminToken`); without a configured token respond 403 `{ error: 'registration disabled' }`;
   wrong token 401. POST validates with `parseMandate` (400 with the problems), upserts, returns 201 with the summary.
-- Summaries use `mmSamples.seriesFor(id, now − 30 d)` and core `summarizeScorecard`.
+- Summaries use `mmSamples.seriesFor(id, now − 30 d)` and core `summarizeScorecard`. The app keeps the last summary per
+  mandate (`ScorecardCache` in `scorecard.ts`, on `ApiContext`) and serves it again while the mandate (serialised), its
+  newest sample id (`mmSamples.latestIdFor`) and the clock's minute are unchanged, so a list, a detail and a badge
+  request do not each read a month of samples; `DELETE` drops the entry, a re-registration misses it by itself.
 
 ## 7. Dashboard (`apps/web`)
 

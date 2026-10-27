@@ -75,6 +75,8 @@ export async function seedStep(
   db.transaction(() => {
     for (const dex of dexes) db.syncState.setBigInt(syncKeys.seed(dex), result.blockNumber)
   })
+  // Planner statistics for the pools written, so the feeds search the scored set, not every pool.
+  db.analyze()
   for (const d of result.dexes)
     log.info('seeded', {
       dex: d.dex,

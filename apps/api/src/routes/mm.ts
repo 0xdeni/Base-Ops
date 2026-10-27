@@ -153,6 +153,7 @@ export function mmRoutes(ctx: ApiContext): Hono {
       }
     })
     if (!removed) return c.json(MANDATE_NOT_FOUND, 404)
+    ctx.scorecards.delete(id)
     const body: DeleteMandateResponse = { id, deleted: true, ...removed }
     return c.json(body)
   })

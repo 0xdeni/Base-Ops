@@ -198,6 +198,25 @@ describe('openDatabase', () => {
     expect(db.syncState.get('d')).toBeUndefined()
   })
 
+  it('gathers planner statistics on analyze() with a bounded sample per index', () => {
+    const db = memory()
+    expect(db.raw.prepare('PRAGMA analysis_limit').get()).toEqual({ analysis_limit: 1000 })
+    db.pools.upsertMany([fixturePool()])
+    const stats = () =>
+      db.raw
+        .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_stat1'`)
+        .all()
+    expect(stats()).toEqual([])
+    db.analyze()
+    expect(stats()).toEqual([{ name: 'sqlite_stat1' }])
+    const analysed = db.raw
+      .prepare('SELECT DISTINCT tbl FROM sqlite_stat1 ORDER BY tbl')
+      .all()
+      .map((row) => String(row.tbl))
+    expect(analysed).toContain('pools')
+    expect(analysed).toContain('tokens')
+  })
+
   it('stamps first_seen_at from the injected clock and closes idempotently', () => {
     const db = memory()
     db.pools.upsertMany([fixturePool()])

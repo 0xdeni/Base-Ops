@@ -131,8 +131,13 @@ const LATEST_SELECT = `sn.id AS sn_id, sn.block_number AS sn_block_number,
  */
 const RATED_SQL = `COALESCE(json_extract(s.health_json, '$.rated'), 0) = 1`
 
+/**
+ * `CROSS JOIN` pins the scored set as the outer loop. Without planner statistics SQLite would
+ * otherwise start from `pools` for a count or a filtered page: every discovered pool (a full
+ * factory scan finds a hundred thousand) scanned for a few hundred scores.
+ */
 const SCORE_FROM = `scores s
-  JOIN pools p ON p.id = s.pool_id
+  CROSS JOIN pools p ON p.id = s.pool_id
   JOIN tokens t0 ON t0.address = p.token0
   JOIN tokens t1 ON t1.address = p.token1`
 
@@ -322,7 +327,7 @@ export class ScoresRepo {
     const scoreRows = this.ctx.all(
       `SELECT p.dex AS dex, s.health_total AS health, s.depth2_usd AS depth2,
           s.volume_24h_usd AS volume, ${RATED_SQL} AS rated
-        FROM scores s JOIN pools p ON p.id = s.pool_id ORDER BY p.dex, s.health_total`,
+        FROM scores s CROSS JOIN pools p ON p.id = s.pool_id ORDER BY p.dex, s.health_total`,
     )
     for (const row of scoreRows) {
       const dex = colText(row, 'dex')

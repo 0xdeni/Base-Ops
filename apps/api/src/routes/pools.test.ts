@@ -3,6 +3,7 @@ import { type Database, snapshotSummaryFields } from '@depthwatch/db'
 import type { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from '../app.js'
+import { HISTORY_CACHE_CONTROL } from '../caching.js'
 import type {
   ErrorResponse,
   HistoryResponse,
@@ -333,6 +334,8 @@ describe('GET /api/pools/:id/history', () => {
   async function history(id: string, query = ''): Promise<HistoryResponse> {
     const res = await app.request(`/api/pools/${id}/history${query}`)
     expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe(HISTORY_CACHE_CONTROL)
+    expect(res.headers.get('cache-control')).toBe('public, max-age=60')
     return (await res.json()) as HistoryResponse
   }
 

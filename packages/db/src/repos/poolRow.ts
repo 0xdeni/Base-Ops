@@ -12,6 +12,7 @@ import {
   colText,
   colTextOrNull,
   likeContains,
+  normalizeAddress,
   type Row,
 } from '../sql.js'
 
@@ -32,6 +33,11 @@ export interface PoolFilter {
   tracked?: boolean
   /** Case-insensitive substring of a token symbol, token address, pool address or v4 pool id. */
   q?: string
+  /**
+   * A token address (any case): pools with exactly it as token0 or token1. Unlike `q`, never
+   * matched against symbols, which are free on-chain strings and may contain an address.
+   */
+  token?: Address
 }
 
 export interface PoolRecord {
@@ -41,6 +47,11 @@ export interface PoolRecord {
 }
 
 const LIKE = `LIKE ? ESCAPE '\\'`
+
+/** Whether the filter reads token columns: only `q` matches symbols; the rest filters `pools` alone. */
+export function filterReadsTokens(filter: PoolFilter): boolean {
+  return Boolean(filter.q?.trim())
+}
 
 /** WHERE conditions (without the keyword) and their bound parameters for a PoolFilter. */
 export function poolFilterClauses(filter: PoolFilter): { clauses: string[]; params: BindValue[] } {
@@ -53,6 +64,11 @@ export function poolFilterClauses(filter: PoolFilter): { clauses: string[]; para
   if (filter.tracked !== undefined) {
     clauses.push('p.tracked = ?')
     params.push(filter.tracked)
+  }
+  if (filter.token !== undefined) {
+    const token = normalizeAddress(filter.token)
+    clauses.push('(p.token0 = ? OR p.token1 = ?)')
+    params.push(token, token)
   }
   const q = filter.q?.trim()
   if (q) {

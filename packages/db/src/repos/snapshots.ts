@@ -21,6 +21,7 @@ import {
 } from '../sql.js'
 import {
   capSpreadPoint,
+  type SnapshotHealthSummary,
   type SnapshotSummary,
   SUMMARY_DEPTH_PCT,
   SUMMARY_SPREAD_NOTIONAL_USD,
@@ -61,6 +62,10 @@ const SUMMARY_OUTER = `${SUMMARY_COLUMNS},
   ${depth2SideSql('depth_usd_json', 'upUsd')} AS depth2_up_usd,
   ${depth2SideSql('depth_usd_json', 'downUsd')} AS depth2_down_usd,
   ${spread10kPointSql('spreads_json')} AS spread10k_point`
+
+/** The summary columns plus the range HHI: what a history series is scored from. */
+const HEALTH_SUMMARY = `${SUMMARY_OUTER},
+  json_extract(concentration_json, '$.rangeHhi') AS range_hhi`
 
 const INSERT = `INSERT INTO snapshots (
     pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd, active_liquidity,
@@ -112,6 +117,10 @@ export function rowToSnapshotSummary(row: Row): SnapshotSummary {
     depth2UpUsd: colNumberOrNull(row, 'depth2_up_usd'),
     depth2DownUsd: colNumberOrNull(row, 'depth2_down_usd'),
   }
+}
+
+export function rowToSnapshotHealthSummary(row: Row): SnapshotHealthSummary {
+  return { ...rowToSnapshotSummary(row), rangeHhi: colNumberOrNull(row, 'range_hhi') }
 }
 
 export class SnapshotsRepo {
@@ -198,6 +207,30 @@ export class SnapshotsRepo {
             [poolId, fromTs, toTs],
           )
     return rows.map(rowToSnapshot)
+  }
+
+  /**
+   * The health summaries of the snapshots with `fromTs <= timestamp <= toTs`, ascending by
+   * timestamp then insertion order: the series `GET /api/pools/:id/history` scores. No snapshot
+   * JSON is parsed in JS: SQLite extracts the ±2 % sides, the $10,000 spread point (read through
+   * core's price impact cap) and the range HHI, so a week of rows costs a fraction of
+   * `seriesForPool`.
+   */
+  seriesSummaryForPool(poolId: string, fromTs: number, toTs: number): SnapshotHealthSummary[] {
+    const rows = this.ctx.all(
+      `SELECT ${HEALTH_SUMMARY} FROM snapshots
+        WHERE pool_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp, id`,
+      [poolId, fromTs, toTs],
+    )
+    return rows.map(rowToSnapshotHealthSummary)
+  }
+
+  /** Timestamp of the pool's newest snapshot (an index lookup), or null when it has none. */
+  latestTimestampForPool(poolId: string): number | null {
+    const row = this.ctx.get('SELECT MAX(timestamp) AS ts FROM snapshots WHERE pool_id = ?', [
+      poolId,
+    ])
+    return row ? colNumberOrNull(row, 'ts') : null
   }
 
   /** Timestamp of the newest snapshot across all pools, or null when empty. */

@@ -121,6 +121,41 @@ describe('PoolsRepo', () => {
     expect(db.pools.list({ q: '  ' })).toHaveLength(4)
   })
 
+  it('filters by token on either side, exactly, never through a symbol', () => {
+    expect(db.pools.list({ token: FIXTURE_WETH.address }).map((p) => p.id)).toEqual(
+      [V3.id, V4.id, SLIPSTREAM.id].sort(),
+    )
+    expect(db.pools.list({ token: FIXTURE_AERO.address.toUpperCase() as never })).toHaveLength(2)
+    expect(db.pools.list({ token: FIXTURE_AERO.address, dex: 'aerodrome-v2' })).toHaveLength(1)
+    expect(db.pools.count({ token: FIXTURE_USDC.address })).toBe(2)
+    expect(db.pools.count({ token: fixtureAddress(0x999) })).toBe(0)
+    // A symbol that spells another token's address matches `q`, never `token`.
+    db.tokens.upsertMany([{ ...DEGEN, symbol: FIXTURE_USDC.address }])
+    expect(db.pools.count({ q: FIXTURE_USDC.address })).toBe(3)
+    expect(db.pools.count({ token: FIXTURE_USDC.address })).toBe(2)
+    expect(db.pools.list({ token: FIXTURE_USDC.address }).map((p) => p.id)).toEqual(
+      [V3.id, AERO_STABLE.id].sort(),
+    )
+  })
+
+  it('counts what list returns, with and without the token joins', () => {
+    db.pools.setTracked([V3.id], true)
+    const filters = [
+      {},
+      { dex: 'uniswap-v3' as const },
+      { tracked: true },
+      { tracked: false, dex: 'aerodrome-v2' as const },
+      { token: FIXTURE_WETH.address },
+      { token: FIXTURE_WETH.address, tracked: false },
+      { q: 'weth' },
+      { q: 'weth', tracked: true },
+      { q: '  ' },
+    ]
+    for (const filter of filters) {
+      expect(db.pools.count(filter), JSON.stringify(filter)).toBe(db.pools.list(filter).length)
+    }
+  })
+
   it('paginates deterministically', () => {
     const all = db.pools.list().map((p) => p.id)
     expect(db.pools.list({ limit: 2 }).map((p) => p.id)).toEqual(all.slice(0, 2))

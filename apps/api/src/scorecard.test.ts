@@ -5,6 +5,8 @@ import type { ApiContext } from './context.js'
 import {
   compareScorecards,
   loadScorecard,
+  SCORECARD_CACHE_SECONDS,
+  ScorecardCache,
   SUMMARY_WINDOW_SECONDS,
   sortScorecards,
   summaryWindowStart,
@@ -18,7 +20,8 @@ describe('loadScorecard', () => {
   let ctx: ApiContext
   beforeEach(() => {
     ;({ db, seed } = createSeededDatabase())
-    ctx = { db, now: () => seed.now, source: 'live' }
+    const now = () => seed.now
+    ctx = { db, now, scorecards: new ScorecardCache(db, now), source: 'live' }
   })
   afterEach(() => db.close())
 
@@ -80,6 +83,87 @@ describe('loadScorecard', () => {
     const without = toScorecardDto(loadScorecard(ctx, seed.mandates.slipstreamOk))
     expect(without.mandate.alertWebhookConfigured).toBe(false)
   })
+})
+
+describe('ScorecardCache', () => {
+  let db: Database
+  let seed: Seed
+  let clock: number
+  let cache: ScorecardCache
+  beforeEach(() => {
+    ;({ db, seed } = createSeededDatabase())
+    clock = seed.now
+    cache = new ScorecardCache(db, () => clock)
+  })
+  afterEach(() => db.close())
+
+  it('serves the same summary again while the mandate, its samples and the minute are unchanged', () => {
+    const mandate = seed.mandates.slipstreamOk
+    const first = cache.get(mandate)
+    expect(cache.get(mandate)).toBe(first)
+    expect(cache.get({ ...mandate })).toBe(first)
+    clock = minuteOf(seed.now) + SCORECARD_CACHE_SECONDS - 1
+    expect(cache.get(mandate)).toBe(first)
+    expect(cache.size).toBe(1)
+    // A mandate the cache never saw is computed, and the other entry stays.
+    expect(cache.get(seed.mandates.aeroBreached).status).toBe('breached')
+    expect(cache.size).toBe(2)
+    expect(cache.get(mandate)).toBe(first)
+  })
+
+  it('recomputes after a new sample, a re-registration and a new minute', () => {
+    const mandate = seed.mandates.slipstreamOk
+    const first = cache.get(mandate)
+    expect(first.status).toBe('ok')
+
+    db.mmSamples.insert(
+      fixtureMmSample({
+        mandateId: mandate.id,
+        poolId: mandate.poolId,
+        timestamp: seed.now,
+        withinKpi: false,
+        breaches: ['depthDown'],
+      }),
+    )
+    const afterSample = cache.get(mandate)
+    expect(afterSample).not.toBe(first)
+    expect(afterSample.latest?.breaches).toEqual(['depthDown'])
+    expect(afterSample.uptime.d30.samples).toBe(first.uptime.d30.samples + 1)
+    expect(cache.get(mandate)).toBe(afterSample)
+
+    // The write routes need no hook: a changed mandate (from any process) misses the entry.
+    const relaxed = { ...mandate, kpis: { ...mandate.kpis, minDepthUsd: 1 } }
+    db.mandates.upsert(relaxed)
+    const afterUpsert = cache.get(relaxed)
+    expect(afterUpsert).not.toBe(afterSample)
+    expect(afterUpsert.mandate.kpis.minDepthUsd).toBe(1)
+    expect(cache.get(relaxed)).toBe(afterUpsert)
+
+    clock = minuteOf(seed.now) + SCORECARD_CACHE_SECONDS
+    const nextMinute = cache.get(relaxed)
+    expect(nextMinute).not.toBe(afterUpsert)
+    expect(nextMinute).toEqual(summarizeScorecard(relaxed, samplesOf(db, relaxed.id, clock), clock))
+    expect(cache.get(relaxed)).toBe(nextMinute)
+  })
+
+  it('forgets a deleted mandate and starts afresh when it is registered again', () => {
+    const mandate = seed.mandates.aeroBreached
+    expect(cache.get(mandate).status).toBe('breached')
+    db.mandates.delete(mandate.id)
+    db.mmSamples.deleteFor(mandate.id)
+    cache.delete(mandate.id)
+    expect(cache.size).toBe(0)
+    db.mandates.upsert(mandate)
+    expect(cache.get(mandate).status).toBe('no-data')
+  })
+
+  function samplesOf(database: Database, mandateId: string, now: number) {
+    return database.mmSamples.seriesFor(mandateId, summaryWindowStart(now))
+  }
+
+  function minuteOf(ts: number): number {
+    return Math.floor(ts / SCORECARD_CACHE_SECONDS) * SCORECARD_CACHE_SECONDS
+  }
 })
 
 describe('sortScorecards', () => {

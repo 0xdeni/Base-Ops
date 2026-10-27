@@ -102,6 +102,21 @@ describe('MmSamplesRepo', () => {
     expect(db.mmSamples.latestForMany([M1]).get(M1)?.blockNumber).toBe(2n)
   })
 
+  it('reports the newest sample id per mandate as an index lookup', () => {
+    expect(db.mmSamples.latestIdFor(M1)).toBeNull()
+    const first = db.mmSamples.insert(fixtureMmSample({ mandateId: M1, timestamp: 300 }))
+    expect(db.mmSamples.latestIdFor(M1)).toBe(first)
+    // an older sample inserted later does not become the newest
+    db.mmSamples.insert(fixtureMmSample({ mandateId: M1, timestamp: 100 }))
+    expect(db.mmSamples.latestIdFor(M1)).toBe(first)
+    // a tie on the timestamp goes to the later insertion
+    const tie = db.mmSamples.insert(fixtureMmSample({ mandateId: M1, timestamp: 300 }))
+    expect(db.mmSamples.latestIdFor(M1)).toBe(tie)
+    expect(db.mmSamples.latestIdFor(M2)).toBeNull()
+    db.mmSamples.deleteFor(M1)
+    expect(db.mmSamples.latestIdFor(M1)).toBeNull()
+  })
+
   it('returns the latest sample per mandate by timestamp, not insertion order', () => {
     db.mmSamples.insertMany([
       fixtureMmSample({ mandateId: M1, timestamp: 300, withinKpi: false, breaches: ['depthUp'] }),

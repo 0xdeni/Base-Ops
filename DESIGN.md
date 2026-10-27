@@ -228,7 +228,14 @@ Protocol specifics (addresses live in `src/addresses.ts`, overridable via `creat
 bigint columns are TEXT (decimal strings). JSON columns hold the core types with bigint → string.
 Reads apply core's spread cap (`feasibleSpreadBps`): a snapshot stored before it comes back with the points whose legs are above `SPREAD_MAX_LEG_IMPACT_BPS` infeasible, and `SnapshotSummary.spread10kBps` is derived from the stored $10k point, never read from the denormalised `spread10k_bps` column.
 Repositories expose typed methods (`pools.upsertMany`, `snapshots.insert`, `snapshots.latestForPool`, `snapshots.seriesForPool(poolId, fromTs)`,
+`snapshots.seriesSummaryForPool(poolId, fromTs, toTs)` (the `SnapshotHealthSummary` per row: the summary columns plus `rangeHhi`, extracted by
+SQLite, no snapshot JSON parsed; what the history route scores), `snapshots.latestTimestampForPool`, `mmSamples.latestIdFor(mandateId)`,
 `volume.upsertBuckets`, `volume.sumUsd(poolId, fromTs)`, `scores.upsert`, `scores.topBy('health'|'gap'|'depth'|'volume', limit, offset, filters)`…).
+Pool filters (`PoolFilter`, shared by `pools.list/count` and `scores.topBy`): `dex`, `tracked`, `q` (case-insensitive substring of a token
+symbol, token address, pool address or v4 pool id) and `token` (exactly token0 or token1, never a symbol; what `/api/tokens/:address` uses).
+Query plans: the score feeds join `scores s CROSS JOIN pools p` so the scored set drives every count and filtered page whatever the number of
+discovered pools; `pools.count` without `q` reads `pools` alone (no token joins); `db.analyze()` (`ANALYZE`, `PRAGMA analysis_limit` 1000) runs
+at the end of `discover` and `discover --seed`, and `close()` runs `PRAGMA optimize`.
 `@depthwatch/core` exports `serializeBigints`/`reviveBigints` helpers (JSON with `"123n"`-free decimal strings; key-based revival by schema, not by regex).
 
 ## API (apps/api)
@@ -236,7 +243,7 @@ Repositories expose typed methods (`pools.upsertMany`, `snapshots.insert`, `snap
 `createApp(db, opts?: { staticDir?: string })` returns a Hono app. All responses JSON, bigints as decimal strings.
 Every response is gzip- or deflate-compressed when `Accept-Encoding` allows it and carries an `ETag` that answers a
 matching `If-None-Match` with `304`. A successful `GET /api/*` response carries `Cache-Control: public, max-age=30`
-unless the route sets its own (the badge: `public, max-age=300`); `/api/health` sends none.
+unless the route sets its own (the badge: `public, max-age=300`; a pool's history: `public, max-age=60`); `/api/health` sends none.
 - `GET /api/health?maxAge=` → `{ ok, poolCount, trackedCount, latestSnapshotAt, snapshotAgeSeconds, latestBlock, source }`;
   `snapshotAgeSeconds` is the server clock minus `latestSnapshotAt` (`null` before the first snapshot). `503 { ok: false, error }`
   when the database cannot be read (zero counts) or, with `maxAge` (a positive integer of seconds), when `snapshotAgeSeconds`
@@ -244,7 +251,8 @@ unless the route sets its own (the badge: `public, max-age=300`); `/api/health` 
 - `GET /api/stats` → totals by dex: pools, tracked, scored, rated, depth2Usd sum, volume24hUsd sum, median health over rated pools
 - `GET /api/pools?sort=health|depth|volume|gap|tvl&dir=asc|desc&dex=&q=&minVolume=&rated=true|false&limit=&offset=` → `{ items: PoolSummary[], total }` (sorting by health puts unrated pools last in both directions)
 - `GET /api/pools/:id` → `{ pool, latest: PoolSnapshot, score: HealthScore, gap, persistence24h, persistence7d, volume24hUsd }`
-- `GET /api/pools/:id/history?window=24h|7d` → `{ points: Array<{ timestamp, depth2Usd, spread10kBps, health, price }> }`
+- `GET /api/pools/:id/history?window=24h|7d` → `{ points: Array<{ timestamp, depth2Usd, spread10kBps, health, price }> }`, built from
+  `snapshots.seriesSummaryForPool` (health recomputed per point by core); `Cache-Control: public, max-age=60`
 - `GET /api/gaps?limit=` → ranked gaps feed (volume ≥ $10k) with pool summary + gap metrics
 - `GET /api/tokens/:address` → token info, USD price, pools containing it with latest depth
 - `GET /AGENTS.md`, `GET /llms.txt`, `GET /openapi.json` → the documents for AI agents (usage guide, llms.txt index,

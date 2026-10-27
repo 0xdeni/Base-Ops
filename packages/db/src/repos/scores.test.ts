@@ -173,6 +173,23 @@ describe('ScoresRepo', () => {
     expect(ids(db.scores.topBy('health', { q: fixtureAddress(2) }).items)).toEqual([B.id])
     expect(ids(db.scores.topBy('health', { q: 'cdcdcd' }).items)).toEqual([C.id])
     expect(db.scores.topBy('health', { q: 'zzz' })).toEqual({ items: [], total: 0 })
+    // token: exactly token0 or token1, whatever a symbol spells
+    db.tokens.upsertMany([{ ...DEGEN, symbol: FIXTURE_USDC.address }])
+    expect(ids(db.scores.topBy('health', { q: FIXTURE_USDC.address }).items)).toEqual([
+      A.id,
+      B.id,
+      C.id,
+    ])
+    const byToken = db.scores.topBy('health', { token: FIXTURE_USDC.address })
+    expect(ids(byToken.items)).toEqual([A.id, B.id])
+    expect(byToken.total).toBe(2)
+    expect(ids(db.scores.topBy('tvl', { token: FIXTURE_WETH.address, dir: 'asc' }).items)).toEqual(
+      ids(db.scores.topBy('tvl', { dir: 'asc' }).items).filter((id) => id !== B.id),
+    )
+    expect(db.scores.topBy('health', { token: fixtureAddress(0x999) })).toEqual({
+      items: [],
+      total: 0,
+    })
 
     const byVolume = db.scores.topBy('volume', { minVolumeUsd: 10_000 })
     expect(ids(byVolume.items)).toEqual([A.id, B.id])

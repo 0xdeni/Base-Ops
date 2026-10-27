@@ -8,6 +8,7 @@ import type {
   ErrorResponse,
   ScorecardDetail,
   ScorecardSummaryDto,
+  ScorecardsResponse,
 } from '../dto.js'
 import { createSeededDatabase, type Seed } from '../testing/seed.js'
 
@@ -191,6 +192,12 @@ describe('POST /api/mm', () => {
     expect(body.uptime.d7.samples).toBe(25)
     expect(db.mmSamples.countFor(existing.id)).toBe(25)
     expect(db.mandates.count()).toBe(2)
+    // The reads serve the re-registered mandate at once, not a summary of the old one.
+    const detail = (await (await app.request(`/api/mm/${existing.id}`)).json()) as ScorecardDetail
+    expect(detail.mandate.kpis.minDepthUsd).toBe(5_000)
+    expect(detail.mandate.notes).toBe('relaxed')
+    const list = (await (await app.request('/api/mm')).json()) as ScorecardsResponse
+    expect(list.items.find((i) => i.mandate.id === existing.id)?.mandate.notes).toBe('relaxed')
   })
 
   it('honours an explicit createdAt and active', async () => {

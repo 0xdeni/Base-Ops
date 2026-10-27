@@ -1,7 +1,7 @@
 export type { RunResult } from './context.js'
 export { SqlContext } from './context.js'
 export type { Database, OpenDatabaseOptions } from './database.js'
-export { IN_MEMORY, openDatabase } from './database.js'
+export { ANALYSIS_LIMIT, IN_MEMORY, openDatabase } from './database.js'
 export * from './fixtures.js'
 export type { MandateListOptions } from './repos/mandates.js'
 export { MandatesRepo } from './repos/mandates.js'
@@ -33,11 +33,17 @@ export { VolumeRepo } from './repos/volume.js'
 export type { MigrationResult } from './schema.js'
 export { applyMigrations, currentVersion, MIGRATIONS, SCHEMA_VERSION } from './schema.js'
 export { likeContains, normalizeAddress } from './sql.js'
-export type { SnapshotDepthSides, SnapshotSummary, SnapshotSummaryFields } from './summary.js'
+export type {
+  SnapshotDepthSides,
+  SnapshotHealthSummary,
+  SnapshotSummary,
+  SnapshotSummaryFields,
+} from './summary.js'
 export {
   SUMMARY_DEPTH_PCT,
   SUMMARY_SPREAD_NOTIONAL_USD,
   snapshotDepthSides,
+  snapshotHealthSummary,
   snapshotSummary,
   snapshotSummaryFields,
 } from './summary.js'

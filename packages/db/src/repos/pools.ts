@@ -2,6 +2,7 @@ import type { PoolMeta } from '@depthwatch/core'
 import type { SqlContext } from '../context.js'
 import { colNumber, colText, jsonList, normalizeAddress, page } from '../sql.js'
 import {
+  filterReadsTokens,
   POOL_FROM,
   POOL_SELECT,
   type PoolFilter,
@@ -108,9 +109,15 @@ export class PoolsRepo {
     return rows.map(rowToPoolRecord)
   }
 
+  /**
+   * Pools matching the filter. Only `q` reads token columns, so every other count runs on `pools`
+   * alone (its indexes, no join): `upsertMany` writes both token rows with every pool, so the
+   * joins would change nothing and cost a scan of every pool.
+   */
   count(filter: PoolFilter = {}): number {
     const { clauses, params } = poolFilterClauses(filter)
-    const row = this.ctx.get(`SELECT COUNT(*) AS n FROM ${POOL_FROM} ${whereSql(clauses)}`, params)
+    const from = filterReadsTokens(filter) ? POOL_FROM : 'pools p'
+    const row = this.ctx.get(`SELECT COUNT(*) AS n FROM ${from} ${whereSql(clauses)}`, params)
     return row ? colNumber(row, 'n') : 0
   }
 

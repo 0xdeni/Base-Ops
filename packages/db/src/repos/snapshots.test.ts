@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type Database, openDatabase } from '../database.js'
 import { FIXTURE_BIG, fixtureSnapshot } from '../fixtures.js'
-import { snapshotDepthSides, snapshotSummary, snapshotSummaryFields } from '../summary.js'
+import {
+  snapshotDepthSides,
+  snapshotHealthSummary,
+  snapshotSummary,
+  snapshotSummaryFields,
+} from '../summary.js'
 
 const A = 'uniswap-v3:0x000000000000000000000000000000000000000a'
 const B = 'aerodrome-v2:0x000000000000000000000000000000000000000b'
@@ -199,6 +204,55 @@ describe('SnapshotsRepo', () => {
     expect(summaries.get('uniswap-v3:0xc')?.spread10kBps).toBeNull()
     // a point within the cap is returned as stored, to the last digit
     expect(db.snapshots.latestForPool(B)?.spreads).toEqual(wide.spreads)
+    // the summary series reads the stored point through the cap as well, never the column
+    expect(db.snapshots.seriesSummaryForPool(A, 0, 100).map((s) => s.spread10kBps)).toEqual([null])
+    expect(db.snapshots.seriesSummaryForPool(B, 0, 100).map((s) => s.spread10kBps)).toEqual([
+      6_902.55,
+    ])
+  })
+
+  it('serves a summary series equal to the summaries of the full rows, without parsing them', () => {
+    const priced = fixtureSnapshot({ poolId: A, timestamp: 10 })
+    const unpriced = fixtureSnapshot({
+      poolId: A,
+      timestamp: 20,
+      concentration: null,
+      depth2Usd: null,
+      spread10kBps: null,
+      token0Usd: null,
+      token1Usd: null,
+      tvlUsd: null,
+    })
+    const oneSided = fixtureSnapshot({
+      poolId: A,
+      timestamp: 30,
+      depthUsd: [{ pct: 2, upUsd: 1234.5, downUsd: null, totalUsd: 1234.5 }],
+      concentration: { ...fixtureSnapshot().concentration, rangeHhi: null } as never,
+    })
+    db.snapshots.insertMany([
+      fixtureSnapshot({ poolId: B, timestamp: 15 }),
+      oneSided,
+      priced,
+      unpriced,
+      fixtureSnapshot({ poolId: A, timestamp: 40 }),
+    ])
+    const series = db.snapshots.seriesSummaryForPool(A, 10, 30)
+    expect(series).toEqual(db.snapshots.seriesForPool(A, 10, 30).map(snapshotHealthSummary))
+    expect(series.map((s) => s.updatedAt)).toEqual([10, 20, 30])
+    expect(series[0]).toEqual({ ...snapshotSummary(priced), rangeHhi: 0.25 })
+    expect(series[1]).toMatchObject({
+      depth2Usd: null,
+      depth2UpUsd: null,
+      depth2DownUsd: null,
+      spread10kBps: null,
+      ownerTop1Share: null,
+      rangeHhi: null,
+      tvlUsd: null,
+    })
+    expect(series[2]).toMatchObject({ depth2UpUsd: 1234.5, depth2DownUsd: null, rangeHhi: null })
+    expect(series.every((s) => s.poolId === A && typeof s.blockNumber === 'bigint')).toBe(true)
+    expect(db.snapshots.seriesSummaryForPool(A, 11, 19)).toEqual([])
+    expect(db.snapshots.seriesSummaryForPool('missing', 0, 100)).toEqual([])
   })
 
   it('lists the ±2 % sides exactly as stored: a null side stays null, never 0', () => {
@@ -253,6 +307,9 @@ describe('SnapshotsRepo', () => {
     expect(summaries.get(B)?.updatedAt).toBe(60)
 
     expect(db.snapshots.latestTimestamp()).toBe(300)
+    expect(db.snapshots.latestTimestampForPool(A)).toBe(300)
+    expect(db.snapshots.latestTimestampForPool(B)).toBe(60)
+    expect(db.snapshots.latestTimestampForPool('missing')).toBeNull()
     expect(db.snapshots.countForPool(A)).toBe(3)
     expect(db.snapshots.countForPool(B)).toBe(2)
   })

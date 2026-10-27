@@ -310,6 +310,38 @@ describe('GET /api/mm/:id/badge.svg', () => {
     expect(greySvg).toContain(`fill="${BADGE_COLOURS['no-data']}"`)
   })
 
+  it('answers a matching If-None-Match with 304 and serves one summary per mandate', async () => {
+    const path = `/api/mm/${seed.mandates.slipstreamOk.id}/badge.svg`
+    const first = await app.request(path)
+    const tag = first.headers.get('etag')
+    expect(tag).toMatch(/^"/)
+    const again = await app.request(path, { headers: { 'if-none-match': tag ?? '' } })
+    expect(again.status).toBe(304)
+    expect(await again.text()).toBe('')
+    expect(again.headers.get('etag')).toBe(tag)
+    // The list, the detail and the badge read the same summary; a new sample changes all three.
+    const list = (await (await app.request('/api/mm')).json()) as ScorecardsResponse
+    const ok = list.items.find((i) => i.mandate.id === seed.mandates.slipstreamOk.id)
+    expect(ok?.status).toBe('ok')
+    db.mmSamples.insert(
+      fixtureMmSample({
+        mandateId: seed.mandates.slipstreamOk.id,
+        poolId: seed.pools.wethAeroSlip.id,
+        timestamp: seed.now,
+        withinKpi: false,
+        breaches: ['spread'],
+      }),
+    )
+    const changed = await app.request(path, { headers: { 'if-none-match': tag ?? '' } })
+    expect(changed.status).toBe(200)
+    expect(await changed.text()).toContain('>breached · 7d')
+    const detail = (await (
+      await app.request(`/api/mm/${seed.mandates.slipstreamOk.id}`)
+    ).json()) as ScorecardDetail
+    expect(detail.status).toBe('breached')
+    expect(detail.latest?.breaches).toEqual(['spread'])
+  })
+
   it('404s (JSON) for unknown mandates and is readable cross-origin', async () => {
     const missing = await app.request('/api/mm/nope/badge.svg')
     expect(missing.status).toBe(404)

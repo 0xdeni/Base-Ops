@@ -15,6 +15,7 @@ import type { ApiContext } from './context.js'
 import type { DataSource, ErrorResponse } from './dto.js'
 import { agentDocsRoutes } from './routes/agentDocs.js'
 import { createApiRouter } from './routes/index.js'
+import { ScorecardCache } from './scorecard.js'
 import { mountStatic, staticDirExists } from './static.js'
 
 export interface CreateAppOptions {
@@ -40,9 +41,11 @@ const NOT_FOUND: ErrorResponse = { error: 'not found' }
 const INTERNAL: ErrorResponse = { error: 'internal error' }
 
 export function createApp(db: Database, opts: CreateAppOptions = {}): Hono {
+  const now = opts.now ?? (() => Math.floor(Date.now() / 1000))
   const ctx: ApiContext = {
     db,
-    now: opts.now ?? (() => Math.floor(Date.now() / 1000)),
+    now,
+    scorecards: new ScorecardCache(db, now),
     adminToken: opts.adminToken,
     source: opts.source ?? 'live',
   }

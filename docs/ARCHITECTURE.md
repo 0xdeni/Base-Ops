@@ -135,7 +135,7 @@ for concentrated pools with an active mandate whether or not they are tracked ye
 
 Layer 2 ([SCORECARDS.md](SCORECARDS.md)) adds no pipeline step. A mandate (`mandates` table) names
 one pool, the market maker's addresses and its KPIs; sampling runs inside `snapshot`, alerts are
-delivered right after, and the API computes summaries on request.
+delivered right after, and the API summarises the samples (once per mandate, new sample or minute).
 
 ```
                  ┌────────────┐                     ┌────────────┐
@@ -570,11 +570,12 @@ sizes), which the readers guarantee.
 `createApp(db, { staticDir, adminToken })` returns a Hono app, so API tests run through
 `app.request()` against an in-memory database with no server. Every route is listed in the README;
 DESIGN.md lists the layer-1 ones and [design/scorecards.md](design/scorecards.md) §6 the scorecard
-ones. The scorecard routes (`/api/mm…`) compute each `ScorecardSummary` on request from the
-mandate's samples of the last 30 days through core's `summarizeScorecard`; the badge is an SVG
-with a 5-minute cache header. Responses are compressed when the client accepts it, carry an
-`ETag`, and `GET /api/*` reads other than `/api/health` a 30-second `Cache-Control`
-(`apps/api/src/caching.ts`); `/api/health?maxAge=<seconds>` answers 503 when the newest snapshot
+ones. The scorecard routes (`/api/mm…`) compute each `ScorecardSummary` from the mandate's
+samples of the last 30 days through core's `summarizeScorecard`, keeping the last summary per
+mandate until a new sample, a changed mandate or a new minute; the badge is an SVG with a
+5-minute cache header. Responses are compressed when the client accepts it, carry an `ETag`, and
+`GET /api/*` reads other than `/api/health` a 30-second `Cache-Control` (a pool's history: 60 s;
+`apps/api/src/caching.ts`); `/api/health?maxAge=<seconds>` answers 503 when the newest snapshot
 is older, so a probe can fail on stale data. `POST /api/mm` and `DELETE /api/mm/:id` require
 `Authorization: Bearer <adminToken>` (`DEPTHWATCH_ADMIN_TOKEN`, which `serve` and `demo` pass
 through; environment only, no flag); without a configured token they answer 403, so a public

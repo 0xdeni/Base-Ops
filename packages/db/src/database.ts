@@ -48,10 +48,19 @@ export interface Database {
   readonly mmAlerts: MmAlertsRepo
   /** Runs `fn` in `BEGIN IMMEDIATE … COMMIT`, rolling back on throw; nested calls join the outer one. */
   transaction<T>(fn: () => T): T
-  /** Closes the connection. Safe to call more than once. */
+  /**
+   * Refreshes the planner statistics (`ANALYZE`, sampling at most `ANALYSIS_LIMIT` rows per
+   * index) after a bulk write of pools, so the dex-filtered feeds and `statsByDex` search the
+   * small side of a join first. Costs milliseconds; the pipeline runs it after discovery.
+   */
+  analyze(): void
+  /** Runs `PRAGMA optimize` and closes the connection. Safe to call more than once. */
   close(): void
   readonly isOpen: boolean
 }
+
+/** Rows `ANALYZE` and `PRAGMA optimize` sample per index: SQLite's recommended 100–1000 range. */
+export const ANALYSIS_LIMIT = 1000
 
 type SqliteModule = typeof import('node:sqlite')
 
@@ -107,9 +116,19 @@ class SqliteDatabase implements Database {
     return this.ctx.transaction(fn)
   }
 
+  analyze(): void {
+    this.raw.exec('ANALYZE')
+  }
+
   close(): void {
     if (!this.open) return
     this.open = false
+    try {
+      // SQLite's advice for a long-lived connection: refresh stale statistics before closing.
+      this.raw.exec('PRAGMA optimize')
+    } catch {
+      // A database that cannot be written (a read-only file) keeps the statistics it has.
+    }
     this.raw.close()
   }
 }
@@ -127,6 +146,7 @@ export function openDatabase(path: string, options: OpenDatabaseOptions = {}): D
       raw.exec('PRAGMA busy_timeout = 5000')
     }
     raw.exec('PRAGMA temp_store = MEMORY')
+    raw.exec(`PRAGMA analysis_limit = ${ANALYSIS_LIMIT}`)
     const migration = applyMigrations(raw, now)
     return new SqliteDatabase(path, raw, migration, new SqlContext(raw, now))
   } catch (error) {
