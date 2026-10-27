@@ -1,0 +1,14 @@
+/* Depthwatch v3 stylesheet entry (docs/design/visual-v3.md §3, §5, §7). Order matters: tokens and
+   fonts first, then base, the shell, components, states and motion last. Chart and page sheets are
+   imported by their components and load after this one (main.tsx imports it first). */
+@import "./tokens.css";
+@import "./fonts.css";
+@import "./base.css";
+@import "./shell.css";
+@import "./controls.css";
+@import "./content.css";
+@import "./tables.css";
+@import "./layers.css";
+@import "./states.css";
+@import "./embed.css";
+@import "./motion.css";

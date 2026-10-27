@@ -1,0 +1,102 @@
+/* Shared chart parts (docs/design/visual-v3.md §3.3 "Chart text", §5.9, CH1, CH6): axis text in
+   12 px / 500 `text-3`, sans with tabular figures, never mono; direct labels 14 px / 500 `text-1`
+   with a 4 px canvas halo; legends as inline words with 8 px swatches; the focus ring of a chart. */
+
+.chart-svg {
+  display: block;
+  /* A percentage max-width keeps the drawn width from widening its own container (the width is
+     measured, then drawn at exactly that size). */
+  max-width: 100%;
+  overflow: visible;
+  touch-action: pan-y;
+}
+.chart-text {
+  font-family: var(--sans);
+  font-size: var(--t-caption);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  fill: var(--text-3);
+}
+.chart-text.is-strong {
+  fill: var(--text-2);
+}
+.chart-label {
+  font-family: var(--sans);
+  font-size: var(--t-data);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  fill: var(--text-1);
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.halo-well {
+  paint-order: stroke;
+  stroke: var(--well);
+  stroke-width: 6px;
+  stroke-linejoin: round;
+}
+.halo-canvas {
+  paint-order: stroke;
+  stroke: var(--canvas);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.chart-focus:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+/* Swatches (8 px, radius 2) and legends (13 px `text-2`, 24 px apart). */
+.sw {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: var(--s2);
+}
+.sw.sell {
+  background: var(--sell);
+}
+.sw.buy {
+  background: var(--buy);
+}
+.sw.band {
+  background: var(--bad-mark);
+  opacity: 0.35;
+}
+.tip .sw {
+  margin-right: 0;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s5);
+  font-size: var(--t-small);
+  line-height: 1.385;
+  color: var(--text-2);
+}
+.legend > span {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* The foot row under a figure: Show data (and a scrub caption). */
+.chart-foot {
+  margin-top: var(--s3);
+}
+.chart-note {
+  font-size: var(--t-data);
+  line-height: 1.43;
+  color: var(--text-2);
+}
+
+@media (forced-colors: active) {
+  .sw {
+    forced-color-adjust: none;
+  }
+}

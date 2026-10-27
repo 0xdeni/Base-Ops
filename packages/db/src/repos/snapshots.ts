@@ -1,0 +1,231 @@
+import {
+  BIGINT_KEYS,
+  type ConcentrationMetrics,
+  type DepthLevel,
+  type DepthLevelUsd,
+  jsonStringify,
+  type PoolSnapshot,
+  reviveBigints,
+  type SpreadPoint,
+} from '@depthwatch/core'
+import type { SqlContext } from '../context.js'
+import {
+  colBigint,
+  colJsonOrNull,
+  colNumber,
+  colNumberOrNull,
+  colText,
+  colTextOrNull,
+  jsonList,
+  type Row,
+} from '../sql.js'
+import {
+  capSpreadPoint,
+  type SnapshotSummary,
+  SUMMARY_DEPTH_PCT,
+  SUMMARY_SPREAD_NOTIONAL_USD,
+  snapshotSummaryFields,
+  spread10kFromStoredPoint,
+} from '../summary.js'
+
+const COLUMNS = `id, pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd,
+  active_liquidity, depth_json, depth_usd_json, spreads_json, concentration_json,
+  depth2_usd, spread10k_bps, owner_top1_share`
+
+const SUMMARY_COLUMNS = `id, pool_id, block_number, timestamp, price, tvl_usd,
+  depth2_usd, owner_top1_share`
+
+/**
+ * SQL for one side of a snapshot's ±2 % USD level, read from its `depth_usd_json` ladder: NULL
+ * when that side is unpriced or the ladder has no ±2 % level. `ladder` is a fixed column
+ * reference written by this package, never user input.
+ */
+export function depth2SideSql(ladder: string, side: 'upUsd' | 'downUsd'): string {
+  return `(SELECT json_extract(d.value, '$.${side}') FROM json_each(${ladder}) AS d
+    WHERE json_extract(d.value, '$.pct') = ${SUMMARY_DEPTH_PCT} LIMIT 1)`
+}
+
+/**
+ * SQL for a snapshot's $10,000 spread point as JSON text, NULL when it has none. The stored
+ * `spread10k_bps` column is not read: a row inserted before the price impact cap holds the
+ * uncapped number, so the point goes through core's rule in JS (`spread10kFromStoredPoint`).
+ * `spreads` is a fixed column reference written by this package, never user input.
+ */
+export function spread10kPointSql(spreads: string): string {
+  return `(SELECT d.value FROM json_each(${spreads}) AS d
+    WHERE json_extract(d.value, '$.notionalUsd') = ${SUMMARY_SPREAD_NOTIONAL_USD} LIMIT 1)`
+}
+
+/** The summary columns of the newest-row query: the ±2 % sides and the $10k point come from JSON. */
+const SUMMARY_OUTER = `${SUMMARY_COLUMNS},
+  ${depth2SideSql('depth_usd_json', 'upUsd')} AS depth2_up_usd,
+  ${depth2SideSql('depth_usd_json', 'downUsd')} AS depth2_down_usd,
+  ${spread10kPointSql('spreads_json')} AS spread10k_point`
+
+const INSERT = `INSERT INTO snapshots (
+    pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd, active_liquidity,
+    depth_json, depth_usd_json, spreads_json, concentration_json,
+    depth2_usd, spread10k_bps, owner_top1_share
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+/**
+ * Newest row per pool: highest timestamp, then highest id (insertion order) as the tie-break.
+ * `outer` selects from the newest rows only (defaults to `columns`).
+ */
+const LATEST_PER_POOL = (columns: string, outer = columns) => `SELECT ${outer} FROM (
+    SELECT ${columns}, ROW_NUMBER() OVER (PARTITION BY pool_id ORDER BY timestamp DESC, id DESC) AS rn
+    FROM snapshots WHERE pool_id IN (SELECT value FROM json_each(?))
+  ) WHERE rn = 1 ORDER BY pool_id`
+
+export function rowToSnapshot(row: Row): PoolSnapshot {
+  const price = colNumber(row, 'price')
+  return {
+    poolId: colText(row, 'pool_id'),
+    blockNumber: colBigint(row, 'block_number'),
+    timestamp: colNumber(row, 'timestamp'),
+    price,
+    token0Usd: colNumberOrNull(row, 'token0_usd'),
+    token1Usd: colNumberOrNull(row, 'token1_usd'),
+    tvlUsd: colNumberOrNull(row, 'tvl_usd'),
+    activeLiquidity: colBigint(row, 'active_liquidity'),
+    depth: reviveBigints<DepthLevel[]>(JSON.parse(colText(row, 'depth_json')), BIGINT_KEYS),
+    depthUsd: JSON.parse(colText(row, 'depth_usd_json')) as DepthLevelUsd[],
+    // Under today's price impact cap: a point stored before it reads as infeasible.
+    spreads: (JSON.parse(colText(row, 'spreads_json')) as SpreadPoint[]).map((point) =>
+      capSpreadPoint(point, price),
+    ),
+    concentration: colJsonOrNull<ConcentrationMetrics>(row, 'concentration_json'),
+  }
+}
+
+export function rowToSnapshotSummary(row: Row): SnapshotSummary {
+  const price = colNumber(row, 'price')
+  return {
+    poolId: colText(row, 'pool_id'),
+    blockNumber: colBigint(row, 'block_number'),
+    updatedAt: colNumber(row, 'timestamp'),
+    price,
+    tvlUsd: colNumberOrNull(row, 'tvl_usd'),
+    depth2Usd: colNumberOrNull(row, 'depth2_usd'),
+    spread10kBps: spread10kFromStoredPoint(colTextOrNull(row, 'spread10k_point'), price),
+    ownerTop1Share: colNumberOrNull(row, 'owner_top1_share'),
+    depth2UpUsd: colNumberOrNull(row, 'depth2_up_usd'),
+    depth2DownUsd: colNumberOrNull(row, 'depth2_down_usd'),
+  }
+}
+
+export class SnapshotsRepo {
+  constructor(private readonly ctx: SqlContext) {}
+
+  /** Appends one snapshot and returns its row id. */
+  insert(snapshot: PoolSnapshot): number {
+    const summary = snapshotSummaryFields(snapshot)
+    return this.ctx.run(INSERT, [
+      snapshot.poolId,
+      snapshot.blockNumber,
+      snapshot.timestamp,
+      snapshot.price,
+      snapshot.token0Usd,
+      snapshot.token1Usd,
+      snapshot.tvlUsd,
+      snapshot.activeLiquidity,
+      jsonStringify(snapshot.depth),
+      JSON.stringify(snapshot.depthUsd),
+      JSON.stringify(snapshot.spreads),
+      snapshot.concentration === null ? null : JSON.stringify(snapshot.concentration),
+      summary.depth2Usd,
+      summary.spread10kBps,
+      summary.ownerTop1Share,
+    ]).lastInsertRowid
+  }
+
+  insertMany(snapshots: readonly PoolSnapshot[]): number {
+    if (snapshots.length === 0) return 0
+    return this.ctx.transaction(() => {
+      for (const snapshot of snapshots) this.insert(snapshot)
+      return snapshots.length
+    })
+  }
+
+  latestForPool(poolId: string): PoolSnapshot | undefined {
+    const row = this.ctx.get(
+      `SELECT ${COLUMNS} FROM snapshots WHERE pool_id = ? ORDER BY timestamp DESC, id DESC LIMIT 1`,
+      [poolId],
+    )
+    return row ? rowToSnapshot(row) : undefined
+  }
+
+  /** The newest snapshot of each pool, in one query. Pools without snapshots are absent. */
+  latestForPools(poolIds: readonly string[]): Map<string, PoolSnapshot> {
+    const out = new Map<string, PoolSnapshot>()
+    if (poolIds.length === 0) return out
+    for (const row of this.ctx.all(LATEST_PER_POOL(COLUMNS), [jsonList([...poolIds])])) {
+      const snapshot = rowToSnapshot(row)
+      out.set(snapshot.poolId, snapshot)
+    }
+    return out
+  }
+
+  /**
+   * Lightweight variant of latestForPools: only the summary columns and no snapshot JSON parsed in
+   * JS: SQLite extracts the ±2 % sides from the newest rows' ladders and the $10,000 spread point,
+   * the one point read through core's price impact cap.
+   */
+  latestSummaryForPools(poolIds: readonly string[]): Map<string, SnapshotSummary> {
+    const out = new Map<string, SnapshotSummary>()
+    if (poolIds.length === 0) return out
+    const sql = LATEST_PER_POOL(`${SUMMARY_COLUMNS}, depth_usd_json, spreads_json`, SUMMARY_OUTER)
+    for (const row of this.ctx.all(sql, [jsonList([...poolIds])])) {
+      const summary = rowToSnapshotSummary(row)
+      out.set(summary.poolId, summary)
+    }
+    return out
+  }
+
+  /**
+   * Snapshots with `fromTs <= timestamp` (and `timestamp <= toTs` when given), ascending by
+   * timestamp then insertion order.
+   */
+  seriesForPool(poolId: string, fromTs: number, toTs?: number): PoolSnapshot[] {
+    const rows =
+      toTs === undefined
+        ? this.ctx.all(
+            `SELECT ${COLUMNS} FROM snapshots WHERE pool_id = ? AND timestamp >= ? ORDER BY timestamp, id`,
+            [poolId, fromTs],
+          )
+        : this.ctx.all(
+            `SELECT ${COLUMNS} FROM snapshots WHERE pool_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp, id`,
+            [poolId, fromTs, toTs],
+          )
+    return rows.map(rowToSnapshot)
+  }
+
+  /** Timestamp of the newest snapshot across all pools, or null when empty. */
+  latestTimestamp(): number | null {
+    const row = this.ctx.get('SELECT MAX(timestamp) AS ts FROM snapshots')
+    return row ? colNumberOrNull(row, 'ts') : null
+  }
+
+  /** Block number of the newest snapshot (by timestamp, then insertion order), or null when empty. */
+  latestBlock(): bigint | null {
+    const row = this.ctx.get(
+      'SELECT block_number FROM snapshots ORDER BY timestamp DESC, id DESC LIMIT 1',
+    )
+    return row ? colBigint(row, 'block_number') : null
+  }
+
+  /** Deletes snapshots with `timestamp < ts`. Returns the number deleted. */
+  pruneBefore(ts: number): number {
+    return this.ctx.run('DELETE FROM snapshots WHERE timestamp < ?', [ts]).changes
+  }
+
+  count(): number {
+    const row = this.ctx.get('SELECT COUNT(*) AS n FROM snapshots')
+    return row ? colNumber(row, 'n') : 0
+  }
+
+  countForPool(poolId: string): number {
+    const row = this.ctx.get('SELECT COUNT(*) AS n FROM snapshots WHERE pool_id = ?', [poolId])
+    return row ? colNumber(row, 'n') : 0
+  }
+}

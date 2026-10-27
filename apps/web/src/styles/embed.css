@@ -1,0 +1,54 @@
+/* Embed badge (docs/design/visual-v3.md §5.11): the API's badge SVG unaltered in a well, copy
+   buttons, a cache note, and mono code blocks behind "Show code". */
+
+.badge-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+.badge-prev {
+  display: inline-flex;
+  padding: var(--s4);
+  border-radius: var(--r-code);
+  background: var(--well);
+}
+.badge-prev img {
+  display: block;
+  height: 20px;
+}
+/* The two copy buttons move as one unit: never one beside the preview and one below it. */
+.copy-row {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: var(--s4);
+}
+/* Phones: the preview alone, then the button pair on the next row, whatever the badge's width. */
+@media (max-width: 52.49em) {
+  .badge-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+.code-label {
+  font-size: var(--t-small);
+  line-height: 1.385;
+  color: var(--text-2);
+  margin: var(--s3) 0 var(--s1);
+}
+.codeblock {
+  margin: 0;
+  background: var(--well);
+  border-radius: var(--r-code);
+  padding: var(--s3) var(--s4);
+  font-family: var(--mono);
+  font-size: var(--t-small);
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--text-1);
+}
+.codeblock:focus-visible {
+  outline-offset: -2px;
+}

@@ -1,0 +1,363 @@
+/* Controls (docs/design/visual-v3.md §5.2–§5.4): buttons, icon buttons, the back link, disclosure
+   triggers, the segmented control, search and checkbox. Press, hover and thumb motion live in
+   motion.css (no-motion first). */
+
+/* ---------- Buttons (K1) ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--r-ctl);
+  font-size: var(--t-data);
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.43;
+  white-space: nowrap;
+  user-select: none;
+}
+.btn.primary {
+  background: var(--text-1);
+  color: var(--canvas);
+}
+.btn.secondary {
+  border: 1px solid var(--control);
+  color: var(--text-1);
+}
+.btn.quiet {
+  color: var(--text-1);
+  padding: 0 8px;
+}
+.btn svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.btn.is-loading {
+  cursor: progress;
+}
+.btn .spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  flex: none;
+}
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-ctl);
+  color: var(--text-2);
+  position: relative;
+  flex: none;
+}
+.icon-btn::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+@media (pointer: coarse) {
+  .btn {
+    height: 44px;
+  }
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .icon-btn::after {
+    inset: 0;
+  }
+}
+
+/* ---------- Back link (K2) ---------- */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  justify-self: start;
+  margin: 0 0 var(--s2) -4px;
+  min-height: 24px;
+  padding-right: 6px;
+  font-size: var(--t-small);
+  font-weight: 500;
+  line-height: 1.385;
+  color: var(--text-2);
+  border-radius: var(--r-ctl);
+}
+.back svg {
+  width: 16px;
+  height: 16px;
+}
+@media (pointer: coarse) {
+  .back {
+    min-height: 44px;
+    margin-block: -10px -2px;
+  }
+}
+
+/* ---------- Disclosure trigger and panel (K10) ---------- */
+/* A long label wraps on narrow phones instead of widening the page; the row keeps its 32 px (44 px
+   on touch) minimum. */
+.disc-btn {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 32px;
+  padding: var(--s1) 8px var(--s1) 0;
+  color: var(--text-1);
+  font-size: var(--t-data);
+  font-weight: 500;
+  line-height: 1.43;
+  text-align: left;
+  border-radius: var(--r-ctl);
+}
+/* A label wraps only when the row is narrower than it, and the chevron rides 6 px after its last
+   word (never at the edge). Only the long phone label ("Show 5 pools under 3×") balances: balance
+   can break a one- or two-word label that fits ("Show / formula"). */
+.disc-label {
+  text-wrap: pretty;
+}
+.disc-label.is-short {
+  text-wrap: balance;
+}
+.disc-tail {
+  white-space: nowrap;
+}
+.disc-btn .chev {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  vertical-align: -3px;
+  color: var(--text-2);
+}
+.disc-label.is-short {
+  display: none;
+}
+@media (max-width: 52.49em) {
+  .disc-label.is-long {
+    display: none;
+  }
+  .disc-label.is-short {
+    display: inline;
+  }
+}
+.disc-btn[aria-expanded="true"] .chev {
+  transform: rotate(180deg);
+}
+/* Hover is a layer bleeding 8 px left; the padding never changes. */
+.disc-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 -8px;
+  z-index: -1;
+  border-radius: var(--r-ctl);
+  background: var(--hover);
+  opacity: 0;
+}
+@media (pointer: coarse) {
+  .disc-btn {
+    min-height: 44px;
+  }
+}
+.disc-panel {
+  overflow: hidden;
+}
+.disc-panel[hidden] {
+  display: none;
+}
+.disc-inner {
+  padding-top: var(--s4);
+}
+/* Phone-only disclosures (About and Mandate lists, L3): always open from 840 px. */
+@media (min-width: 52.5em) {
+  .ph-disc > .disc-btn {
+    display: none;
+  }
+  .ph-disc > .disc-panel[hidden] {
+    display: block;
+  }
+  .ph-disc > .disc-panel > .disc-inner {
+    padding-top: 0;
+  }
+}
+
+/* ---------- Segmented control (K4) ---------- */
+.seg {
+  position: relative;
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--r-ctl);
+  background: var(--well);
+  height: 32px;
+  isolation: isolate;
+  max-width: 100%;
+}
+.seg-item {
+  position: relative;
+  z-index: 1;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--r-chip);
+  font-size: var(--t-small);
+  font-weight: 500;
+  line-height: 1.385;
+  color: var(--text-2);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+}
+.seg-item[aria-checked="true"] {
+  color: var(--text-1);
+}
+.seg.is-full {
+  display: flex;
+  width: 100%;
+}
+.seg.is-full .seg-item {
+  flex: 1;
+  justify-content: center;
+}
+.seg-item:focus-visible {
+  outline-offset: 0;
+}
+/* The thumb is a full-width raised layer clipped to the selected item, so both edges travel and the
+   4 px radius never distorts; its edge is a drop-shadow applied after the clip (§3.6). */
+.seg-thumb {
+  position: absolute;
+  inset: 2px;
+  z-index: 0;
+  pointer-events: none;
+  filter: var(--thumb-edge);
+}
+.seg-thumb i {
+  position: absolute;
+  inset: 0;
+  background: var(--raised);
+  clip-path: inset(0 var(--r, 100%) 0 var(--l, 0) round 4px);
+}
+@media (pointer: coarse) {
+  .seg {
+    height: 44px;
+  }
+  .seg-item {
+    height: 40px;
+  }
+}
+
+/* ---------- Inputs (K6) ---------- */
+.search {
+  position: relative;
+  width: 320px;
+  max-width: 100%;
+}
+.search input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px 0 34px;
+  border-radius: var(--r-ctl);
+  border: 1px solid var(--control);
+  background: var(--raised);
+  color: var(--text-1);
+  font-size: var(--t-data);
+  letter-spacing: 0;
+}
+.search input::placeholder {
+  color: var(--text-3);
+}
+.search input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+.search svg {
+  position: absolute;
+  left: 11px;
+  top: 10px;
+  width: 16px;
+  height: 16px;
+  color: var(--text-3);
+  pointer-events: none;
+}
+@media (max-width: 52.49em) {
+  .search {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+  .search input {
+    height: 44px;
+    font-size: 1rem;
+    padding-left: 38px;
+  }
+  .search svg {
+    top: 14px;
+    left: 13px;
+  }
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--t-small);
+  line-height: 1.385;
+  color: var(--text-2);
+  cursor: pointer;
+  min-height: 32px;
+}
+@media (pointer: coarse) {
+  .check {
+    min-height: 44px;
+  }
+}
+.check input {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid var(--control);
+  border-radius: var(--r-chip);
+  background: var(--raised);
+  display: grid;
+  place-items: center;
+  flex: none;
+  cursor: pointer;
+}
+.check input:checked {
+  background: var(--text-1);
+  border-color: var(--text-1);
+}
+.check input:checked::after {
+  content: "";
+  width: 8px;
+  height: 4px;
+  border: solid var(--canvas);
+  border-width: 0 0 1.5px 1.5px;
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+/* The Columns popover's checkboxes (§5.8): a column of 32 px rows at the data size. */
+.cols-list {
+  display: grid;
+  gap: 2px;
+}
+.cols-list .check {
+  gap: var(--s3);
+  font-size: var(--t-data);
+  line-height: 1.43;
+  color: var(--text-1);
+}
+
+/* The icon-only copy button sits on a text line without growing it (K8). */
+.copy-icon {
+  margin-block: -4px;
+}

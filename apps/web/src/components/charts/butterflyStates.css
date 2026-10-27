@@ -1,0 +1,225 @@
+/* Depth butterfly states (docs/design/visual-v3.md §5.9, §4 rows 1–5): the lens, the empty
+   figure, the phone layout, the touch path and the first-view motion. Layout lives in
+   butterfly.css. */
+
+/* The lens (hover, focus and tap alike). */
+.bfly.is-lens .bfly-row:not(.is-on) .bf-bar,
+.bfly.is-lens .bfly-row:not(.is-on) .bf-label,
+.bfly.is-lens .bfly-row:not(.is-on) .bf-gap {
+  opacity: 0.38;
+}
+.bfly-row.is-on .bf-val,
+.bfly-row:focus-within .bf-val {
+  opacity: 1;
+}
+.bfly-row.is-on {
+  background: color-mix(in oklch, var(--hover) 60%, transparent);
+}
+.bfly.is-lens .tot-field,
+.bfly.is-lens .tot-sep,
+.bfly.is-lens .tot-cap {
+  opacity: 0.22;
+}
+.bfly.is-lens .bf-total .bf-val {
+  color: var(--text-3);
+}
+.bfly-row:has(.bf-pair:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.bf-pair:focus-visible {
+  outline: none;
+}
+
+/* Empty (§5.9): the spine hairline only, no fake bars. */
+.bfly.is-empty {
+  height: 240px;
+}
+.bfly-spine {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+
+/* Phone: the label on its own line above a centred bar pair. */
+@media (max-width: 52.49em) {
+  .bfly {
+    --rowh: 56px;
+    --barh: 10px;
+    --vallane: 52px;
+  }
+  .bfly-rows::before,
+  .bfly-rows::after {
+    display: none;
+  }
+  .bfly-head,
+  .bfly-axis {
+    grid-template-columns: 1fr 1fr;
+  }
+  .bfly-head .lh-mid,
+  .bfly-axis .ax-mid {
+    display: none;
+  }
+  .bfly-head .lh-sell {
+    padding-right: var(--s3);
+  }
+  .bfly-head .lh-buy {
+    padding-left: var(--s3);
+  }
+  .bfly-row,
+  .bf-total {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    align-content: center;
+    row-gap: 6px;
+  }
+  .bfly-row .bf-label,
+  .bf-total .bf-label {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    display: flex;
+    gap: var(--s2);
+    justify-content: center;
+    align-items: baseline;
+  }
+  .bf-side.sell {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .bf-side.buy {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .bf-pair {
+    font-size: var(--t-small);
+  }
+  .bf-total {
+    --toth: 14px;
+    height: calc(var(--rowh) + 20px);
+    row-gap: var(--s2);
+  }
+  .bf-total .bf-val.tot-val {
+    font-size: var(--t-small);
+  }
+  .bfly-row {
+    cursor: pointer;
+  }
+}
+.bfly-head .lh-short {
+  display: none;
+}
+/* Below 360 px the legends shorten to "Sell side" and "Buy side" on one line each (the figure's
+   aria-label keeps the full wording). */
+@media (max-width: 22.49em) {
+  .bfly-head .lh-long {
+    display: none;
+  }
+  .bfly-head .lh-short {
+    display: inline;
+  }
+  .bfly-head .lh-sell,
+  .bfly-head .lh-buy {
+    white-space: nowrap;
+  }
+}
+/* On touch the pair name is the link (≥ 24 px); the bars toggle the lens. */
+@media (pointer: coarse) {
+  .bf-pair::after {
+    display: none;
+  }
+  .bf-pair {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+  }
+}
+
+/* A keyboard lens is instant (M2). */
+.bfly.is-instant *,
+.bfly.is-instant .bfly-row {
+  transition: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .bf-gap-link:hover {
+    color: var(--text-1);
+  }
+}
+
+/* The first view (M6): bars grow from the spine, the total field is revealed from it, and the
+   labels, caps, strata gaps and Gap marker arrive once the marks are nearly there. */
+@media (prefers-reduced-motion: no-preference) {
+  .bf-gap-link {
+    transition:
+      transform var(--dur-press) var(--ease-out),
+      color var(--dur-hover) ease;
+  }
+  .bf-gap-link:active {
+    transform: scale(var(--press-scale));
+  }
+  .bfly.grow .bf-bar {
+    animation: bf-grow 300ms var(--ease-out) both;
+    animation-delay: calc(var(--i) * var(--stagger));
+  }
+  .bfly.grow .bf-side.sell .tot-field {
+    animation: bf-reveal-l 300ms var(--ease-out) both;
+    animation-delay: calc(var(--i) * var(--stagger));
+  }
+  .bfly.grow .bf-side.buy .tot-field {
+    animation: bf-reveal-r 300ms var(--ease-out) both;
+    animation-delay: calc(var(--i) * var(--stagger));
+  }
+  .bfly.grow .tot-val,
+  .bfly.grow .tot-cap,
+  .bfly.grow .tot-sep,
+  .bfly.grow .bf-gap {
+    animation: fade-in 150ms var(--ease-out) both;
+    animation-delay: 300ms;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bfly.grow .bf-bar,
+  .bfly.grow .tot-field,
+  .bfly.grow .tot-val,
+  .bfly.grow .tot-cap,
+  .bfly.grow .tot-sep,
+  .bfly.grow .bf-gap {
+    animation: fade-in 200ms ease both;
+  }
+}
+@keyframes bf-grow {
+  from {
+    transform: scaleX(0.001);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@keyframes bf-reveal-l {
+  from {
+    clip-path: inset(0 0 0 100%);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+@keyframes bf-reveal-r {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+
+@media (forced-colors: active) {
+  .bf-bar,
+  .tot-field,
+  .tot-cap,
+  .tot-lens {
+    forced-color-adjust: none;
+  }
+}

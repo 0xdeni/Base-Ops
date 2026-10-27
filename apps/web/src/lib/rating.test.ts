@@ -1,0 +1,33 @@
+import { describe, expect, it } from 'vitest'
+import { NB } from './format.js'
+import { NOT_RATED, unratedDetail, unratedShort } from './rating.js'
+
+describe('why a pool has no grade, in plain words', () => {
+  it('names the reason in the words the chip uses', () => {
+    expect(NOT_RATED).toBe('Not rated')
+    expect(unratedShort('thin')).toBe('Too thin to rate')
+    expect(unratedShort('one-sided')).toBe('Too thin on one side')
+    expect(unratedShort('unpriced')).toBe('No USD price')
+    expect(unratedShort(null)).toBe('Not rated yet')
+  })
+
+  it('explains each reason in one line that starts with the short one', () => {
+    expect(unratedDetail('thin')).toBe(`Too thin to rate: neither side holds $5K within 2${NB}%.`)
+    expect(unratedDetail('one-sided')).toBe(
+      `Too thin on one side: the thinner side holds under $5K within 2${NB}%.`,
+    )
+    expect(unratedDetail('unpriced')).toBe(
+      'No USD price: a token in this pool has no price in dollars.',
+    )
+    expect(unratedDetail(null)).toBe('Not rated yet: the score is being refreshed.')
+    for (const reason of ['thin', 'one-sided', 'unpriced'] as const) {
+      expect(unratedDetail(reason).startsWith(unratedShort(reason))).toBe(true)
+    }
+  })
+
+  it('keeps each line within the 15 words of a section takeaway (CP10)', () => {
+    for (const reason of ['thin', 'one-sided', 'unpriced', null] as const) {
+      expect(unratedDetail(reason).split(/\s+/).length).toBeLessThanOrEqual(15)
+    }
+  })
+})

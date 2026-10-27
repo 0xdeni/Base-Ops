@@ -1,0 +1,199 @@
+/* Home (ia-v3 §4.1, docs/design/visual-v3.md §6.1 and §3.4 "Page rhythm"). Scoped to .home. */
+
+/* ---------- Hero: the answer, the lead and actions, the focal butterfly ---------- */
+.home .hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s4);
+  padding-top: var(--s8);
+}
+.home .hero-fig {
+  margin-top: var(--s7);
+  min-width: 0;
+}
+@media (min-width: 75em) {
+  /* Editorial split: the answer left, its explanation right; the butterfly spans both. */
+  .home .hero {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    column-gap: var(--s6);
+    align-items: start;
+  }
+  .home .hero-sub {
+    padding-top: 2px;
+  }
+  .home .hero-fig {
+    grid-column: 1 / -1;
+  }
+  .home .hero-sub .lead {
+    max-width: 34ch;
+  }
+}
+@media (max-width: 52.49em) {
+  /* PH6: on phones the butterfly comes straight after the answer, the lead and actions after it. */
+  .home .hero-fig {
+    order: 2;
+    margin-top: var(--s5);
+  }
+  .home .hero-sub {
+    order: 3;
+    margin-top: var(--s5);
+  }
+  .home .hero-sub .lead {
+    font-size: 1rem;
+    line-height: 1.625;
+  }
+}
+@media (max-width: 37.49em) {
+  .home .hero {
+    padding-top: var(--s5);
+  }
+}
+
+/* ---------- Facts: 48 px under the figure's foot row ---------- */
+.home .home-facts {
+  margin-top: var(--s7);
+}
+
+/* ---------- Previews: two columns 96 px below the facts, one column on phones ---------- */
+.home .previews {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s8);
+  margin-top: var(--s9);
+}
+.home .preview {
+  display: grid;
+  gap: var(--s2);
+  align-content: start;
+  min-width: 0;
+}
+.home .pv-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s4);
+}
+.home .pv-head .go {
+  position: relative;
+  font-size: var(--t-data);
+  font-weight: 500;
+  white-space: nowrap;
+}
+/* Touch (A5): "See all" keeps its baseline in the heading row and gains a 45 × 58 hit area. */
+@media (pointer: coarse) {
+  .home .pv-head .go::after {
+    content: "";
+    position: absolute;
+    inset: -12px -8px;
+  }
+}
+.home .pv-rows {
+  margin-top: var(--s4);
+}
+.home .pv-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+@media (max-width: 52.49em) {
+  .home .previews {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s7);
+    margin-top: var(--s7);
+  }
+}
+@media (max-width: 37.49em) {
+  .home .go-long {
+    display: none;
+  }
+}
+
+/* ---------- Loading (ST1): static well blocks at the final sizes ---------- */
+.home .is-waiting {
+  visibility: hidden;
+}
+.home-skel-lines {
+  display: block;
+}
+.home-skel-line {
+  display: block;
+  height: 1lh;
+  padding-block: 0.16lh;
+}
+.home-skel-bfly {
+  --barh: 14px;
+  --toth: 20px;
+  display: grid;
+}
+.home-skel-bfly .hsb-head {
+  height: 30px;
+}
+.home-skel-bfly .hsb-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 168px minmax(0, 1fr);
+  align-items: center;
+  height: 40px;
+}
+.home-skel-bfly .hsb-side {
+  display: flex;
+}
+.home-skel-bfly .hsb-side.sell {
+  justify-content: flex-end;
+  padding-left: var(--s8);
+}
+.home-skel-bfly .hsb-side.buy {
+  padding-right: var(--s8);
+}
+.home-skel-bfly .hsb-total {
+  height: 52px;
+  margin-top: var(--s2);
+  border-top: 1px solid var(--border-subtle);
+}
+.home-skel-bfly .hsb-axis {
+  height: 16px;
+  margin-top: var(--s3);
+}
+.home-skel-bfly .hsb-foot {
+  height: 32px;
+  margin-top: var(--s2);
+}
+@media (pointer: coarse) {
+  .home-skel-bfly .hsb-foot {
+    height: 44px;
+  }
+}
+.home-skel-fact {
+  display: grid;
+  gap: 6px;
+}
+.home-skel-take {
+  width: 24ch;
+  margin-block: 5px;
+}
+.home .pv-skel-row {
+  height: 64px;
+}
+@media (max-width: 52.49em) {
+  .home-skel-bfly {
+    --barh: 10px;
+    --toth: 14px;
+  }
+  .home-skel-bfly .hsb-row {
+    grid-template-columns: minmax(0, 1fr) 0 minmax(0, 1fr);
+    height: 56px;
+  }
+  .home-skel-bfly .hsb-total {
+    height: 76px;
+  }
+  .home-skel-bfly .hsb-side.sell {
+    padding-left: 52px;
+  }
+  .home-skel-bfly .hsb-side.buy {
+    padding-right: 52px;
+  }
+  .home-skel-fact {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s4);
+    padding-block: var(--s4);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+}

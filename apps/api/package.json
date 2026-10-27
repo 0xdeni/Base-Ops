@@ -1,0 +1,24 @@
+{
+  "name": "@depthwatch/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hono REST API over the Depthwatch database; also serves the built dashboard.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@depthwatch/core": "workspace:*",
+    "@depthwatch/db": "workspace:*",
+    "@hono/node-server": "^1.19.0",
+    "hono": "^4.9.0",
+    "zod": "^4.1.0"
+  }
+}

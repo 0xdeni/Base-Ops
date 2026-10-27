@@ -1,0 +1,32 @@
+{
+  "name": "depthwatch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Depthwatch: an open liquidity observatory for Base. Depth at ±1/2/5%, effective spread, LP concentration, liquidity persistence and a Liquidity Health Score for every Uniswap v3/v4 and Aerodrome pool on Base.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter ./apps/web build",
+    "build:static": "tsx apps/cli/src/main.ts export --demo --out apps/web/static-data/bundle.json && pnpm --filter @depthwatch/web build:static",
+    "dev": "pnpm --filter @depthwatch/cli dev",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "pnpm -r --parallel typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "depthwatch": "tsx apps/cli/src/main.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.0",
+    "@types/node": "^22.18.0",
+    "jsdom": "^26.1.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
+  }
+}

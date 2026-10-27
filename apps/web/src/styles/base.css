@@ -1,0 +1,330 @@
+/* Base: reset, the body, type roles (§3.3), links (§5.2) and the page anatomy (ia-v3 §1.3).
+   Every number is tabular, nothing is uppercase, the floor is 12 px. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: calc(var(--appbar-h) + 8px);
+  background: var(--canvas);
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--canvas);
+  color: var(--text-1);
+  font-family: var(--sans);
+  font-size: var(--t-body);
+  line-height: 1.6;
+  letter-spacing: -0.003em;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (max-width: 37.49em) {
+  body {
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+}
+
+#root {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+h1,
+h2,
+h3,
+p,
+dl,
+dd,
+ol,
+ul,
+figure {
+  margin: 0;
+}
+ol,
+ul {
+  padding: 0;
+  list-style: none;
+}
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+  font-weight: 500;
+}
+p {
+  text-wrap: pretty;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  letter-spacing: inherit;
+}
+input,
+select,
+textarea {
+  font: inherit;
+  letter-spacing: inherit;
+}
+/* Any remaining native select keeps explicit colours in both schemes (C8). */
+select {
+  background-color: var(--raised);
+  color: var(--text-1);
+}
+button,
+a,
+input,
+summary,
+[role="radio"] {
+  touch-action: manipulation;
+}
+svg {
+  display: block;
+}
+code,
+kbd,
+samp,
+pre,
+.mono,
+.addr {
+  font-family: var(--mono);
+  font-size: var(--t-small);
+  letter-spacing: 0;
+}
+
+/* Focus (A2): instant, 2 px, never covered (scroll-padding-top above). */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+::selection {
+  background: color-mix(in oklch, var(--focus) 22%, transparent);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The page grid: max 1200 px content, centred, with the gutters of §3.4. */
+.wrap {
+  width: 100%;
+  max-width: calc(var(--content) + 2 * var(--gutter));
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+/* ---------- Type roles (§3.3) ---------- */
+.display {
+  font-size: var(--t-display);
+  line-height: 1.04;
+  font-weight: 500;
+  letter-spacing: -0.032em;
+  max-width: 20ch;
+  color: var(--text-1);
+  text-wrap: balance;
+}
+.h1 {
+  font-size: var(--t-h1);
+  line-height: 1.15;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  max-width: 24ch;
+}
+.answer {
+  font-size: var(--t-h2);
+  line-height: 1.3;
+  font-weight: 400;
+  letter-spacing: -0.016em;
+  max-width: 44ch;
+  color: var(--text-1);
+  text-wrap: balance;
+}
+.lead {
+  font-size: var(--t-lead);
+  line-height: 1.556;
+  letter-spacing: -0.01em;
+  color: var(--text-2);
+  max-width: 56ch;
+}
+.h2 {
+  font-size: var(--t-h2);
+  line-height: 1.25;
+  font-weight: 500;
+  letter-spacing: -0.016em;
+}
+.h3 {
+  font-size: var(--t-title);
+  line-height: 1.375;
+  font-weight: 500;
+  letter-spacing: -0.008em;
+}
+.prose {
+  font-size: var(--t-prose);
+  line-height: 1.625;
+  max-width: 66ch;
+}
+.takeaway {
+  color: var(--text-2);
+  max-width: 40ch;
+}
+.muted {
+  color: var(--text-2);
+}
+.faint {
+  color: var(--text-3);
+}
+.small {
+  font-size: var(--t-small);
+  line-height: 1.385;
+}
+.caption {
+  font-size: var(--t-caption);
+  line-height: 1.333;
+  letter-spacing: 0.01em;
+  font-weight: 500;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+.nowrap {
+  white-space: nowrap;
+}
+.dash {
+  color: var(--text-3);
+}
+/* "—" opens its reason on hover, focus or tap (D6), so it sits above a row's stretched link. */
+.dash .gloss {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- Links (K2, §5.2) ---------- */
+.plink {
+  color: var(--text-1);
+  text-decoration: underline;
+  text-decoration-color: var(--text-3);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.tlink {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+/* Touch (A5): a standalone prose link or trigger (a pool link in a meta line, "How the score works",
+   a time that opens its block) gains a hit area of at least 44 × 44 from a pseudo-element centred
+   on it, as "See all" does; nothing moves. Links inside running prose keep their line. */
+@media (pointer: coarse) {
+  .touch-hit {
+    position: relative;
+  }
+  .touch-hit::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(44px, calc(100% + 16px));
+    height: max(44px, calc(100% + 24px));
+    translate: -50% -50%;
+  }
+}
+.quiet-link {
+  color: var(--text-1);
+  text-decoration: underline;
+  text-decoration-color: var(--text-3);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  font-size: inherit;
+  min-height: 24px;
+}
+
+/* ---------- Page anatomy (D2) ---------- */
+.page {
+  padding-top: var(--s7);
+}
+.title-block {
+  display: grid;
+  gap: var(--s2);
+}
+.subline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1) var(--s5);
+  color: var(--text-2);
+  font-size: var(--t-data);
+}
+.answer-block {
+  margin-top: var(--s5);
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s5);
+  margin-top: var(--s5);
+}
+.actions .plink {
+  font-size: var(--t-data);
+  font-weight: 500;
+}
+/* Touch (A5): the prose action is a 44 px target; the row is already 44 px tall there. */
+@media (pointer: coarse) {
+  .actions .plink {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+@media (max-width: 37.49em) {
+  .page {
+    padding-top: var(--s6);
+  }
+}
+
+/* Rolled numbers never break across lines (docs/design/visual-v3.md §4). */
+.roll {
+  white-space: nowrap;
+}
+.nt-ch {
+  display: inline-block;
+}
+
+/* The tween clock's element (lib/motion.ts): present, invisible, 0 × 0. */
+.clock {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}

@@ -1,0 +1,250 @@
+/* Scorecard and Scorecards list parts (docs/design/visual-v3.md §6.5–§6.6). Rhythm on the
+   Scorecard: answer to the chart's head row 32 (24 on phones),
+   chart to its foot row 12, foot row to facts 32, facts to the first section 64 (32 on phones).
+   Classes are page-prefixed: `sc-` for the Scorecard, `mml-` for the list, `mmt-` for its table. */
+
+/* ---------- Scorecard title: the chip inline after the h1, baseline-aligned (−4 px lift) ---------- */
+.sc-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+}
+/* The mandate name is data, kept verbatim: it may run wider than 24ch. */
+.sc-title .h1 {
+  max-width: none;
+}
+.sc-title .status-chip {
+  transform: translateY(-4px);
+}
+.sc-chip-phone {
+  display: none;
+}
+.sc-sub .sc-chip-phone .status-chip {
+  margin-right: var(--s2);
+  vertical-align: 1px;
+}
+@media (max-width: 37.49em) {
+  /* The chip leads the meta line, so it never sits alone under a wrapped h1 (visual-v3.md §6.6). */
+  .sc-chip-desk {
+    display: none;
+  }
+  .sc-chip-phone {
+    display: inline;
+  }
+  .subline.sc-sub {
+    display: block;
+  }
+}
+
+/* ---------- Focal and facts ---------- */
+.sc-fig {
+  margin-top: var(--s6);
+  min-width: 0;
+}
+.sc-facts {
+  margin-top: var(--s6);
+}
+.sc-fig-skel {
+  position: relative;
+}
+.sc-fig-skel-plot {
+  position: absolute;
+  inset: 48px 0 auto;
+}
+@media (max-width: 52.49em) {
+  .sc-fig {
+    margin-top: var(--s5);
+  }
+}
+
+/* ---------- Sections ---------- */
+.sc-strip-space {
+  height: 32px;
+}
+.sc-eps-space {
+  min-height: 64px;
+}
+/* Episode and worst-moment rows are shorter than the 64 px row-list default. */
+.rl-row.sc-ep-row {
+  grid-template-columns: 9rem minmax(0, 1fr) auto;
+  min-height: 56px;
+  font-size: var(--t-data);
+  line-height: 1.43;
+}
+.sc-ep-when {
+  color: var(--text-1);
+}
+.sc-ep-what {
+  color: var(--text-2);
+}
+.sc-ep-worst {
+  text-align: right;
+  white-space: nowrap;
+}
+.sc-eps-more > .disc-btn {
+  margin-top: var(--s2);
+}
+.rl-row.sc-worst-row {
+  grid-template-columns: minmax(0, 1fr) auto 12rem;
+  min-height: 52px;
+  font-size: var(--t-data);
+  line-height: 1.43;
+}
+.sc-w-k {
+  color: var(--text-2);
+}
+.sc-w-v {
+  text-align: right;
+  white-space: nowrap;
+}
+.sc-w-t {
+  justify-self: end;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.sc-embed-note {
+  max-width: 64ch;
+}
+.sc-embed-note code {
+  font-size: var(--t-caption);
+}
+.sc-addr {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+@media (max-width: 52.49em) {
+  .rl-row.sc-ep-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 2px;
+  }
+  .sc-ep-when {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .sc-ep-what {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .sc-ep-worst {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+  .rl-row.sc-worst-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 2px;
+  }
+  .sc-w-k {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .sc-w-t {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+    font-size: var(--t-small);
+    line-height: 1.385;
+  }
+  .sc-w-v {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+}
+
+/* ---------- Loading (ST1): the final heights ---------- */
+.sc-skel-answer {
+  margin-top: var(--s4);
+}
+.sc-skel-head {
+  margin-top: var(--s6);
+}
+.sc-skel-plot {
+  margin-top: var(--s2);
+}
+.sc-skel-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s6);
+  margin-top: 76px;
+}
+.sc-skel-facts > span {
+  display: grid;
+  gap: var(--s2);
+}
+@media (max-width: 52.49em) {
+  .sc-skel-head {
+    margin-top: var(--s3);
+  }
+  .sc-skel-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s4);
+  }
+}
+
+/* ---------- Scorecards list ---------- */
+.mml-lead {
+  margin-top: var(--s3);
+}
+.mml-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3) var(--s4);
+  margin-top: var(--s7);
+}
+@media (max-width: 52.49em) {
+  .mml-controls {
+    margin-top: var(--s6);
+  }
+}
+.mml-controls .mml-view {
+  margin-left: auto;
+}
+.mml-caption {
+  min-height: 18px;
+}
+.mml-list {
+  border-top: 1px solid var(--border);
+}
+.mml-strip {
+  min-width: 0;
+}
+.mml-strip-space {
+  display: block;
+  height: 12px;
+}
+.mml-strip-none {
+  font-size: var(--t-small);
+  line-height: 1.385;
+  color: var(--text-3);
+}
+
+/* ---------- Scorecards table (L2) ---------- */
+.mmt-wrap {
+  margin-top: var(--s3);
+}
+.mmt td {
+  vertical-align: top;
+}
+.mmt-name {
+  display: grid;
+  gap: 2px;
+  min-width: 12rem;
+}
+.mmt-name .tlink {
+  font-weight: 500;
+  color: var(--text-1);
+}
+.mmt-kpi {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  white-space: nowrap;
+}
+.mmt-v {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
