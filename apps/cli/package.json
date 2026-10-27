@@ -17,9 +17,7 @@
     "@depthwatch/chain": "workspace:*",
     "@depthwatch/core": "workspace:*",
     "@depthwatch/db": "workspace:*",
+    "tsx": "^4.20.0",
     "viem": "^2.37.0"
-  },
-  "devDependencies": {
-    "tsx": "^4.20.0"
   }
 }

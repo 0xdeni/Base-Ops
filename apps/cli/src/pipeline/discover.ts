@@ -7,6 +7,10 @@
  * run (a rescan upserts, so it is always safe); the cursor only ever moves forward, so a rescan
  * below it that fails part-way leaves it where it was.
  *
+ * With `budgetMs` (`depthwatch start`) the step starts no further window once the budget is spent
+ * (the window in flight finishes) and reports `complete: false`; the next pass resumes at the
+ * cursors. DEXes are scanned in order, so a long first scan finishes one DEX before the next.
+ *
  * A logs endpoint that cannot serve usable ranges (LogRangeLimitError) stops the step at once,
  * whatever the remaining DEXes: they would fail the same way. `discover --seed` (./seed.ts) needs
  * no logs at all.
@@ -15,7 +19,7 @@ import { type ChainAddresses, isLogRangeLimitError } from '@depthwatch/chain'
 import { type Dex, minBigint } from '@depthwatch/core'
 import type { Database } from '@depthwatch/db'
 import { errorMessage, type Logger } from '../log.js'
-import { type PipelineContext, syncKeys } from './context.js'
+import { type PipelineContext, StepBudget, syncKeys, throwIfStopped } from './context.js'
 
 /**
  * Log chunks per window: 100 000 blocks at the CLI's 2 000-block chunks (about 2.3 days of Base),
@@ -40,12 +44,16 @@ export interface DiscoverDexResult {
   windows: number
   /** True when the cursor was already at the chain head. */
   skipped: boolean
+  /** True when the cursor reached the head (false: the budget ran out first). */
+  complete: boolean
 }
 
 export interface DiscoverResult {
   blockNumber: bigint
   dexes: DiscoverDexResult[]
   found: number
+  /** True when every DEX reached the head; false when the budget ran out first. */
+  complete: boolean
   /** DEXes whose scan failed; the next run resumes after `cursor` (undefined: from the start). */
   failed: Array<{ dex: Dex; error: string; cursor: bigint | undefined }>
 }
@@ -55,8 +63,10 @@ export interface DiscoverOptions {
   fromBlock?: bigint
   /** Log chunks per window (default DISCOVER_WINDOW_CHUNKS). */
   windowChunks?: number
-  /** Milliseconds for elapsed time and ETA (default `performance.now`). */
+  /** Milliseconds for elapsed time, ETA and the budget (default `performance.now`). */
   clockMs?: () => number
+  /** Milliseconds after which no further window starts (the first always does); unset: none. */
+  budgetMs?: number
 }
 
 /** First block worth scanning for a DEX: its factory deployment (earliest one for Slipstream). */
@@ -105,13 +115,14 @@ interface ScanRange {
   windowBlocks: bigint
 }
 
-/** Scans one DEX window by window; returns pools found and windows completed. */
+/** Scans one DEX window by window; returns pools found, windows completed and whether it ended. */
 async function scanDex(
   ctx: PipelineContext,
   range: ScanRange,
   clockMs: () => number,
+  budget: StepBudget,
   log: Logger,
-): Promise<{ found: number; windows: number }> {
+): Promise<{ found: number; windows: number; complete: boolean }> {
   const { db, chain } = ctx
   const { dex, fromBlock, toBlock, windowBlocks } = range
   const total = toBlock - fromBlock + 1n
@@ -120,6 +131,11 @@ async function scanDex(
   let found = 0
   let index = 0n
   for (let start = fromBlock; start <= toBlock; start += windowBlocks) {
+    if (budget.spent) {
+      log.info('budget spent; the next pass resumes here', { dex, cursor: start - 1n })
+      return { found, windows: Number(index), complete: false }
+    }
+    budget.use()
     const end = minBigint(start + windowBlocks - 1n, toBlock)
     const pools = await chain.discoverPools(dex, start, end)
     db.transaction(() => {
@@ -145,7 +161,7 @@ async function scanDex(
       eta: formatDuration(eta),
     })
   }
-  return { found, windows: Number(index) }
+  return { found, windows: Number(index), complete: true }
 }
 
 export async function discoverStep(
@@ -159,15 +175,44 @@ export async function discoverStep(
   const windowBlocks = chunk * BigInt(opts.windowChunks ?? DISCOVER_WINDOW_CHUNKS)
   if (windowBlocks <= 0n) throw new RangeError('discover window must be positive')
   const clockMs = opts.clockMs ?? (() => performance.now())
+  const budget = new StepBudget(opts.budgetMs, clockMs)
   const latest = await chain.getLatestBlock()
-  const result: DiscoverResult = { blockNumber: latest.number, dexes: [], found: 0, failed: [] }
+  const result: DiscoverResult = {
+    blockNumber: latest.number,
+    dexes: [],
+    found: 0,
+    complete: true,
+    failed: [],
+  }
 
   for (const dex of dexes) {
     const fromBlock = resolveFromBlock(ctx, dex, override)
     const toBlock = latest.number
     if (fromBlock > toBlock) {
       log.info('up to date', { dex, cursor: fromBlock - 1n, head: toBlock })
-      result.dexes.push({ dex, fromBlock, toBlock, found: 0, windows: 0, skipped: true })
+      result.dexes.push({
+        dex,
+        fromBlock,
+        toBlock,
+        found: 0,
+        windows: 0,
+        skipped: true,
+        complete: true,
+      })
+      continue
+    }
+    if (budget.spent) {
+      log.info('budget spent; the next pass scans this DEX', { dex, cursor: fromBlock - 1n })
+      result.dexes.push({
+        dex,
+        fromBlock,
+        toBlock,
+        found: 0,
+        windows: 0,
+        skipped: false,
+        complete: false,
+      })
+      result.complete = false
       continue
     }
     const blocks = toBlock - fromBlock + 1n
@@ -189,11 +234,15 @@ export async function discoverStep(
         alternative: 'discover --seed finds the reference-token pools without eth_getLogs',
       })
     try {
-      const scan = await scanDex(ctx, { dex, fromBlock, toBlock, windowBlocks }, clockMs, log)
+      const range = { dex, fromBlock, toBlock, windowBlocks }
+      const scan = await scanDex(ctx, range, clockMs, budget, log)
       result.dexes.push({ dex, fromBlock, toBlock, ...scan, skipped: false })
       result.found += scan.found
+      if (!scan.complete) result.complete = false
       log.info('upserted pools', { dex, found: scan.found, total: db.pools.count({ dex }) })
     } catch (error) {
+      // A stop (`depthwatch start`) is not a failed scan: the windows done are stored already.
+      throwIfStopped(ctx)
       if (isLogRangeLimitError(error)) {
         log.warn('the logs endpoint cannot serve factory log scans', {
           dex,

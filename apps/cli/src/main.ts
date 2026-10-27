@@ -30,7 +30,7 @@ import {
 } from './config.js'
 import { demoCommand } from './demo.js'
 import { exportCommand } from './export.js'
-import { createLogger, errorMessage, type LogFields, type Logger } from './log.js'
+import { createLogger, errorMessage, type Logger, resultFields } from './log.js'
 import { mmCommand } from './mm.js'
 import { createPipelineContext, type PipelineContext } from './pipeline/context.js'
 import { discoverStep } from './pipeline/discover.js'
@@ -42,6 +42,9 @@ import { snapshotStep } from './pipeline/snapshot.js'
 import { volumeStep } from './pipeline/volume.js'
 import { createCliChainReader, describeError } from './rpc.js'
 import { serveUntilAborted } from './serve.js'
+import { formatSeconds } from './start/scheduler.js'
+import { SCHEDULE_DEFAULTS } from './start/settings.js'
+import { startCommand } from './start/start.js'
 
 export const EXIT_OK = 0
 export const EXIT_ERROR = 1
@@ -55,6 +58,9 @@ export function version(): string {
 }
 
 export function usage(): string {
+  const d = Object.fromEntries(
+    Object.entries(SCHEDULE_DEFAULTS).map(([key, seconds]) => [key, formatSeconds(seconds)]),
+  ) as Record<keyof typeof SCHEDULE_DEFAULTS, string>
   return `depthwatch ${version()} — liquidity observatory for Base mainnet
 
 Usage: depthwatch <command> [options]
@@ -69,8 +75,15 @@ Commands
   positions   LP positions of tracked and mandated concentrated pools
   score       persistence, health score and gaps for tracked pools
   run         loop: discover → snapshot → volume → score
-                                                     [--interval 300] [--once] [--with-positions]
+                                                     [--interval 300|5m] [--once] [--with-positions]
                                                      [--seed]
+  start       the server: serve + the pipeline on a schedule, in one process (docs/DEPLOY.md)
+                --snapshot-interval <d>  a pass: snapshot + score (DEPTHWATCH_SNAPSHOT_INTERVAL, ${d.snapshotIntervalSeconds})
+                --volume-interval <d>    volume (DEPTHWATCH_VOLUME_INTERVAL, ${d.volumeIntervalSeconds})
+                --positions-interval <d> LP positions, or off (DEPTHWATCH_POSITIONS_INTERVAL, ${d.positionsIntervalSeconds})
+                --positions-budget <d>   time per positions run (DEPTHWATCH_POSITIONS_BUDGET, ${d.positionsBudgetSeconds})
+                --discover-budget <d>    log discovery per pass, or off (DEPTHWATCH_DISCOVER_BUDGET, ${d.discoverBudgetSeconds})
+                                         durations: 90s, 30m, 6h (a plain number is seconds)
   serve       REST API + dashboard (apps/web/dist when built)   [--port N] [--host H]
   demo        offline: synthetic Base world, 7 days of history → in-memory DB → serve
                                                      [--port N] [--db <new file>]
@@ -96,12 +109,13 @@ Options
   --log-chunk <n>     blocks per eth_getLogs (DEPTHWATCH_LOG_CHUNK, default ${DEFAULTS.logChunkSize}); on a plan
                       that caps log ranges, its limit (e.g. 10) for small scans such as volume
   --log-level <lvl>   debug|info|warn|error|silent (DEPTHWATCH_LOG_LEVEL, default ${DEFAULTS.logLevel})
-  --port <n>          DEPTHWATCH_PORT (default ${DEFAULTS.port}); --host (DEPTHWATCH_HOST, default ${DEFAULTS.hostname})
+  --port <n>          DEPTHWATCH_PORT, else PORT (default ${DEFAULTS.port}); --host (DEPTHWATCH_HOST, default ${DEFAULTS.hostname})
   --top <n>           DEPTHWATCH_TOP_POOLS (default ${DEFAULTS.topPools})
   -h, --help          this text;  -v, --version
 
-Environment only: DEPTHWATCH_ADMIN_TOKEN, the bearer token serve and demo require for
-POST /api/mm and DELETE /api/mm/:id (unset: those routes answer 403 "registration disabled").
+Environment only: DEPTHWATCH_ADMIN_TOKEN, the bearer token serve, start and demo require for
+POST /api/mm and DELETE /api/mm/:id (unset: those routes answer 403 "registration disabled");
+DEPTHWATCH_SHUTDOWN_GRACE, how long start waits for the step in flight on SIGTERM (${d.shutdownGraceSeconds}).
 
 Exit codes: 0 ok, 1 error, 2 usage.`
 }
@@ -121,7 +135,10 @@ function isLiveCommand(command: Command, mm: MmArgs | undefined): boolean {
   return LIVE_COMMANDS.includes(command)
 }
 
-/** First SIGINT/SIGTERM aborts (steps finish, loops stop); a second one exits immediately. */
+/**
+ * First SIGINT/SIGTERM aborts the signal (`run` finishes its step, `start` stops the step in
+ * flight, servers close); a second one exits immediately.
+ */
 export function installSignalHandlers(log: Logger): { signal: AbortSignal; dispose: () => void } {
   const controller = new AbortController()
   const onSignal = (name: NodeJS.Signals) => {
@@ -129,7 +146,7 @@ export function installSignalHandlers(log: Logger): { signal: AbortSignal; dispo
       log.warn('second signal, exiting now', { signal: name })
       process.exit(130)
     }
-    log.info('signal received, finishing the current step', { signal: name })
+    log.info('signal received, shutting down', { signal: name })
     controller.abort()
   }
   process.on('SIGINT', onSignal)
@@ -182,12 +199,16 @@ async function runCommand(
     await exportCommand({ config, log, stdout, historyPoints: run.demoHistoryPoints })
     return
   }
+  if (command === 'start') {
+    await startCommand({ config, log, signal, stdout })
+    return
+  }
   const ctx = createContext(command, mm, config, log)
   try {
     switch (command) {
       case 'discover':
         if (config.seed)
-          await log.timed(command, (step) => seedStep({ ...ctx, log: step }), summarize)
+          await log.timed(command, (step) => seedStep({ ...ctx, log: step }), resultFields)
         else
           await log.timed(
             command,
@@ -196,10 +217,10 @@ async function runCommand(
           )
         return
       case 'snapshot':
-        await log.timed(command, (step) => snapshotStep({ ...ctx, log: step }), summarize)
+        await log.timed(command, (step) => snapshotStep({ ...ctx, log: step }), resultFields)
         return
       case 'volume':
-        await log.timed(command, (step) => volumeStep({ ...ctx, log: step }), summarize)
+        await log.timed(command, (step) => volumeStep({ ...ctx, log: step }), resultFields)
         return
       case 'positions':
         await log.timed(
@@ -209,7 +230,7 @@ async function runCommand(
         )
         return
       case 'score':
-        await log.timed(command, (step) => scoreStep({ ...ctx, log: step }), summarize)
+        await log.timed(command, (step) => scoreStep({ ...ctx, log: step }), resultFields)
         return
       case 'run':
         await runLoop(ctx, { signal })
@@ -233,16 +254,6 @@ async function runCommand(
   } finally {
     ctx.db.close()
   }
-}
-
-/** Fields of a step result worth one log line (numbers and bigints only). */
-function summarize(result: object): LogFields {
-  const fields: LogFields = {}
-  for (const [key, value] of Object.entries(result)) {
-    if (typeof value === 'number' || typeof value === 'bigint') fields[key] = value
-    if (Array.isArray(value) && key === 'failed') fields[key] = value.length
-  }
-  return fields
 }
 
 export async function main(argv: readonly string[], opts: MainOptions = {}): Promise<number> {
@@ -326,6 +337,9 @@ if (isEntryPoint()) {
   main(process.argv.slice(2)).then(
     (code) => {
       process.exitCode = code
+      // Everything main opened is closed by now. A request `start` abandoned on shutdown must not
+      // hold the process past the host's stop timeout, so exit soon even if one is still pending.
+      setTimeout(() => process.exit(code), 1_000).unref()
     },
     (error: unknown) => {
       process.stderr.write(`error: ${errorMessage(error)}\n`)

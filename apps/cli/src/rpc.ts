@@ -13,6 +13,7 @@ import {
   createChainReader,
   isLogRangeLimitError,
   type LogRangeLimitError,
+  type RpcRequestEvent,
   redactUrls,
 } from '@depthwatch/chain'
 import type { Config } from './config.js'
@@ -60,6 +61,10 @@ export interface CliChainOptions {
   command: string
   /** Live commands read the chain and refuse to start without DEPTHWATCH_RPC_URL. */
   live: boolean
+  /** Hears every request (`depthwatch start` counts them per endpoint and method). */
+  onRequest?: (event: RpcRequestEvent) => void
+  /** Stops the reader (`depthwatch start` on SIGTERM): no request is sent once it aborts. */
+  signal?: AbortSignal
 }
 
 /**
@@ -82,6 +87,8 @@ export function createCliChainReader(
     rpcUrl,
     logsRpcUrl: config.logsRpcUrl,
     logChunkSize: config.logChunkSize,
+    onRequest: opts.onRequest,
+    signal: opts.signal,
     logRetry: {
       onRetry: (event) =>
         log.warn('eth_getLogs backoff', {

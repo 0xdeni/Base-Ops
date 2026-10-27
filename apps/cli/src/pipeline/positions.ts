@@ -2,23 +2,44 @@
  * `positions`: LP positions of every tracked concentrated pool, for owner concentration, and of
  * every concentrated pool with an active mandate, for market-maker attribution. Mandated pools are
  * indexed whether or not they are tracked yet: the snapshot tracks them whatever their rank, and
- * its samples read these positions, so a mandate registered since the last snapshot must not be
- * sampled without them (method `none`, a false `noLiquidity` breach).
+ * its samples read these positions; until a pool's positions are published (`positionsPublished`)
+ * the snapshot does not sample its mandates (an attribution failure, mm.ts, never a false
+ * `noLiquidity` breach), and `depthwatch start` runs this step as soon as such a pool exists
+ * (`unindexedMandatedPools`).
  *
  * `readPositions` is range based (positions *touched* in the block range, with their current
  * liquidity and owner), so the first run scans from the pool's creation block and later runs
  * continue from the cursor `positions:<pool>:lastBlock`, merging into the stored set. Positions
  * whose liquidity dropped to zero are removed. Aerodrome v2 pools have no positions.
  *
+ * Windowed runs (`windowBlocks`, what `depthwatch start` uses) bound the work: pools less than a
+ * window behind the head read from their cursors to the head, as above; pools further behind are
+ * read in shared windows of `windowBlocks` from the oldest cursor, so all the pools of a position
+ * manager share one log scan and one set of `positions()` reads per window (the reader caches the
+ * latest range per manager). A first scan that ends a window short of the head is kept under
+ * `positionsStagingId(pool)` with the cursor `positions:<pool>:catchUpBlock`, unpublished, and
+ * becomes the pool's position set once a window reaches the head, so the snapshot never computes
+ * owner concentration from half a history. A mandated pool whose positions are not published yet
+ * joins the pools near the head instead: it reads from its own cursor (its creation block) to the
+ * head on its own range, as the unwindowed command does, so its scorecard has positions after one
+ * run. Once `budgetMs` is spent no further round or pool starts; the next run resumes from the
+ * cursors. A stop signal (`depthwatch start`) starts no further pool and ends the run.
+ *
  * A logs endpoint that cannot serve the configured chunk (LogRangeLimitError) fails every pool the
  * same way, so after the first one no further pool is started and the step throws that one error:
  * only the pools already in flight (`concurrency`) send a request.
  */
 import { isLogRangeLimitError } from '@depthwatch/chain'
-import type { PoolMeta, Position } from '@depthwatch/core'
+import { minBigint, type PoolMeta, type Position } from '@depthwatch/core'
 import type { Database } from '@depthwatch/db'
 import { errorMessage } from '../log.js'
-import { type PipelineContext, settleConcurrent, syncKeys } from './context.js'
+import { type PipelineContext, StepBudget, settleConcurrent, syncKeys } from './context.js'
+
+/** Blocks per catch-up window of `depthwatch start`: about 11.6 days, 250 requests at 2 000. */
+export const POSITIONS_WINDOW_BLOCKS = 500_000n
+
+/** Where a pool's unfinished first scan is kept (a positions-table key, never a pool id). */
+export const positionsStagingId = (poolId: string): string => `${poolId}#catch-up`
 
 export interface PositionsPoolResult {
   poolId: string
@@ -26,7 +47,7 @@ export interface PositionsPoolResult {
   toBlock: bigint
   /** Positions touched in the range. */
   touched: number
-  /** Positions stored after the merge. */
+  /** Positions stored after the merge (staged ones while the pool catches up). */
   stored: number
   skipped: boolean
 }
@@ -34,8 +55,13 @@ export interface PositionsPoolResult {
 export interface PositionsResult {
   blockNumber: bigint
   pools: PositionsPoolResult[]
+  /** Positions of the pools whose set is published (read up to a head). */
   positions: number
   failed: Array<{ item: string; error: string }>
+  /** Pools still behind the head when the run ended (budget spent); 0 without a budget. */
+  deferred: number
+  /** Block ranges read: 1 without a window. */
+  rounds: number
 }
 
 /** Stable identity of a position: the NFT id, or (owner, range) for positions without one. */
@@ -65,6 +91,22 @@ export function mergePositions(
 export interface PositionsOptions {
   /** Pools to index instead of the default ones (non-concentrated pools are ignored). */
   pools?: readonly PoolMeta[]
+  /** Catch-up window in blocks (see the header); unset, every pool reads to the head at once. */
+  windowBlocks?: bigint
+  /** Milliseconds after which no further round or pool starts (the first pool always does). */
+  budgetMs?: number
+  /** Milliseconds for the budget (default `performance.now`). */
+  clockMs?: () => number
+}
+
+/** The known pools of the active mandates, each once (a pool not discovered yet is left out). */
+function mandatedPools(db: Database): PoolMeta[] {
+  const out = new Map<string, PoolMeta>()
+  for (const mandate of db.mandates.list({ active: true })) {
+    const pool = db.pools.get(mandate.poolId)
+    if (pool !== undefined) out.set(pool.id, pool)
+  }
+  return [...out.values()]
 }
 
 /**
@@ -75,86 +117,202 @@ export interface PositionsOptions {
 export function defaultPositionPools(db: Database): PoolMeta[] {
   const pools = db.pools.list({ tracked: true })
   const ids = new Set(pools.map((pool) => pool.id))
-  for (const mandate of db.mandates.list({ active: true })) {
-    if (ids.has(mandate.poolId)) continue
-    const pool = db.pools.get(mandate.poolId)
-    if (pool === undefined) continue
+  for (const pool of mandatedPools(db)) {
+    if (ids.has(pool.id)) continue
     ids.add(pool.id)
     pools.push(pool)
   }
   return pools
 }
 
+/** True once the pool's positions are published: its cursor exists (a staged first scan is not). */
+export function positionsPublished(db: Database, poolId: string): boolean {
+  return db.syncState.get(syncKeys.positions(poolId)) !== undefined
+}
+
+/**
+ * Concentrated pools of active mandates whose positions are not published yet: their mandates
+ * cannot be sampled (mm.ts), so `depthwatch start` runs positions while there is one.
+ */
+export function unindexedMandatedPools(db: Database): PoolMeta[] {
+  return mandatedPools(db).filter(
+    (pool) => pool.kind === 'concentrated' && !positionsPublished(db, pool.id),
+  )
+}
+
+/** Where a pool stands: its published cursor, its staged first scan, or nothing yet. */
+interface PoolPlan {
+  pool: PoolMeta
+  next: bigint
+  mode: 'cursor' | 'staged' | 'new'
+}
+
+function planOf(db: Database, pool: PoolMeta): PoolPlan {
+  const cursor = db.syncState.getBigInt(syncKeys.positions(pool.id))
+  if (cursor !== undefined) return { pool, next: cursor + 1n, mode: 'cursor' }
+  const staged = db.syncState.getBigInt(syncKeys.positionsCatchUp(pool.id))
+  if (staged !== undefined) return { pool, next: staged + 1n, mode: 'staged' }
+  return { pool, next: pool.createdAtBlock, mode: 'new' }
+}
+
+interface Round {
+  /** Shared start of the range; undefined: each pool from its own `next`. */
+  fromBlock: bigint | undefined
+  toBlock: bigint
+  plans: PoolPlan[]
+}
+
+/**
+ * The next round over the `open` pools (all behind `head`); see the header. `own` pools (mandated,
+ * unpublished) read to the head on their own range whatever their distance from it.
+ */
+function nextRound(
+  open: readonly PoolPlan[],
+  head: bigint,
+  window: bigint | undefined,
+  own: ReadonlySet<string>,
+): Round {
+  if (window === undefined) return { fromBlock: undefined, toBlock: head, plans: [...open] }
+  const near = open.filter((plan) => head - plan.next < window || own.has(plan.pool.id))
+  if (near.length > 0) return { fromBlock: undefined, toBlock: head, plans: near }
+  const fromBlock = open.reduce((min, plan) => minBigint(min, plan.next), head)
+  const toBlock = minBigint(fromBlock + window - 1n, head)
+  return { fromBlock, toBlock, plans: open.filter((plan) => plan.next <= toBlock) }
+}
+
+/** Merges `fresh` into the pool's set and moves its cursor; publishes once it reaches `head`. */
+function store(
+  db: Database,
+  plan: PoolPlan,
+  fresh: readonly Position[],
+  toBlock: bigint,
+  head: bigint,
+): { stored: number; published: boolean } {
+  const { pool, mode } = plan
+  const staging = positionsStagingId(pool.id)
+  const existingId = mode === 'cursor' ? pool.id : mode === 'staged' ? staging : undefined
+  const merged = mergePositions(existingId ? db.positions.forPool(existingId) : [], fresh)
+  const published = mode === 'cursor' || toBlock >= head
+  db.transaction(() => {
+    if (published) {
+      db.positions.replaceForPool(pool.id, merged, { updatedBlock: toBlock })
+      db.syncState.setBigInt(syncKeys.positions(pool.id), toBlock)
+      if (mode === 'staged') {
+        db.positions.deleteForPool(staging)
+        db.syncState.delete(syncKeys.positionsCatchUp(pool.id))
+      }
+    } else {
+      db.positions.replaceForPool(staging, merged, { updatedBlock: toBlock })
+      db.syncState.setBigInt(syncKeys.positionsCatchUp(pool.id), toBlock)
+    }
+  })
+  return { stored: merged.length, published }
+}
+
+/** Thrown for a pool the spent budget did not start: deferred, not failed. */
+const DEFERRED = Symbol('deferred')
+
 export async function positionsStep(
   ctx: PipelineContext,
   opts: PositionsOptions = {},
 ): Promise<PositionsResult> {
   const { db, chain, log, config } = ctx
+  const window = opts.windowBlocks
+  if (window !== undefined && window <= 0n)
+    throw new RangeError('positions window must be positive')
   const latest = await chain.getLatestBlock()
+  const head = latest.number
   const candidates = opts.pools ?? defaultPositionPools(db)
   const pools = candidates.filter((pool) => pool.kind === 'concentrated')
   const result: PositionsResult = {
-    blockNumber: latest.number,
+    blockNumber: head,
     pools: [],
     positions: 0,
     failed: [],
+    deferred: 0,
+    rounds: 0,
   }
   if (pools.length === 0) {
     log.warn('no tracked or mandated concentrated pools; run snapshot first')
     return result
   }
-  log.info('reading positions', { pools: pools.length, block: latest.number })
+  log.info('reading positions', { pools: pools.length, block: head })
 
+  const own = new Set(unindexedMandatedPools(db).map((pool) => pool.id))
+  const budget = new StepBudget(opts.budgetMs, opts.clockMs ?? (() => performance.now()))
+  const byPool = new Map<string, PositionsPoolResult>()
+  const published = new Set<string>()
+  const failedIds = new Set<string>()
   let unusable: unknown
-  const settled = await settleConcurrent(
-    pools,
-    config.concurrency,
-    (pool) => pool.id,
-    async (pool): Promise<PositionsPoolResult> => {
-      if (unusable !== undefined) throw unusable
-      const key = syncKeys.positions(pool.id)
-      const cursor = db.syncState.getBigInt(key)
-      const fromBlock = cursor === undefined ? pool.createdAtBlock : cursor + 1n
-      const toBlock = latest.number
-      if (fromBlock > toBlock) {
-        const stored = db.positions.countForPool(pool.id)
-        return { poolId: pool.id, fromBlock, toBlock, touched: 0, stored, skipped: true }
-      }
-      const fresh = await chain.readPositions(pool, { fromBlock, toBlock }).catch((error) => {
-        if (isLogRangeLimitError(error)) unusable ??= error
-        throw error
-      })
-      const existing = cursor === undefined ? [] : db.positions.forPool(pool.id)
-      const merged = mergePositions(existing, fresh)
-      db.transaction(() => {
-        db.positions.replaceForPool(pool.id, merged, { updatedBlock: toBlock })
-        db.syncState.setBigInt(key, toBlock)
-      })
-      log.debug('positions merged', { pool: pool.id, touched: fresh.length, stored: merged.length })
-      return {
-        poolId: pool.id,
-        fromBlock,
-        toBlock,
-        touched: fresh.length,
-        stored: merged.length,
-        skipped: false,
-      }
-    },
-  )
-
-  // An endpoint that only serves tiny log ranges fails every pool the same way: one error, not N.
-  if (unusable !== undefined) throw unusable
-  result.pools = settled.ok
-  result.positions = settled.ok.reduce((n, entry) => n + entry.stored, 0)
-  for (const failure of settled.failed) {
-    const error = errorMessage(failure.error)
-    result.failed.push({ item: failure.item, error })
-    log.warn('readPositions failed', { pool: failure.item, error })
+  for (const pool of pools) {
+    const plan = planOf(db, pool)
+    if (plan.next <= head) continue
+    if (plan.mode === 'cursor') published.add(pool.id)
+    const stored = db.positions.countForPool(pool.id)
+    const entry = { poolId: pool.id, fromBlock: plan.next, toBlock: head, touched: 0, stored }
+    byPool.set(pool.id, { ...entry, skipped: true })
   }
+
+  const openPlans = () =>
+    pools
+      .filter((pool) => !failedIds.has(pool.id))
+      .map((pool) => planOf(db, pool))
+      .filter((plan) => plan.next <= head)
+  for (let open = openPlans(); open.length > 0 && !budget.spent; open = openPlans()) {
+    const round = nextRound(open, head, window, own)
+    result.rounds++
+    const settled = await settleConcurrent(
+      round.plans,
+      config.concurrency,
+      (plan) => plan.pool.id,
+      async (plan) => {
+        if (unusable !== undefined) throw unusable
+        if (budget.spent) throw DEFERRED
+        budget.use()
+        const fromBlock = round.fromBlock ?? plan.next
+        const fresh = await chain
+          .readPositions(plan.pool, { fromBlock, toBlock: round.toBlock })
+          .catch((error) => {
+            if (isLogRangeLimitError(error)) unusable ??= error
+            throw error
+          })
+        const { stored, published: isPublished } = store(db, plan, fresh, round.toBlock, head)
+        if (isPublished) published.add(plan.pool.id)
+        log.debug('positions merged', { pool: plan.pool.id, touched: fresh.length, stored })
+        const before = byPool.get(plan.pool.id)
+        byPool.set(plan.pool.id, {
+          poolId: plan.pool.id,
+          fromBlock: before?.fromBlock ?? fromBlock,
+          toBlock: round.toBlock,
+          touched: (before?.touched ?? 0) + fresh.length,
+          stored,
+          skipped: false,
+        })
+      },
+      ctx.signal,
+    )
+    // An endpoint that only serves tiny log ranges fails every pool the same way: one error.
+    if (unusable !== undefined) throw unusable
+    for (const failure of settled.failed) {
+      if (failure.error === DEFERRED) continue
+      failedIds.add(failure.item)
+      const error = errorMessage(failure.error)
+      result.failed.push({ item: failure.item, error })
+      log.warn('readPositions failed', { pool: failure.item, error })
+    }
+    if (window === undefined) break
+  }
+
+  result.pools = [...byPool.values()]
+  result.positions = result.pools
+    .filter((entry) => published.has(entry.poolId))
+    .reduce((n, entry) => n + entry.stored, 0)
+  result.deferred = openPlans().length
   log.info('stored positions', {
-    pools: settled.ok.length,
+    pools: result.pools.length,
     positions: result.positions,
     failed: result.failed.length,
+    deferred: result.deferred,
   })
   return result
 }

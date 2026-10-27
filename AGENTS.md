@@ -15,18 +15,19 @@ the contract between packages; [CONTRIBUTING.md](CONTRIBUTING.md) has the full r
 pnpm workspace, TypeScript (strict, ESM), Node ≥ 22.13. No build step for Node packages: `tsx`
 runs TypeScript directly and workspace imports resolve to each package's `src/index.ts`.
 
-| Path                     | Package / content   | What lives there                                                                          |
-| ------------------------ | ------------------- | ----------------------------------------------------------------------------------------- |
-| `packages/core`          | `@depthwatch/core`  | Tick math, swap simulation, every metric, USD price graph, scorecards. Pure: no I/O.      |
-| `packages/chain`         | `@depthwatch/chain` | viem adapters for Base, contract addresses (`src/addresses.ts`), fixture transports.      |
-| `packages/db`            | `@depthwatch/db`    | `node:sqlite` schema, migrations, typed repositories.                                     |
-| `apps/api`               | `@depthwatch/api`   | Hono REST API (zod validation), agent documents, static serving of the dashboard.         |
-| `apps/web`               | `@depthwatch/web`   | Vite + React 19 dashboard; talks only to `/api`. `plugins/` holds build-time plugins.     |
-| `apps/cli`               | `@depthwatch/cli`   | The `depthwatch` command: discover → snapshot → volume → score → serve, demo, export.     |
-| `apps/api/src/agentDocs` | agent documents     | `AGENTS.md`, `llms.txt`, `openapi.json` served at the API root and copied by the build.   |
-| `docs/`                  | documentation       | `METRICS.md` (metric definitions), `ARCHITECTURE.md`, `SCORECARDS.md`, `ROADMAP.md`.      |
-| `docs/research`          | research notes      | `base-contracts.md`: the addresses, ABIs and chain facts used, with sources and verdicts. |
-| `docs/base`              | Base reference      | `base-agents-reference.md`: copy of base.org/AGENTS.md (the live file wins).              |
+| Path                     | Package / content   | What lives there                                                                             |
+| ------------------------ | ------------------- | -------------------------------------------------------------------------------------------- |
+| `packages/core`          | `@depthwatch/core`  | Tick math, swap simulation, every metric, USD price graph, scorecards. Pure: no I/O.         |
+| `packages/chain`         | `@depthwatch/chain` | viem adapters for Base, contract addresses (`src/addresses.ts`), fixture transports.         |
+| `packages/db`            | `@depthwatch/db`    | `node:sqlite` schema, migrations, typed repositories.                                        |
+| `apps/api`               | `@depthwatch/api`   | Hono REST API (zod validation), agent documents, static serving of the dashboard.            |
+| `apps/web`               | `@depthwatch/web`   | Vite + React 19 dashboard; talks only to `/api`. `plugins/` holds build-time plugins.        |
+| `apps/cli`               | `@depthwatch/cli`   | The `depthwatch` command: discover → snapshot → volume → score → serve, start, demo, export. |
+| `apps/api/src/agentDocs` | agent documents     | `AGENTS.md`, `llms.txt`, `openapi.json` served at the API root and copied by the build.      |
+| `deploy/`                | deployment          | `compose.yaml` and the entrypoint of the root `Dockerfile`; `docs/DEPLOY.md` is the guide.   |
+| `docs/`                  | documentation       | `METRICS.md`, `ARCHITECTURE.md`, `SCORECARDS.md`, `ROADMAP.md`, `DEPLOY.md` (a server).      |
+| `docs/research`          | research notes      | `base-contracts.md`: the addresses, ABIs and chain facts used, with sources and verdicts.    |
+| `docs/base`              | Base reference      | `base-agents-reference.md`: copy of base.org/AGENTS.md (the live file wins).                 |
 
 ## Commands
 
@@ -40,16 +41,17 @@ pnpm test             # vitest run: node project (packages, api, cli) + jsdom pr
 pnpm build            # vite build of apps/web -> apps/web/dist, served by `depthwatch serve`
 pnpm build:static     # export the demo bundle, then the static site -> apps/web/dist-static
 pnpm depthwatch demo  # offline: synthetic Base world -> in-memory DB -> API + dashboard on :8787
+pnpm depthwatch start # a server: API + dashboard + the pipeline on a schedule (docs/DEPLOY.md)
 pnpm check            # lint + typecheck + test
 ```
 
 CI runs install, lint, typecheck, test and build in that order; all must pass. One package at a
 time: `npx vitest run packages/core`, `npx tsc --noEmit -p packages/core/tsconfig.json`,
-`npx biome check --write packages/core`. `DEPTHWATCH_PORT` (or `--port`) moves the server; live
-commands (`discover`, `snapshot`, `volume`, `positions`, `run`, `mm sample`) need
-`DEPTHWATCH_RPC_URL` and are never needed for tests; `DEPTHWATCH_LOGS_RPC_URL` (or
-`--logs-rpc-url`, default: the main URL) moves every `eth_getLogs`, and nothing else, to a second
-endpoint.
+`npx biome check --write packages/core`. `DEPTHWATCH_PORT` (or `--port`, else a platform's `PORT`)
+moves the server; live commands (`discover`, `snapshot`, `volume`, `positions`, `run`, `start`,
+`mm sample`) need `DEPTHWATCH_RPC_URL` and are never needed for tests; `DEPTHWATCH_LOGS_RPC_URL`
+(or `--logs-rpc-url`, default: the main URL) moves every `eth_getLogs`, and nothing else, to a
+second endpoint.
 
 ## Conventions that bite
 

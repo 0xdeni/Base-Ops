@@ -134,6 +134,16 @@ export function createLogger(options: LoggerOptions = {}): Logger {
   return logger
 }
 
+/** Fields of a step result worth one log line: numbers and bigints, and the count of `failed`. */
+export function resultFields(result: object): LogFields {
+  const fields: LogFields = {}
+  for (const [key, value] of Object.entries(result)) {
+    if (typeof value === 'number' || typeof value === 'bigint') fields[key] = value
+    if (Array.isArray(value) && key === 'failed') fields[key] = value.length
+  }
+  return fields
+}
+
 export const silentLogger: Logger = createLogger({ level: 'silent', write: () => {} })
 
 /**

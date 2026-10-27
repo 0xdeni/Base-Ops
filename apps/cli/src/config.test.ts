@@ -202,7 +202,7 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ DEPTHWATCH_LOG_CHUNK: '0' })).toThrow(/log chunk size must be ≥ 1/)
     expect(() => loadConfig({ DEPTHWATCH_RPC_URL: 'mainnet.base.org' })).toThrow(/http\(s\)/)
     expect(() => loadConfig({}, { hours: '0' })).toThrow(/hours must be ≥ 1/)
-    expect(() => loadConfig({}, { interval: '1.5' })).toThrow(/interval must be an integer/)
+    expect(() => loadConfig({}, { interval: '1.5' })).toThrow(/interval must be a duration/)
     expect(() => loadConfig({}, { fromBlock: '-5' })).toThrow(/block number/)
     expect(() => loadConfig({}, { dex: ['sushiswap'] })).toThrow(/unknown dex "sushiswap"/)
     expect(() => loadConfig({}, { pool: ['0xabc'] })).toThrow(/<dex>:<address>/)
@@ -218,6 +218,6 @@ describe('requireRpcUrl', () => {
     expect(() => requireRpcUrl(loadConfig({}), 'snapshot')).toThrow(
       /"snapshot".*DEPTHWATCH_RPC_URL.*--rpc-url.*demo/,
     )
-    expect(LIVE_COMMANDS).toEqual(['discover', 'snapshot', 'volume', 'positions', 'run'])
+    expect(LIVE_COMMANDS).toEqual(['discover', 'snapshot', 'volume', 'positions', 'run', 'start'])
   })
 })

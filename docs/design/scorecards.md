@@ -153,7 +153,9 @@ JSON via core helpers (`attribution_json` holds `MmAttribution`, no bigints).
   For each active mandate of the pool: concentrated → `positions` (from the db, as the snapshot
   uses) → `resolveStakedOwners` for Slipstream when any position owner equals the pool's gauge →
   `filterPositionsByOwners` → `buildMmConcentratedState`; aerodrome-v2 → `readLpHoldings` →
-  `buildMmReserveState`; `positions === null` on a concentrated pool → method `'none'`.
+  `buildMmReserveState`; a concentrated pool whose positions are not published
+  (`positions:<pool>:lastBlock` unset) → attribution failure, no sample; `positions === null` on
+  an indexed pool → method `'none'`.
   Then `computeMmAttribution` → `evaluateKpis` → `MmSample`.
   Called from `snapshotStep` right after `buildSnapshot` for pools that have mandates; the samples
   are inserted in the same transaction as the snapshots. Attribution failures are logged per

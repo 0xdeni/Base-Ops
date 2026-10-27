@@ -72,7 +72,7 @@ describe('main', () => {
   })
 
   it('refuses live commands without an RPC url with exit 1, naming the variable', async () => {
-    for (const command of ['discover', 'snapshot', 'volume', 'positions', 'run']) {
+    for (const command of ['discover', 'snapshot', 'volume', 'positions', 'run', 'start']) {
       const result = await run([command, '--db', ':memory:'])
       expect(result.code).toBe(EXIT_ERROR)
       expect(result.stderr).toHaveLength(1)

@@ -60,4 +60,5 @@ export {
 } from './seed/index.js'
 export * from './transport/fixture.js'
 export * from './transport/key.js'
+export * from './transport/observed.js'
 export * from './transport/recording.js'
