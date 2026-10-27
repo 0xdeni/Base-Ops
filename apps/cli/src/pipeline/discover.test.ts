@@ -177,6 +177,10 @@ describe('discoverStep: resumable windows', () => {
     ])
     expect(db.syncState.getBigInt(KEY)).toBe(HEAD)
     expect(db.pools.count({ dex: 'uniswap-v3' })).toBe(3)
+    // The step leaves planner statistics for the pools it wrote.
+    expect(
+      db.raw.prepare(`SELECT COUNT(*) AS n FROM sqlite_stat1 WHERE tbl = 'pools'`).get()?.n,
+    ).toBeGreaterThan(0)
 
     const third = context(db)
     expect((await third.run()).dexes[0]).toMatchObject({ skipped: true, windows: 0 })

@@ -5,9 +5,15 @@ import {
   NOTE_PERSISTENCE_SHORT,
   type PoolSnapshot,
 } from '@depthwatch/core'
-import { FIXTURE_USDC, FIXTURE_WETH, fixturePool } from '@depthwatch/db'
+import {
+  FIXTURE_USDC,
+  FIXTURE_WETH,
+  fixturePool,
+  openDatabase,
+  snapshotHealthSummary,
+} from '@depthwatch/db'
 import { describe, expect, it } from 'vitest'
-import { buildHistoryPoints, HEALTH_PERSISTENCE_SECONDS } from './history.js'
+import { buildHistoryPoints, HEALTH_PERSISTENCE_SECONDS, type HistoryInput } from './history.js'
 import { buildSnapshot } from './testing/builders.js'
 
 const HOUR = 3600
@@ -16,7 +22,11 @@ const STEP = 3 * HOUR
 const T0 = 1_700_000_000
 const pool = fixturePool({ token0: FIXTURE_WETH, token1: FIXTURE_USDC })
 
-function snapshotAt(timestamp: number, depth2Usd: number | null): PoolSnapshot {
+function snapshotAt(timestamp: number, depth2Usd: number | null): HistoryInput {
+  return snapshotHealthSummary(rawSnapshotAt(timestamp, depth2Usd))
+}
+
+function rawSnapshotAt(timestamp: number, depth2Usd: number | null): PoolSnapshot {
   return buildSnapshot({
     pool,
     timestamp,
@@ -56,7 +66,7 @@ describe('buildHistoryPoints', () => {
     })
     const samples = series
       .slice(0, 4)
-      .map((s) => ({ timestamp: s.timestamp, depthUsd: s.depthUsd[1]?.totalUsd ?? null }))
+      .map((s) => ({ timestamp: s.updatedAt, depthUsd: s.depth2Usd }))
     const expected = computeHealthScore({
       depth2UpUsd: 55_000,
       depth2DownUsd: 55_000,
@@ -115,5 +125,31 @@ describe('buildHistoryPoints', () => {
 
   it('is empty without snapshots', () => {
     expect(buildHistoryPoints([], T0)).toEqual([])
+  })
+
+  it('builds the same points from the stored summary series as from the snapshots', () => {
+    const db = openDatabase(':memory:')
+    try {
+      const raw = [
+        rawSnapshotAt(T0 - HEALTH_PERSISTENCE_SECONDS - HOUR, 1),
+        ...[0, 1, 2, 3, 4].map((i) => rawSnapshotAt(T0 + i * STEP, i === 2 ? null : 100_000 + i)),
+      ]
+      db.snapshots.insertMany(raw)
+      const from = T0 + STEP
+      const stored = db.snapshots.seriesSummaryForPool(
+        pool.id,
+        from - HEALTH_PERSISTENCE_SECONDS,
+        T0 + 4 * STEP,
+      )
+      expect(stored).toHaveLength(5)
+      const fromStore = buildHistoryPoints(stored, from)
+      const fromSnapshots = buildHistoryPoints(raw.map(snapshotHealthSummary), from)
+      expect(fromStore).toEqual(fromSnapshots)
+      expect(fromStore.map((p) => p.timestamp)).toEqual([1, 2, 3, 4].map((i) => T0 + i * STEP))
+      expect(fromStore[1]).toMatchObject({ depth2Usd: null, tvlUsd: null, spread10kBps: null })
+      expect(fromStore[2]?.depth2Usd).toBe(100_003)
+    } finally {
+      db.close()
+    }
   })
 })

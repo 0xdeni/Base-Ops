@@ -13,6 +13,7 @@ export {
 export {
   API_CACHE_CONTROL,
   ASSET_CACHE_CONTROL,
+  HISTORY_CACHE_CONTROL,
   STATIC_CACHE_CONTROL,
   staticCacheControl,
 } from './caching.js'
@@ -46,6 +47,7 @@ export type {
   StatsResponse,
   TokenDetail,
 } from './dto.js'
+export type { HistoryInput } from './history.js'
 export {
   buildHistoryPoints,
   HEALTH_PERSISTENCE_HOURS,
@@ -75,6 +77,8 @@ export { AGENT_DOCS, AGENT_DOCS_DIR, readAgentDoc } from './routes/agentDocs.js'
 export {
   compareScorecards,
   loadScorecard,
+  SCORECARD_CACHE_SECONDS,
+  ScorecardCache,
   SUMMARY_WINDOW_SECONDS,
   sortScorecards,
   summaryWindowStart,

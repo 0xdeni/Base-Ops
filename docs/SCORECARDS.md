@@ -312,9 +312,11 @@ dashboard's `VITE_MOCK=1` mode mirrors the same two.
 | `POST /api/mm`                                       | Register (see [With the API](#with-the-api))                                                                                                      |
 | `DELETE /api/mm/:id`                                 | Remove a mandate; same authorization as `POST`                                                                                                    |
 
-Summaries are computed on request from the samples of the last 30 days, so `uptime.d30` is the
-full history the API keeps in view; older samples remain in the database until an operator prunes
-them. Bigints (`blockNumber`) are decimal strings. A sample on the wire:
+Summaries are computed from the samples of the last 30 days, so `uptime.d30` is the full history
+the API keeps in view; older samples remain in the database until an operator prunes them. The
+server keeps the last summary per mandate and serves it again until a new sample is stored, the
+mandate changes or a minute has passed. Bigints (`blockNumber`) are decimal strings. A sample on
+the wire:
 
 ```json
 {

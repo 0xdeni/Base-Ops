@@ -262,6 +262,8 @@ export async function discoverStep(
     }
   }
 
+  // Planner statistics for the pools written, so the feeds search the scored set, not every pool.
+  db.analyze()
   if (result.failed.length > 0) {
     const names = result.failed.map((f) => `${f.dex} (${f.error})`).join('; ')
     throw new Error(`discover failed for ${result.failed.length}/${dexes.length} dexes: ${names}`)

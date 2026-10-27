@@ -135,6 +135,9 @@
         "responses": {
           "200": {
             "description": "One point per stored snapshot in [from, to], ascending; health is recomputed per snapshot.",
+            "headers": {
+              "Cache-Control": { "schema": { "type": "string", "const": "public, max-age=60" } }
+            },
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HistoryResponse" } } }
           },
           "400": { "$ref": "#/components/responses/BadRequest" },

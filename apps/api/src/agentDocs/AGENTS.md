@@ -221,7 +221,8 @@ Response: `{ window, from, to, points }`. The window ends at the pool's newest s
 not at the current time, and `from = to − window`; both bounds are inclusive. `points` holds one
 entry per stored snapshot in the window, ascending: `timestamp`, `price`, `depth2Usd`,
 `spread10kBps`, `tvlUsd`, `health` (the score total recomputed for that snapshot). 404 `pool not
-found` for an unknown id.
+found` for an unknown id. The response carries `Cache-Control: public, max-age=60` (see
+[Caching](#caching-rate-limits-and-cors)).
 
 ### `GET /api/gaps`
 
@@ -482,11 +483,14 @@ The `message` wording comes from the validator and may change; match on status a
   put a proxy in front that adds either. Every request reads the database directly.
 - Pool data only change when the pipeline writes a new snapshot or score, so polling faster than
   the snapshot interval returns the same numbers; compare `latestSnapshotAt` to detect new data.
-  Scorecards are computed on each request over windows that end at the server's clock.
+  Scorecards are computed over windows that end at the server's clock; the server keeps the last
+  summary per mandate and serves it again until the mandate changes, a new sample is stored or a
+  minute has passed, so two requests within a minute see the same numbers.
 - Responses are gzip- or deflate-compressed when `Accept-Encoding` allows it (`Vary:
   Accept-Encoding`), and every `GET` response carries an `ETag`: send it back as `If-None-Match`
   and an unchanged answer is a bodiless 304.
 - `Cache-Control`: successful `GET /api/*` responses say `public, max-age=30`, except
+  `/api/pools/:id/history` (`public, max-age=60`: a week of points is the most expensive read),
   `/api/mm/:id/badge.svg` (`public, max-age=300`) and `GET /api/health`, which sends none so a
   probe always sees the server as it is. The dashboard's hashed `/assets/*` files are
   `public, max-age=31536000, immutable`; `index.html` and the other files are `no-cache`.

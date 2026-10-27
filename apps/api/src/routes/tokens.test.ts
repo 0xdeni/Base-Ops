@@ -52,6 +52,21 @@ describe('GET /api/tokens/:address', () => {
     expect(body.pools.map((p) => p.pool.id)).not.toContain(seed.pools.usdcDegenV3.id)
   })
 
+  it('matches the address against token0/token1 only, never a symbol that spells it', async () => {
+    const before = await token(seed.tokens.WETH.address)
+    // A token whose symbol is WETH's address, in a scored pool without WETH.
+    db.tokens.upsertMany([{ ...seed.tokens.USDC, symbol: seed.tokens.WETH.address }])
+    const after = await token(seed.tokens.WETH.address, '?limit=200')
+    expect(after.total).toBe(before.total)
+    expect(after.poolCount).toBe(before.poolCount)
+    expect(after.pools.map((p) => p.pool.id)).toEqual(before.pools.map((p) => p.pool.id))
+    expect(after.pools.map((p) => p.pool.id)).not.toContain(seed.pools.aeroUsdcV2.id)
+    // The search box still finds it by that symbol.
+    const search = await app.request(`/api/pools?q=${seed.tokens.WETH.address}`)
+    const found = (await search.json()) as { total: number }
+    expect(found.total).toBeGreaterThan(before.total)
+  })
+
   it('reports unpriced tokens with null usd', async () => {
     const body = await token(seed.tokens.BRETT.address)
     expect(body.usd).toBeNull()

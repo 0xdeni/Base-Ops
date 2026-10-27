@@ -130,6 +130,10 @@ describe('seedStep', () => {
     expect(await seedStep(again.ctx)).toMatchObject({ found: 3, added: 0, searchRequests: 0 })
     expect(again.counts.get('eth_getCode')).toBeUndefined()
     expect(db.pools.count({})).toBe(3)
+    // The step leaves planner statistics for the pools it wrote.
+    expect(
+      db.raw.prepare(`SELECT COUNT(*) AS n FROM sqlite_stat1 WHERE tbl = 'pools'`).get()?.n,
+    ).toBeGreaterThan(0)
   })
 
   it('keeps the batches dated before a failure, so the next seed searches only the rest', async () => {
