@@ -59,13 +59,12 @@ importers:
       '@depthwatch/db':
         specifier: workspace:*
         version: link:../../packages/db
-      viem:
-        specifier: ^2.37.0
-        version: 2.57.10(typescript@5.9.3)(zod@4.6.7)
-    devDependencies:
       tsx:
         specifier: ^4.20.0
         version: 4.23.15
+      viem:
+        specifier: ^2.37.0
+        version: 2.57.10(typescript@5.9.3)(zod@4.6.7)
 
   apps/web:
     dependencies:

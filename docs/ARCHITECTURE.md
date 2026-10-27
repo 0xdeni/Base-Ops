@@ -326,6 +326,22 @@ opt in per pass with `run --with-positions`, or run `depthwatch positions` on it
 Uniswap v4 uses the PositionManager; Aerodrome v2 pools have no positions (LP tokens are fungible)
 and return `[]`.
 
+A pool's first scan starts at its creation block, so on a fresh database every tracked pool would
+read its manager's whole history on its own range. `depthwatch start` runs positions in windows
+instead (`POSITIONS_WINDOW_BLOCKS`, 500,000 blocks, 250 `eth_getLogs` at 2,000): pools less than a
+window behind the head read from their cursors to the head as above, and pools further behind are
+read in shared windows from the oldest cursor, so all the pools of a position manager share one
+log scan and one set of `positions()` reads per window (the reader caches the latest range per
+manager). A first scan that ends a window short of the head is kept under `<pool id>#catch-up` in
+`positions`, with the cursor `positions:<pool>:catchUpBlock`, and becomes the pool's position set
+only when a window reaches the head: the snapshot never computes owner concentration from part of
+a history. A time budget stops a run between pools and windows; the next run resumes. A
+concentrated pool with an active mandate whose positions are not published yet is read from its
+cursor (its creation block) to the head on its own range whatever its distance, as the plain
+command does, so one run publishes it: until then the snapshot samples none of its mandates (an
+attribution failure, never a `none` sample and its false `noLiquidity` breach), and `start` runs
+positions in the pass that finds it.
+
 ### Per cycle
 
 A 5-minute `run` with 10,000 known pools and 200 tracked pools is roughly: 6 `getLogs` for
@@ -378,6 +394,115 @@ a provider that accepts wider spans.
   reference-token pools on such a plan (see
   [Seeded discovery](#seeded-discovery-factory-views-and-archive-state)).
 
+## Running as a service
+
+`depthwatch start` is the one command a server runs ([DEPLOY.md](DEPLOY.md) has the setup, with
+the Docker image the root `Dockerfile` builds). One Node process serves the API and the dashboard
+exactly as `serve` does, listening before the pipeline sends its first request, even on an empty
+database, and runs the pipeline against the same database on a schedule (`apps/cli/src/start/`).
+`node:sqlite` is synchronous and every write is one short transaction, so the API answers between
+them while a step waits on the network.
+
+### The pass
+
+Every `DEPTHWATCH_SNAPSHOT_INTERVAL` (default 30 min) the scheduler runs one pass. Its steps run
+one after the other, so no two steps ever overlap:
+
+```
+[seed] → snapshot → [volume] → score → [positions] → [discover]
+```
+
+- **seed** (`discover --seed`) opens every pass until one has succeeded. On an empty database the
+  first pass seeds (about 580 pools in some 10 minutes on Alchemy's free tier, see
+  [Seeded discovery](#seeded-discovery-factory-views-and-archive-state)), snapshots and scores, so
+  the site has data within minutes.
+- **snapshot** and **score** run every pass.
+- **volume** runs once `DEPTHWATCH_VOLUME_INTERVAL` (default 1 h) has passed since its last run,
+  between snapshot (whose prices it uses) and score (whose 24 h window ends at the volume head).
+- **positions** runs once `DEPTHWATCH_POSITIONS_INTERVAL` (default 6 h; `off` disables it) has
+  passed, for at most `DEPTHWATCH_POSITIONS_BUDGET` (default 10 min), in windows (see
+  [Positions](#positions)), and whatever the cadence in a pass that finds an active mandate on a
+  concentrated pool whose positions are not published yet: the snapshot does not sample such a
+  mandate (an attribution failure, no sample), and that pool is read to the head on its own
+  range so it publishes in one run. While pools are still catching up it runs again the next
+  pass.
+- **discover**, the log scan from the factories' deployment blocks, runs every pass for at most
+  `DEPTHWATCH_DISCOVER_BUDGET` (default 15 min; `off` leaves discovery to the seed). It resumes at
+  its cursors, so a first full discovery spreads over passes; once it reaches the head a pass costs
+  one request per factory.
+
+A cadence is rounded up to a pass (volume every other pass at the defaults). Budgets are also cut
+to the time left before the next pass, and a step with under 30 s left waits for the next pass. A
+budget stops a step from starting more work (a discovery window, a positions pool or window); the
+unit in flight finishes, so a pass can overrun by one unit, and the next pass then starts at once
+(missed passes are not queued). The last run of volume and positions is kept in `sync_state`
+(`start:<step>:lastRunAt`, unix ms), so a restart keeps their cadence; a run that found no
+tracked pool (the first snapshot failed, so nothing was tracked yet) records no run and the step
+is due again at the next pass.
+
+### Failures and stopping
+
+A step that throws is logged as an error with the CLI's one-line description (a logs endpoint that
+cannot serve the chunk names its two fixes) and the pass goes on; the step is tried again at its
+next slot: the seed and the per-pass steps at the next pass, volume and positions one interval
+after the failed attempt. Unlike `run`, no error stops `start`: the site keeps serving the last
+good data.
+
+SIGTERM or SIGINT aborts the chain reader (`createChainReader({ signal })`): the HTTP request in
+flight is cancelled, a backoff wait ends, nothing more is sent, so the current step ends within
+moments, and no further step starts. The same signal reaches the pipeline (`PipelineContext.signal`):
+the concurrent pool reads start no further pool, and a step checks it before its storing
+transaction, so a stop in the middle of a snapshot stores no snapshot, prices or cursor (no
+partial snapshot enters the history), a stopped volume run stores no buckets, and a stopped
+discovery keeps only the windows it completed; the step's line reads `stopped for shutdown`
+whether it threw or returned. `start` waits for it at most `DEPTHWATCH_SHUTDOWN_GRACE` (default
+8 s, under Docker's 10 s stop timeout), abandons it after that, closes the server and the
+database, and exits 0. A second signal exits at once (130).
+
+Before it listens, `start` writes and deletes a probe row: a database the process cannot write
+(a file restored as root and run as the `node` user, a mount that refused the entrypoint's
+chown) ends the start with `database is not writable: <path>` and exit code 1, where a host's
+restart policy shows it, instead of a healthy-looking site whose every pass fails.
+
+### Request accounting
+
+The chain reader reports every request it sends (`createChainReader({ onRequest })`, retries
+included) with its endpoint: `logs` for `eth_getLogs`, `main` for everything else. Each step's
+`done` line carries `requests`, `main` and `logs`, and, when an endpoint is Alchemy, `alchemyCu`:
+compute units estimated at the rates measured for this project, 75 per `eth_getLogs`, 26 per
+`eth_call` (a multicall is one) and 16 per block header, with other methods (the seed's
+`eth_getCode`) at the `eth_call` rate. Requests to other endpoints are counted, not priced. The
+first step of each UTC day logs `daily total` for the day before, with `alchemyCuMonthPace` (the
+units of a 30-day month at that day's rate) and `alchemyFreeTierPct` (of 30 M); stopping logs
+`usage today`. The host's log viewer is enough to follow the budget.
+
+### Budget at the defaults
+
+For Alchemy's free tier (about 30 M compute units a month) on `DEPTHWATCH_RPC_URL`, Base's public
+RPC on `DEPTHWATCH_LOGS_RPC_URL` from a server with its own IP, about 580 known pools and the
+default 200 tracked:
+- **Snapshots** dominate. A measured pass over 492 tracked pools took about 1,150 `eth_call`s,
+  about 29,000 units; the overview of every known pool is a handful of multicalls and the state
+  reads grow with the tracked pools. A `start` pass on 2026-10-25 with 200 of 580 pools tracked
+  sent 528 requests, 13,718 units by the meter, HTTP 429 retries included. 48 passes a day make
+  about 20 M units a month. Hourly passes (`DEPTHWATCH_SNAPSHOT_INTERVAL=1h`) halve that; 492
+  tracked pools every 30 minutes would need about 42 M, more than the free tier, and about 21 M
+  hourly.
+- **Volume** sends its `eth_getLogs` to the logs endpoint; on Alchemy it costs only the block
+  headers that time the swaps, a few per pass. Volume on Alchemy alone, at its 10-block ranges,
+  would cost about 40 M units a month: the reason for the second endpoint.
+- **Discovery** and **positions** read logs on the logs endpoint too. Discovery adds one header per
+  pass and the metadata of new tokens. Positions add the `positions()` and `ownerOf()` multicalls
+  of the tokens touched since the last run: one pass over each manager's history while catching
+  up, then the tokens of six hours. Neither has been measured on mainnet: the `daily total` line
+  shows them.
+- **The seed** costs about 350,000 units, once.
+
+The logs endpoint sees about 20 `eth_getLogs` an hour once discovery is current (six factories a
+pass, a few per event source for hourly volume), against the measured limit of about 5 requests a
+second per IP of Base's public RPC. A first full discovery is on the order of 100,000 requests,
+5 to 6 hours of requests at that rate; at 15 minutes a pass it completes in about half a day.
+
 ## Storage model
 
 `node:sqlite` (`DatabaseSync`), one file (`DEPTHWATCH_DB`) or `:memory:`. `openDatabase` applies
@@ -391,10 +516,10 @@ migrations are never edited, only appended.
 | `pools`         | `id`                    | `PoolMeta` columns, `tracked` flag, `first_seen_at`                                                                                                                                                                                 |
 | `snapshots`     | autoincrement `id`      | per pool and block: price, USD prices, TVL, active liquidity, `depth_json`, `depth_usd_json`, `spreads_json`, `concentration_json`, denormalised `depth2_usd`, `spread10k_bps`, `owner_top1_share`; index on `(pool_id, timestamp)` |
 | `volume_hourly` | `(pool_id, hour_start)` | token volumes (TEXT bigints), USD volume, swap count                                                                                                                                                                                |
-| `positions`     | `(pool_id, token_id)`   | owner, tick range, liquidity, last updated block                                                                                                                                                                                    |
+| `positions`     | `(pool_id, token_id)`   | owner, tick range, liquidity, last updated block; rows under `<pool id>#catch-up` hold a first windowed scan until it reaches the head                                                                                              |
 | `prices`        | `token`                 | USD price, `via_json` route, `updated_at`                                                                                                                                                                                           |
 | `scores`        | `pool_id`               | `health_json`, `gap_json`, `persistence_24h_json`, `persistence_7d_json`, `volume_24h_usd`, `depth2_usd`, denormalised `health_total`, `gap_score`                                                                                  |
-| `sync_state`    | `key`                   | e.g. `discover:uniswap-v3:lastBlock`                                                                                                                                                                                                |
+| `sync_state`    | `key`                   | pipeline cursors, e.g. `discover:uniswap-v3:lastBlock`, `positions:<pool>:lastBlock` (`:catchUpBlock` while a first windowed scan is staged), `start:volume:lastRunAt`                                                              |
 | `mandates`      | `id`                    | name, `pool_id`, `market_maker`, `addresses_json`, `kpis_json`, `alert_webhook_url`, `alert_after_samples`, `active`, `created_at`, `notes`; index on `(pool_id)`                                                                   |
 | `mm_samples`    | autoincrement `id`      | per mandate and block: `pool_id`, `block_number` (TEXT), `timestamp`, `attribution_json` (`MmAttribution`), `within_kpi` (NULL = not evaluable), `breaches_json`; index on `(mandate_id, timestamp)`                                |
 | `mm_alerts`     | autoincrement `id`      | per delivery attempt: `mandate_id`, `timestamp`, `kind` (`breach` / `recovered`), `streak_samples`, `payload_json`, `delivered`, `response_status`, `error`; index on `(mandate_id, timestamp)`                                     |
@@ -423,7 +548,8 @@ the scores need, and the 30 d uptime window the longest the scorecards need.
 Chain access goes through viem `Transport`s, so the same `ChainReader` runs against a live RPC, a
 recorded fixture or an in-memory stub.
 - **Live:** `createChainReader({ rpcUrl, logsRpcUrl })` (HTTP transports; `eth_getLogs` on the
-  second, default: the first).
+  second, default: the first). `onRequest` hears every request with its endpoint and `signal`
+  stops the reader (`observeTransport`), which `depthwatch start` uses to count and to stop.
 - **Fixture:** `createFixtureTransport(fixture)` answers each JSON-RPC request from a map keyed by
   method and params. Unknown requests throw, so a test that needs a call it did not record fails
   loudly instead of silently returning garbage. Every chain test and `depthwatch demo` use this.

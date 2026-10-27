@@ -165,7 +165,15 @@ describe('discoverStep: resumable windows', () => {
     const result = await second.run()
     expect(second.seen.map((r) => r.fromBlock)).toEqual([601n, 701n, 801n, 901n])
     expect(result.dexes).toEqual([
-      { dex: 'uniswap-v3', fromBlock: 601n, toBlock: HEAD, found: 1, windows: 2, skipped: false },
+      {
+        dex: 'uniswap-v3',
+        fromBlock: 601n,
+        toBlock: HEAD,
+        found: 1,
+        windows: 2,
+        skipped: false,
+        complete: true,
+      },
     ])
     expect(db.syncState.getBigInt(KEY)).toBe(HEAD)
     expect(db.pools.count({ dex: 'uniswap-v3' })).toBe(3)
@@ -269,5 +277,54 @@ describe('discoverStep: request budget', () => {
     const normal = context(freshDb())
     await normal.run()
     expect(normal.lines.some((l) => l.includes('WARN'))).toBe(false)
+  })
+})
+
+describe('discoverStep: time budget', () => {
+  it('starts no window once the budget is spent and resumes there on the next run', async () => {
+    const db = freshDb()
+    let now = 0
+    // Every eth_getLogs (one 100-block chunk) takes 10 s: a window of two chunks takes 20 s.
+    const tick = () => {
+      now += 10_000
+      return undefined
+    }
+    const first = context(db, { fail: tick, dexes: ['uniswap-v3', 'aerodrome-v2'] })
+    const partial = await discoverStep(first.ctx, {
+      windowChunks: 2,
+      budgetMs: 30_000,
+      clockMs: () => now,
+    })
+    expect(partial.complete).toBe(false)
+    expect(partial.dexes).toMatchObject([
+      { dex: 'uniswap-v3', windows: 2, found: 1, complete: false },
+      { dex: 'aerodrome-v2', windows: 0, found: 0, complete: false },
+    ])
+    expect(db.syncState.getBigInt(KEY)).toBe(400n)
+    expect(first.lines.some((l) => l.includes('budget spent; the next pass resumes here'))).toBe(
+      true,
+    )
+    expect(first.lines.some((l) => l.includes('budget spent; the next pass scans this DEX'))).toBe(
+      true,
+    )
+
+    const second = context(db, { fail: tick, dexes: ['uniswap-v3', 'aerodrome-v2'] })
+    const rest = await discoverStep(second.ctx, {
+      windowChunks: 2,
+      budgetMs: 1_000_000,
+      clockMs: () => now,
+    })
+    expect(second.seen[0]).toEqual({ fromBlock: 401n, toBlock: 500n })
+    expect(rest.complete).toBe(true)
+    expect(rest.dexes.map((d) => d.complete)).toEqual([true, true])
+    expect(db.pools.count({ dex: 'uniswap-v3' })).toBe(3)
+  })
+
+  it('always runs one window, however small the budget', async () => {
+    const db = freshDb()
+    const { ctx, seen } = context(db)
+    const result = await discoverStep(ctx, { windowChunks: 2, budgetMs: 0, clockMs: () => 0 })
+    expect(result.dexes[0]).toMatchObject({ windows: 1, complete: false })
+    expect(seen).toHaveLength(2)
   })
 })

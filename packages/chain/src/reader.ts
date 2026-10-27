@@ -30,6 +30,12 @@ import { DEFAULT_TIMESTAMP_SPAN, fillTimestamps } from './internal/timestamps.js
 import { readTokens as readTokensWithCache } from './internal/tokens.js'
 import type { PoolOverview } from './internal/types.js'
 import { type SeedPoolsOptions, type SeedResult, seedPools } from './seed/index.js'
+import {
+  abortableSleep,
+  observeTransport,
+  type RpcEndpoint,
+  type RpcRequestEvent,
+} from './transport/observed.js'
 
 export type { LogRetryEvent, LogRetryPolicy } from './internal/context.js'
 export {
@@ -155,17 +161,41 @@ export interface CreateChainReaderOptions {
   maxCallsPerMulticall?: number
   /** Blocks between swap-timestamp anchors (default 10 000, see DEFAULT_TIMESTAMP_SPAN). */
   timestampSpan?: number | bigint
+  /**
+   * Hears every JSON-RPC request as it is sent (each retry again), with its endpoint: `logs` for
+   * `eth_getLogs`, `main` for everything else (transport/observed.ts).
+   */
+  onRequest?: (event: RpcRequestEvent) => void
+  /**
+   * Stops the reader: once it aborts, in-flight requests over the URL transports are cancelled,
+   * backoff waits end and every later request fails at once with the signal's reason, which the
+   * backoff never retries.
+   */
+  signal?: AbortSignal
 }
 
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** `fetch` options of the URL transports: the reader's abort signal, when there is one. */
+function fetchOptionsOf(opts: CreateChainReaderOptions): { signal: AbortSignal } | undefined {
+  return opts.signal === undefined ? undefined : { signal: opts.signal }
+}
 
 /** The logs transport, or undefined when `eth_getLogs` shares a caller-supplied main transport. */
 function logsTransportOf(opts: CreateChainReaderOptions): Transport | undefined {
   if (opts.logsTransport !== undefined) return opts.logsTransport
   const url = opts.logsRpcUrl ?? (opts.transport === undefined ? opts.rpcUrl : undefined)
   if (url === undefined && opts.transport !== undefined) return undefined
-  return http(url ?? DEFAULT_RPC_URL, { retryCount: 0, timeout: LOGS_HTTP_TIMEOUT_MS })
+  return http(url ?? DEFAULT_RPC_URL, {
+    retryCount: 0,
+    timeout: LOGS_HTTP_TIMEOUT_MS,
+    fetchOptions: fetchOptionsOf(opts),
+  })
 }
+
+/** A shared transport counts `eth_getLogs` against the logs endpoint, the rest against main. */
+const endpointOfMethod = (method: string): RpcEndpoint =>
+  method === 'eth_getLogs' ? 'logs' : 'main'
 
 function groupByDex(pools: PoolMeta[]): Map<Dex, { pool: PoolMeta; index: number }[]> {
   const groups = new Map<Dex, { pool: PoolMeta; index: number }[]>()
@@ -184,11 +214,23 @@ function compareEvents(a: SwapEvent, b: SwapEvent): number {
 
 export function createChainReader(opts: CreateChainReaderOptions = {}): ChainReader {
   const addresses = resolveAddresses(opts.addresses)
-  const transport =
-    opts.transport ?? http(opts.rpcUrl ?? DEFAULT_RPC_URL, { retryCount: MAIN_HTTP_RETRY_COUNT })
+  const { onRequest, signal } = opts
+  const logsInner = logsTransportOf(opts)
+  const transport = observeTransport(
+    opts.transport ??
+      http(opts.rpcUrl ?? DEFAULT_RPC_URL, {
+        retryCount: MAIN_HTTP_RETRY_COUNT,
+        fetchOptions: fetchOptionsOf(opts),
+      }),
+    { endpoint: logsInner === undefined ? endpointOfMethod : 'main', onRequest, signal },
+  )
   const client = createPublicClient({ chain: base, transport })
-  const logsTransport = logsTransportOf(opts)
+  const logsTransport =
+    logsInner === undefined
+      ? undefined
+      : observeTransport(logsInner, { endpoint: 'logs', onRequest, signal })
   const timestampSpan = BigInt(opts.timestampSpan ?? DEFAULT_TIMESTAMP_SPAN)
+  const retrySleep = opts.logRetry?.sleep
   const ctx: ReaderContext = {
     client,
     logsClient:
@@ -199,7 +241,12 @@ export function createChainReader(opts: CreateChainReaderOptions = {}): ChainRea
     logChunkSize: BigInt(opts.logChunkSize ?? DEFAULT_LOG_CHUNK_SIZE),
     minLogRange: BigInt(opts.minLogRange ?? DEFAULT_MIN_LOG_RANGE),
     logRangeCap: undefined,
-    logRetry: { ...DEFAULT_LOG_RETRY, sleep: wait, onRetry: undefined, ...opts.logRetry },
+    logRetry: {
+      ...DEFAULT_LOG_RETRY,
+      onRetry: undefined,
+      ...opts.logRetry,
+      sleep: signal === undefined ? (retrySleep ?? wait) : abortableSleep(signal, retrySleep),
+    },
     onCallRetry: opts.onCallRetry,
     maxCallsPerMulticall: opts.maxCallsPerMulticall ?? DEFAULT_MAX_CALLS_PER_MULTICALL,
     tokenCache: new Map(),

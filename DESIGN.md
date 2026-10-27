@@ -22,7 +22,8 @@ No trading capital, no token, no custody. It is indexing, analytics and a dashbo
 | `apps/web`       | `@depthwatch/web`   | Vite + React 19 dashboard. Talks only to `/api`.                               | core, react, react-router, tanstack-query |
 | `apps/cli`       | `@depthwatch/cli`   | `depthwatch` CLI: the pipeline (discover → snapshot → volume → score → serve). | everything                                |
 
-Package entry points are `src/index.ts` (no build step for Node packages; `tsx` runs TypeScript directly).
+Package entry points are `src/index.ts` (no build step for Node packages; `tsx` runs TypeScript
+directly, a dependency of `apps/cli` so that the server image runs the sources the same way).
 Lint/format: Biome (`pnpm lint`). Types: `pnpm typecheck`. Tests: Vitest (`pnpm test`). All three must pass.
 
 Rules for contributors (human or agent):
@@ -188,6 +189,8 @@ export function createChainReader(opts: {
   onCallRetry?: (event: BackoffEvent) => void // each backoff of a main-endpoint request; the rpcUrl transport has no viem retries
   maxCallsPerMulticall?: number
   timestampSpan?: number | bigint
+  onRequest?: (event: RpcRequestEvent) => void // { endpoint: 'main' | 'logs', method }: every request as it is sent, retries included (eth_getLogs counts as logs)
+  signal?: AbortSignal // once aborted: in-flight HTTP requests cancelled, backoff waits end, every later request fails at once with signal.reason (never retried)
 }): ChainReader
 // A logs endpoint that cannot serve logChunkSize (stated maximum or halving below the floor) throws
 // LogRangeLimitError { details: { reason: 'stated' | 'floor', maxRange, chunkSize, minRange, fromBlock, toBlock, providerMessage } }
@@ -197,6 +200,10 @@ export function redactUrls(text: string): string // every http(s) / ws(s) URL cu
 export function errorSummary(error: unknown): string // one line for logs: causes joined, viem errors as status / code / URL origin / method / details, never the request body
 export function createFixtureTransport(fixture: Fixture): Transport // deterministic JSON-RPC answers keyed by method+params for tests/demo
 export function createRecordingTransport(inner: Transport, sink: Fixture): Transport // records live answers into a fixture (used to produce demo fixtures from a real RPC)
+export function observeTransport(
+  inner: Transport,
+  opts: { endpoint; onRequest?; signal? },
+): Transport // what createChainReader applies for onRequest / signal
 export function createFakeRpcFetch(fixture: Fixture, opts?: FakeRpcOptions): FakeRpc // { fetch, calls }: a fixture behind viem's real http() transport; replays provider HTTP errors in tests
 ```
 
@@ -213,10 +220,10 @@ Protocol specifics (addresses live in `src/addresses.ts`, overridable via `creat
 - `pools(id PK, dex, kind, address, pool_id, token0, token1, fee_pips, tick_spacing, stable, hooks, created_at_block, tracked INTEGER, first_seen_at)`
 - `snapshots(id PK AUTOINCREMENT, pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd, active_liquidity TEXT, depth_json, depth_usd_json, spreads_json, concentration_json)` + index `(pool_id, timestamp)`
 - `volume_hourly(pool_id, hour_start, volume_token0 TEXT, volume_token1 TEXT, volume_usd, swap_count, PK(pool_id, hour_start))`
-- `positions(pool_id, token_id TEXT, owner, tick_lower, tick_upper, liquidity TEXT, updated_block, PK(pool_id, token_id))`
+- `positions(pool_id, token_id TEXT, owner, tick_lower, tick_upper, liquidity TEXT, updated_block, PK(pool_id, token_id))`; rows under `<pool id>#catch-up` hold a windowed first scan that has not reached the head (never read as a pool's positions)
 - `prices(token PK, usd, via_json, updated_at)`
 - `scores(pool_id PK, timestamp, health_json, gap_json, persistence_24h_json, persistence_7d_json, volume_24h_usd, depth2_usd, health_total, gap_score)`; `health_json.rated` is the rating flag (a row without one reads as unrated until `score` runs again)
-- `sync_state(key PK, value)` (e.g. `discover:uniswap-v3:lastBlock`; `seed:<dex>:lastBlock` records the block of the last `discover --seed`; `volume:<pool>:lastBlock` / `volume:<pool>:fromTs` the volume coverage of a pool; `volume:lastBlock` / `volume:lastTs` the head of the last volume pass)
+- `sync_state(key PK, value)` (e.g. `discover:uniswap-v3:lastBlock`; `seed:<dex>:lastBlock` records the block of the last `discover --seed`; `volume:<pool>:lastBlock` / `volume:<pool>:fromTs` the volume coverage of a pool; `volume:lastBlock` / `volume:lastTs` the head of the last volume pass; `positions:<pool>:lastBlock` the positions cursor, `positions:<pool>:catchUpBlock` that of a staged first scan; `start:<step>:lastRunAt` the unix ms of `start`'s last volume / positions run)
 
 bigint columns are TEXT (decimal strings). JSON columns hold the core types with bigint → string.
 Reads apply core's spread cap (`feasibleSpreadBps`): a snapshot stored before it comes back with the points whose legs are above `SPREAD_MAX_LEG_IMPACT_BPS` infeasible, and `SnapshotSummary.spread10kBps` is derived from the stored $10k point, never read from the denormalised `spread10k_bps` column.
@@ -255,14 +262,15 @@ it, and `apps/api/src/routes/webhookSecret.test.ts` fails when any part of it sh
 
 ## CLI (apps/cli)
 
-`depthwatch <command>` via `tsx` (`pnpm depthwatch …`). Env: `DEPTHWATCH_RPC_URL`, `DEPTHWATCH_LOGS_RPC_URL` (eth_getLogs only, default: `DEPTHWATCH_RPC_URL`), `DEPTHWATCH_LOG_CHUNK`, `DEPTHWATCH_DB`, `DEPTHWATCH_PORT`, `DEPTHWATCH_TOP_POOLS`.
+`depthwatch <command>` via `tsx` (`pnpm depthwatch …`). Env: `DEPTHWATCH_RPC_URL`, `DEPTHWATCH_LOGS_RPC_URL` (eth_getLogs only, default: `DEPTHWATCH_RPC_URL`), `DEPTHWATCH_LOG_CHUNK`, `DEPTHWATCH_DB`, `DEPTHWATCH_PORT` (else the platform's `PORT`), `DEPTHWATCH_TOP_POOLS`; for `start` also `DEPTHWATCH_SNAPSHOT_INTERVAL`, `DEPTHWATCH_VOLUME_INTERVAL`, `DEPTHWATCH_POSITIONS_INTERVAL`, `DEPTHWATCH_POSITIONS_BUDGET`, `DEPTHWATCH_DISCOVER_BUDGET`, `DEPTHWATCH_SHUTDOWN_GRACE` (durations: `90s`, `30m`, `6h`, a plain number is seconds).
 - `discover [--dex …] [--from-block N]` — incremental factory log scan in windows of 50 log chunks; each window upserts its pools and advances sync_state in one transaction, so reruns resume.
   `--seed`: no logs; `ChainReader.seedPools` for the reference-token pairs, upsert, `seed:<dex>:lastBlock` = the seed block (log cursors untouched; pools already stored keep their creation block and are not searched again).
-- `snapshot [--top N] [--pool id…]` — readOverview for all pools → derive prices → rank by TVL → readState for top N → compute depth/spread/concentration → insert snapshots; also rebuild `prices`.
+- `snapshot [--top N] [--pool id…]` — readOverview for all pools → derive prices → rank by TVL → readState for top N → compute depth/spread/concentration → insert snapshots; also rebuild `prices`. One `MmSample` per active mandate of a snapshotted pool; a mandate on a concentrated pool whose positions are not published (`positions:<pool>:lastBlock` unset) is an attribution failure, no sample. Under `start`, a stop before the storing transaction stores nothing.
 - `volume [--hours 24]` — readSwaps for tracked pools, bucket hourly, USD via prices; incremental per pool (`volume:<pool>:lastBlock` / `volume:<pool>:fromTs`): a later pass starts at the hour that held the previous head and rewrites it, keeping earlier hours; pools without coverage of the window read all of it. Uniswap v3 and Slipstream pools share one log scan; progress (blocks and chunks done of the total, %, elapsed, ETA, backoffs) is logged every 30 s.
-- `positions` — readPositions for tracked concentrated pools, upsert.
+- `positions` — readPositions for tracked concentrated pools and the concentrated pools of active mandates, upsert. Options `windowBlocks` / `budgetMs` (used by `start`): pools far behind are read in shared windows from the oldest cursor, a first scan stays staged until it reaches the head, a mandated pool without published positions reads to the head on its own range at once, and a spent budget starts no further pool or window.
 - `score` — for every tracked pool: persistence 24h/7d from snapshots, volume24h, health, gap → `scores`; rows of pools no longer tracked are deleted. volume24h sums the 24 whole hours before the hour of the last block `volume` read (`volume:lastTs`), via core `computeVolume24hUsd`.
-- `run [--interval 300] [--once] [--with-positions] [--seed]` — loop: discover → [positions] → snapshot → volume → score (volume values swaps at the prices snapshot stored; score follows volume, whose head anchors the 24 h window); `--seed` seeds in the discover step.
+- `run [--interval 300|5m] [--once] [--with-positions] [--seed]` — loop: discover → [positions] → snapshot → volume → score (volume values swaps at the prices snapshot stored; score follows volume, whose head anchors the 24 h window); `--seed` seeds in the discover step.
+- `start [--snapshot-interval 30m] [--volume-interval 1h] [--positions-interval 6h] [--positions-budget 10m] [--discover-budget 15m]` — the server: `serve`'s API and dashboard, listening at once (after a write probe: an unwritable database is exit code 1), plus a scheduler over the same database. A pass every snapshot interval runs [seed until one succeeds] → snapshot → [volume when due] → score → [positions when due or while an active mandate's concentrated pool has no published positions, budgeted] → [log discovery, budgeted], both budgets cut to the time left before the next pass; steps never overlap, a failing step is logged and retried at its next slot, a volume or positions run that found no tracked pool is due again at the next pass, every step logs its requests and estimated Alchemy compute units and each UTC day a total. SIGTERM aborts the chain reader and the pipeline (`PipelineContext.signal`: no further pool read, nothing stored by the step in flight), waits `DEPTHWATCH_SHUTDOWN_GRACE` (8 s) at most, closes server and database, exit 0.
 - `serve` — API + dashboard (`apps/web/dist` if built).
 - `demo` — seed an in-memory DB (or an empty / demo-seeded `--db` file; `DEPTHWATCH_DB` is ignored so the live DB is never touched) from the synthetic fixture set and `serve`. Must work with no network.
 

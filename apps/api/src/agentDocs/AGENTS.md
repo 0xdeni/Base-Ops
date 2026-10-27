@@ -11,9 +11,9 @@ trade and what a round trip costs at its size, then verifies on chain and execut
 Depthwatch does not execute, route or quote trades, holds no funds, and its USD prices are a
 valuation convention, not an oracle.
 
-Every Depthwatch server (`depthwatch serve`, `depthwatch demo`) serves three documents for
-agents: `GET /AGENTS.md` (this file), `GET /llms.txt` (a short index) and `GET /openapi.json`
-(an OpenAPI 3.1 description of every GET route and its response schema). Metric definitions with
+Every Depthwatch server (`depthwatch serve`, `depthwatch start`, `depthwatch demo`) serves three
+documents for agents: `GET /AGENTS.md` (this file), `GET /llms.txt` (a short index) and `GET
+/openapi.json` (an OpenAPI 3.1 description of every GET route and its response schema). Metric definitions with
 worked examples: <https://github.com/0xdeni/Base-Ops/blob/main/docs/METRICS.md>. Source code:
 <https://github.com/0xdeni/Base-Ops> (MIT).
 

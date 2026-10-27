@@ -5,8 +5,28 @@
  * environment only, so it never appears in a process list.
  */
 import { parseArgs } from 'node:util'
-import { DEXES, type Dex } from '@depthwatch/core'
-import { isLogLevel, type LogLevel } from './log.js'
+import type { Dex } from '@depthwatch/core'
+import {
+  ConfigError,
+  type Env,
+  parseBlock,
+  parseDexes,
+  parseDuration,
+  parseInteger,
+  parseLogLevel,
+  parsePoolIds,
+  parsePublicUrl,
+  parseRpcUrl,
+  pick,
+} from './configValues.js'
+import type { LogLevel } from './log.js'
+import {
+  loadScheduleSettings,
+  type ScheduleFlags,
+  type ScheduleSettings,
+} from './start/settings.js'
+
+export { ConfigError, type Env } from './configValues.js'
 
 export const COMMANDS = [
   'discover',
@@ -15,6 +35,7 @@ export const COMMANDS = [
   'positions',
   'score',
   'run',
+  'start',
   'serve',
   'demo',
   'export',
@@ -38,6 +59,7 @@ export const LIVE_COMMANDS: readonly Command[] = [
   'volume',
   'positions',
   'run',
+  'start',
 ]
 
 export const DEFAULTS = Object.freeze({
@@ -53,12 +75,7 @@ export const DEFAULTS = Object.freeze({
   logLevel: 'info' as LogLevel,
 })
 
-/** Usage errors (bad command, flag or value): printed on one line, exit code 2. */
-export class ConfigError extends Error {
-  override readonly name = 'ConfigError'
-}
-
-export interface CliFlags {
+export interface CliFlags extends ScheduleFlags {
   dex?: string[]
   fromBlock?: string
   file?: string
@@ -133,9 +150,9 @@ export interface Config {
   exportDemo: boolean
   /** `export --note`: the bundle's `note` (trimmed), shown with a live static snapshot. */
   exportNote: string | undefined
+  /** `start`: the scheduler's cadences and budgets (start/settings.ts). */
+  schedule: ScheduleSettings
 }
-
-export type Env = Readonly<Record<string, string | undefined>>
 
 const PARSE_OPTIONS = {
   dex: { type: 'string', multiple: true },
@@ -159,9 +176,26 @@ const PARSE_OPTIONS = {
   out: { type: 'string' },
   demo: { type: 'boolean' },
   note: { type: 'string' },
+  'snapshot-interval': { type: 'string' },
+  'volume-interval': { type: 'string' },
+  'positions-interval': { type: 'string' },
+  'positions-budget': { type: 'string' },
+  'discover-budget': { type: 'string' },
   help: { type: 'boolean', short: 'h' },
   version: { type: 'boolean', short: 'v' },
 } as const
+
+/** The flags of `start` alone (start/settings.ts). */
+const SCHEDULE_FLAGS = [
+  'snapshot-interval',
+  'volume-interval',
+  'positions-interval',
+  'positions-budget',
+  'discover-budget',
+] as const
+
+/** `run`'s loop flags and `discover`'s restart block: `start` schedules and resumes by itself. */
+const NOT_FOR_START = ['interval', 'once', 'with-positions', 'from-block'] as const
 
 export function isCommand(value: string): value is Command {
   return (COMMANDS as readonly string[]).includes(value)
@@ -231,6 +265,14 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
     throw new ConfigError('--seed only applies to discover and run')
   if (values.seed === true && values['from-block'] !== undefined)
     throw new ConfigError('--from-block only applies to the log scan, not to --seed')
+  const scheduleFlag = SCHEDULE_FLAGS.find((flag) => values[flag] !== undefined)
+  if (scheduleFlag !== undefined && command !== undefined && command !== 'start')
+    throw new ConfigError(`--${scheduleFlag} only applies to start`)
+  const loopFlag = NOT_FOR_START.find((flag) => values[flag] !== undefined)
+  if (loopFlag !== undefined && command === 'start')
+    throw new ConfigError(
+      `--${loopFlag} does not apply to start, whose schedule takes --snapshot-interval and friends`,
+    )
   return {
     command,
     mm,
@@ -258,93 +300,21 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
       out: values.out,
       demo: values.demo,
       note: values.note,
+      snapshotInterval: values['snapshot-interval'],
+      volumeInterval: values['volume-interval'],
+      positionsInterval: values['positions-interval'],
+      positionsBudget: values['positions-budget'],
+      discoverBudget: values['discover-budget'],
     },
   }
 }
 
-interface IntBounds {
-  min?: number
-  max?: number
-}
-
-function parseInteger(name: string, raw: string, bounds: IntBounds = {}): number {
-  const text = raw.trim()
-  if (!/^-?\d+$/.test(text)) throw new ConfigError(`${name} must be an integer, got "${raw}"`)
-  const value = Number(text)
-  if (!Number.isSafeInteger(value)) throw new ConfigError(`${name} is out of range: "${raw}"`)
-  if (bounds.min !== undefined && value < bounds.min)
-    throw new ConfigError(`${name} must be ≥ ${bounds.min}, got ${value}`)
-  if (bounds.max !== undefined && value > bounds.max)
-    throw new ConfigError(`${name} must be ≤ ${bounds.max}, got ${value}`)
-  return value
-}
-
-function parseBlock(name: string, raw: string): bigint {
-  const text = raw.trim().replace(/_/g, '')
-  if (!/^\d+$/.test(text)) throw new ConfigError(`${name} must be a block number, got "${raw}"`)
-  return BigInt(text)
-}
-
-function pick(flag: string | undefined, env: string | undefined): string | undefined {
-  if (flag !== undefined) return flag
-  return env !== undefined && env.trim() !== '' ? env : undefined
-}
-
-function parseDexes(raw: readonly string[] | undefined): Dex[] {
-  if (raw === undefined || raw.length === 0) return [...DEXES]
-  const out: Dex[] = []
-  for (const entry of raw.flatMap((value) => value.split(','))) {
-    const name = entry.trim().toLowerCase()
-    if (name === '') continue
-    if (!(DEXES as readonly string[]).includes(name))
-      throw new ConfigError(`unknown dex "${entry}" (expected one of ${DEXES.join(', ')})`)
-    if (!out.includes(name as Dex)) out.push(name as Dex)
-  }
-  return out.length > 0 ? out : [...DEXES]
-}
-
-function parsePoolIds(raw: readonly string[] | undefined): string[] {
-  if (raw === undefined) return []
-  const out: string[] = []
-  for (const entry of raw.flatMap((value) => value.split(','))) {
-    const id = entry.trim()
-    if (id === '') continue
-    if (!id.includes(':')) throw new ConfigError(`pool id "${id}" must look like <dex>:<address>`)
-    const [dex, key] = id.split(':', 2)
-    const normalized = `${dex}:${(key ?? '').toLowerCase()}`
-    if (!out.includes(normalized)) out.push(normalized)
-  }
-  return out
-}
-
-/** An http(s) URL (the reader's transports are HTTP only), never echoed: RPC URLs carry keys. */
-function parseRpcUrl(name: string, raw: string | undefined): string | undefined {
-  if (raw === undefined || /^https?:\/\/\S+$/i.test(raw.trim())) return raw?.trim()
-  const scheme = /^([a-z][\w+.-]*):/i.exec(raw.trim())?.[1]?.toLowerCase()
-  const got = scheme === undefined ? 'no scheme' : `a ${scheme}: URL`
-  const ws = scheme === 'ws' || scheme === 'wss' ? ' (WebSocket endpoints are not supported)' : ''
-  throw new ConfigError(`${name} must be an http(s) URL, got ${got}${ws}`)
-}
-
-/** An http(s) base URL without its trailing slash. */
-function parsePublicUrl(raw: string | undefined): string | undefined {
-  if (raw === undefined) return undefined
-  const value = raw.trim()
-  if (!/^https?:\/\/[^\s/]+/i.test(value))
-    throw new ConfigError(`DEPTHWATCH_PUBLIC_URL must be an http(s) URL, got "${raw}"`)
-  return value.replace(/\/+$/, '')
-}
-
-function parseLogLevel(raw: string | undefined): LogLevel {
-  if (raw === undefined) return DEFAULTS.logLevel
-  const value = raw.trim().toLowerCase()
-  if (!isLogLevel(value))
-    throw new ConfigError(`log level must be debug, info, warn, error or silent, got "${raw}"`)
-  return value
-}
-
+/**
+ * Flags, then environment, then defaults. The port is `--port`, else `DEPTHWATCH_PORT`, else the
+ * `PORT` a hosting platform sets, else 8787.
+ */
 export function loadConfig(env: Env, flags: CliFlags = {}): Config {
-  const port = pick(flags.port, env.DEPTHWATCH_PORT)
+  const port = pick(flags.port, env.DEPTHWATCH_PORT) ?? pick(undefined, env.PORT)
   const top = pick(flags.top, env.DEPTHWATCH_TOP_POOLS)
   const chunk = pick(flags.logChunk, env.DEPTHWATCH_LOG_CHUNK)
   const rpcUrl = parseRpcUrl('DEPTHWATCH_RPC_URL', pick(flags.rpcUrl, env.DEPTHWATCH_RPC_URL))
@@ -368,7 +338,7 @@ export function loadConfig(env: Env, flags: CliFlags = {}): Config {
     intervalSeconds:
       flags.interval === undefined
         ? DEFAULTS.intervalSeconds
-        : parseInteger('interval', flags.interval, { min: 1, max: 86_400 * 7 }),
+        : parseDuration('interval', flags.interval, { min: 1, max: 86_400 * 7 }),
     runOnce: flags.once === true,
     withPositions: flags.withPositions === true,
     seed: flags.seed === true,
@@ -382,13 +352,14 @@ export function loadConfig(env: Env, flags: CliFlags = {}): Config {
     poolIds: parsePoolIds(flags.pool),
     bandPct: DEFAULTS.bandPct,
     concurrency: DEFAULTS.concurrency,
-    logLevel: parseLogLevel(pick(flags.logLevel, env.DEPTHWATCH_LOG_LEVEL)),
+    logLevel: parseLogLevel(pick(flags.logLevel, env.DEPTHWATCH_LOG_LEVEL), DEFAULTS.logLevel),
     mandateFile: flags.file,
     publicUrl: parsePublicUrl(pick(flags.publicUrl, env.DEPTHWATCH_PUBLIC_URL)),
     adminToken: pick(undefined, env.DEPTHWATCH_ADMIN_TOKEN),
     outFile: flags.out,
     exportDemo: flags.demo === true,
     exportNote: flags.note?.trim(),
+    schedule: loadScheduleSettings(env, flags),
   }
 }
 

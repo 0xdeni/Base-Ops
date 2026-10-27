@@ -5,9 +5,13 @@
  * - Concentrated pools: the stored positions; on Slipstream, positions owned by the pool's CLGauge
  *   are resolved to their depositor (`resolveStakedOwners`, one read per pool for the addresses of
  *   every active mandate; when that read fails, one read per mandate) → `filterPositionsByOwners`
- *   → `buildMmConcentratedState`. No stored positions means attribution method `none` (a breach by
- *   rule 1 of `evaluateKpis`). A mandate whose staked positions cannot be resolved is an
- *   attribution failure: left with the gauge, they would read as missing liquidity.
+ *   → `buildMmConcentratedState`. A pool whose positions have never been published
+ *   (`positionsPublished`, positions.ts: no `positions` run has reached the head for it) cannot be
+ *   attributed at all: its mandates are attribution failures, not samples, so a mandate registered
+ *   before its pool is indexed never records a false `noLiquidity` breach. An indexed pool with no
+ *   stored positions means attribution method `none` (a breach by rule 1 of `evaluateKpis`). A
+ *   mandate whose staked positions cannot be resolved is an attribution failure too: left with the
+ *   gauge, they would read as missing liquidity.
  * - Aerodrome v2: `readLpHoldings` at the sample block → `buildMmReserveState` (method `lp-share`).
  *
  * Then `computeMmAttribution` → `evaluateKpis` → the sample. A failing mandate is logged and
@@ -36,7 +40,8 @@ import {
 import type { Database } from '@depthwatch/db'
 import { errorMessage } from '../log.js'
 import { type AlertsResult, deliverAlerts } from './alerts.js'
-import { type PipelineContext, settleConcurrent } from './context.js'
+import { type PipelineContext, settleConcurrent, throwIfStopped } from './context.js'
+import { positionsPublished } from './positions.js'
 import { type PriceMap, usdOf } from './prices.js'
 
 export interface SampleInput {
@@ -44,7 +49,7 @@ export interface SampleInput {
   /** Whole pool at the sample block (the snapshot's state). */
   state: PoolState
   prices: PriceMap
-  /** Stored positions of a concentrated pool; null when none are indexed (or the pool has none). */
+  /** Stored positions of a concentrated pool; null when it has none (see `storedPositions`). */
   positions: Position[] | null
   blockNumber: bigint
   timestamp: number
@@ -85,7 +90,10 @@ export function storedPriceMap(db: Database): PriceMap {
   return out
 }
 
-/** Stored positions of a concentrated pool, null when there are none (as the snapshot uses). */
+/**
+ * Stored positions of a concentrated pool, null when there are none (as the snapshot uses). Null
+ * also while the pool's positions are not published yet; `sampleMandates` tells the two apart.
+ */
 export function storedPositions(db: Database, pool: PoolMeta): Position[] | null {
   if (pool.kind !== 'concentrated') return null
   const positions = db.positions.forPool(pool.id)
@@ -227,10 +235,14 @@ async function positionsResolver(
   }
 }
 
+/** The attribution failure of every mandate of a concentrated pool with no positions published. */
+export const POSITIONS_NOT_INDEXED = 'positions not indexed yet'
+
 /**
  * One sample per active mandate of `input.pool`. A mandate whose attribution fails (its LP
- * holdings or, on Slipstream, its gauge-staked positions cannot be read) is logged (and reported
- * through `onFailure`) and left out; the others still get their sample.
+ * holdings or, on Slipstream, its gauge-staked positions cannot be read, or its concentrated
+ * pool's positions are not published yet) is logged (and reported through `onFailure`) and left
+ * out; the others still get their sample.
  */
 export async function sampleMandates(
   ctx: PipelineContext,
@@ -239,6 +251,14 @@ export async function sampleMandates(
   const { log } = ctx
   const mandates = input.mandates ?? ctx.db.mandates.list({ active: true, poolId: input.pool.id })
   if (mandates.length === 0) return []
+  if (input.pool.kind === 'concentrated' && !positionsPublished(ctx.db, input.pool.id)) {
+    log.warn('positions not indexed yet; mandates not sampled (run positions)', {
+      pool: input.pool.id,
+      mandates: mandates.map((m) => m.id),
+    })
+    for (const mandate of mandates) input.onFailure?.(mandate.id, POSITIONS_NOT_INDEXED)
+    return []
+  }
   const positionsFor = await positionsResolver(ctx, input, mandates)
   const samples: MmSample[] = []
   for (const mandate of mandates) {
@@ -338,6 +358,7 @@ export async function mmSampleStep(ctx: PipelineContext): Promise<MmSampleResult
         onFailure: (mandateId, error) => result.failed.push({ item: mandateId, error }),
       })
     },
+    ctx.signal,
   )
   for (const failure of settled.failed) {
     const error = errorMessage(failure.error)
@@ -345,6 +366,7 @@ export async function mmSampleStep(ctx: PipelineContext): Promise<MmSampleResult
     log.warn('readState failed', { pool: failure.item, error })
   }
   const samples = settled.ok.flat()
+  throwIfStopped(ctx)
   db.transaction(() => {
     db.mmSamples.insertMany(samples)
   })

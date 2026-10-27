@@ -90,11 +90,13 @@ Alongside, `shareOfPool` is the market maker's share of the pool's in-band liqui
 METRICS.md (`liquidity × clipped (√Pupper − √Plower)`), clamped to 1; for reserve pools it is the
 LP share. `holdings` counts the positions or LP holdings that were attributed.
 
-When positions have not been indexed for a concentrated pool, the method is `none`: nothing can be
-attributed and the sample is a breach (rule 1 below). `depthwatch positions`, or
-`run --with-positions`, must cover a mandated concentrated pool for its scorecard to mean anything;
-both index the pools of active mandates whether or not they are tracked yet, so the first snapshot
-after a registration already finds the positions.
+A concentrated pool whose positions have never been indexed (no `positions` run has reached it)
+cannot be attributed at all: its mandates are reported as attribution failures and get no sample
+until a run publishes the positions, so a registration never records a false breach. `depthwatch
+positions`, `run --with-positions` and `depthwatch start` (which runs positions in the pass that
+finds such a mandate) index the pools of active mandates whether or not they are tracked yet.
+Once a pool is indexed and holds no positions at all, the method is `none`: nothing can be
+attributed and the sample is a breach (rule 1 below).
 
 ### Measurement
 
@@ -403,8 +405,9 @@ against the state read in steps 1 and 2.
 - **The position index lags the state.** Positions are indexed by `depthwatch positions` (or
   `run --with-positions`), so a position changed between the last positions run and the snapshot
   block is attributed with its indexed liquidity, while the pool state is read at the snapshot
-  block. A mandated concentrated pool with no indexed positions samples as `method: 'none'`, which
-  is a breach by rule 1. Aerodrome v2 holdings are read at the snapshot block and have no lag.
+  block. A mandated concentrated pool whose positions are not indexed yet is not sampled (an
+  attribution failure); once indexed, a pool without any position samples as `method: 'none'`,
+  a breach by rule 1. Aerodrome v2 holdings are read at the snapshot block and have no lag.
 - **Band width.** The snapshot reads ticks for at least ±10 % around the price. A `bandPct` beyond
   the known tick range reports the depth up to the edge of what was read, not the full band.
 - **USD prices.** Depth is measured in USD at the observatory's derived prices (a widest-path

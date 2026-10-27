@@ -17,13 +17,20 @@
  * since a log request costs the same for one pool or many. The kept buckets of the window are
  * revalued from their token totals at the current prices, so every hour of the window is valued
  * alike, as a full rescan would. The head's timestamp is stored (`volume:lastTs`): it anchors the
- * score's 24 h window. Every 30 s: blocks and chunks done/total, %, elapsed, ETA, backoffs.
+ * score's 24 h window. Every 30 s: blocks and chunks done/total, %, elapsed, ETA, backoffs. A stop
+ * signal (`depthwatch start`) ends the scan and stores nothing.
  */
 import { type SwapScanProgress, swapScanGroups, swapScanOf } from '@depthwatch/chain'
 import type { Address, Dex, PoolMeta, SwapEvent, VolumeBucket } from '@depthwatch/core'
 import { maxBigint, minBigint, rawToHuman } from '@depthwatch/core'
 import type { Database } from '@depthwatch/db'
-import { BLOCKS_PER_HOUR, HOUR_SECONDS, type PipelineContext, syncKeys } from './context.js'
+import {
+  BLOCKS_PER_HOUR,
+  HOUR_SECONDS,
+  type PipelineContext,
+  syncKeys,
+  throwIfStopped,
+} from './context.js'
 import { chunkProgress, createProgressReporter } from './progress.js'
 
 /** Blocks read before the first block of a rescanned hour: slack for block-time jitter. */
@@ -374,6 +381,7 @@ export async function volumeStep(
   const { buckets, dropped } = bucketSwaps(swaps, pools, sideFor, keepFrom)
   result.dropped = dropped
   const revalued = revaluedBuckets(db, tracked, sideFor, window.fromTs, buckets)
+  throwIfStopped(ctx)
   db.transaction(() => {
     db.volume.upsertBuckets([...buckets, ...revalued])
     for (const pool of tracked) {

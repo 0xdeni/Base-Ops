@@ -10,7 +10,12 @@
  * Market-maker scorecards (docs/design/scorecards.md §5): pools with an active mandate are
  * always tracked, each gets one `MmSample` per active mandate right after its snapshot (same
  * state, prices and positions, stored in the same transaction), and webhook alerts are delivered
- * once the samples are stored. A mandate whose pool is unknown is logged and skipped.
+ * once the samples are stored. A mandate whose pool is unknown is logged and skipped; one whose
+ * concentrated pool has no published positions yet is an attribution failure (mm.ts), not a
+ * sample.
+ *
+ * Under `depthwatch start` the stop signal ends the state reads (no further pool starts) and
+ * nothing is stored: a stop mid-snapshot leaves no partial snapshot in the history.
  */
 import type { PoolOverview } from '@depthwatch/chain'
 import {
@@ -31,7 +36,7 @@ import {
 } from '@depthwatch/core'
 import { errorMessage, type Logger } from '../log.js'
 import { type AlertsResult, deliverAlerts } from './alerts.js'
-import { type PipelineContext, settleConcurrent, syncKeys } from './context.js'
+import { type PipelineContext, settleConcurrent, syncKeys, throwIfStopped } from './context.js'
 import { activeMandatesByPool, sampleMandates, storedPositions } from './mm.js'
 import {
   computePrices,
@@ -252,6 +257,7 @@ export async function snapshotStep(
       pool,
       state: await chain.readState(pool, { bandPct, blockNumber: latest.number }),
     }),
+    ctx.signal,
   )
   for (const failure of states.failed) {
     const error = errorMessage(failure.error)
@@ -294,6 +300,7 @@ export async function snapshotStep(
     )
   }
 
+  throwIfStopped(ctx)
   const entries = priceEntries(prices)
   db.transaction(() => {
     db.snapshots.insertMany(snapshots)
