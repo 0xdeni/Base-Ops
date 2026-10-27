@@ -7,7 +7,7 @@
  */
 import type { ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useDataNow } from '../api/context.js'
+import { useDataNow, useSnapshot } from '../api/context.js'
 import { usePoolMetas, useScorecards } from '../api/hooks.js'
 import type { ScorecardsQuery } from '../api/types.js'
 import { Button } from '../components/ui/Button.js'
@@ -62,6 +62,7 @@ export function Scorecards() {
   const pools = usePoolMetas(items?.map((s) => s.mandate.poolId) ?? [])
   const phone = useIsPhone()
   const now = useDataNow()
+  const snapshot = useSnapshot()
   const waiting = useDelayedPending(all.isPending || shown.isPending)
   const total = all.data?.items.length
 
@@ -106,8 +107,14 @@ export function Scorecards() {
           </Link>
         }
       >
-        Mandates are added with <code className="mono">depthwatch mm register</code> or{' '}
-        <code className="mono">POST /api/mm</code>.
+        {snapshot ? (
+          'This snapshot holds no market-maker mandates.'
+        ) : (
+          <>
+            Mandates are added with <code className="mono">depthwatch mm register</code> or{' '}
+            <code className="mono">POST /api/mm</code>.
+          </>
+        )}
       </EmptyState>
     )
   } else if (!items.length) {

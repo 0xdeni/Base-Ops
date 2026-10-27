@@ -184,6 +184,28 @@ describe('/mm states', () => {
     expect(screen.queryByRole('radiogroup')).toBeNull()
   })
 
+  it('names no CLI or API on a published snapshot, which has neither', async () => {
+    const client = { ...createMockClient({ now: NOW }), scorecards: async () => ({ items: [] }) }
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <Providers
+        client={client}
+        mock={false}
+        snapshot={{ at: NOW - 800, exportedAt: NOW, block: '53063332', note: null }}
+        staticBuild
+        queryClient={queryClient}
+      >
+        <MemoryRouter initialEntries={['/mm']}>
+          <AppRoutes />
+        </MemoryRouter>
+      </Providers>,
+    )
+    expect(await screen.findByText('This snapshot holds no market-maker mandates.')).toBeTruthy()
+    expect(screen.queryByText('depthwatch mm register')).toBeNull()
+    expect(screen.queryByText(/POST \/api\/mm/)).toBeNull()
+    expect(screen.getByRole('link', { name: 'How scorecards work' })).toBeTruthy()
+  })
+
   it('keeps the page usable when the list fails, with a Retry', async () => {
     const client = {
       ...createMockClient({ now: NOW }),
