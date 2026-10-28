@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { BreachEpisode } from '../../lib/scorecard.js'
 import {
+  alertsLine,
   attributionWords,
   episodeLowest,
   episodesLine,
   episodeWhat,
   listAnswer,
+  mandateWhere,
   markWord,
   maxSpreadWords,
   midAddress,
@@ -14,6 +16,8 @@ import {
   readWindow,
   sampleWords,
   scorecardAnswer,
+  streakLine,
+  uptimeFact,
   uptimeLabel,
   uptimeLine,
   windowDomain,
@@ -61,16 +65,14 @@ function ep(over: Partial<BreachEpisode> = {}): BreachEpisode {
   }
 }
 
-describe('scorecard answer (ia-v3 §4.6)', () => {
+describe('streak line (ia-v3 §4.6)', () => {
   it('states the streak and since when', () => {
     const sc = {
       mandate: mandate(),
       latest,
       streak: { breached: true, samples: 8, since: NOW - 14 * H },
     }
-    expect(scorecardAnswer(sc, NOW)).toBe(`Breached for 8 consecutive samples, since 14${NB}h ago.`)
-    // With a fourth (spread) fact the "since …" clause goes.
-    expect(scorecardAnswer(sc, NOW, false)).toBe('Breached for 8 consecutive samples.')
+    expect(streakLine(sc, NOW)).toBe(`Breached for 8 consecutive samples, since 14${NB}h ago.`)
   })
 
   it('reads within KPI, a single sample, no samples and inactive mandates', () => {
@@ -79,7 +81,7 @@ describe('scorecard answer (ia-v3 §4.6)', () => {
       latest,
       streak: { breached: false, samples: 29, since: NOW - 2 * 24 * H },
     }
-    expect(scorecardAnswer(within, NOW)).toMatch(
+    expect(streakLine(within, NOW)).toMatch(
       /^Within KPI for 29 consecutive samples, since 21.Oct, 00:00.UTC\.$/,
     )
     const one = {
@@ -87,18 +89,64 @@ describe('scorecard answer (ia-v3 §4.6)', () => {
       latest,
       streak: { breached: true, samples: 1, since: NOW - 120 },
     }
-    expect(scorecardAnswer(one, NOW)).toBe(`Breached at the latest sample, 2${NB}min ago.`)
+    expect(streakLine(one, NOW)).toBe(`Breached at the latest sample, 2${NB}min ago.`)
     const none = {
       mandate: mandate(),
       latest: null,
       streak: { breached: false, samples: 0, since: null },
     }
-    expect(scorecardAnswer(none, NOW)).toBe('No samples yet.')
-    expect(scorecardAnswer({ ...within, mandate: mandate(false) }, NOW)).toBe(
+    expect(streakLine(none, NOW)).toBe('No samples yet.')
+    expect(streakLine({ ...within, mandate: mandate(false) }, NOW)).toBe(
       `Inactive since its last sample, 2${NB}min ago.`,
     )
-    expect(scorecardAnswer({ ...none, mandate: mandate(false) }, NOW)).toBe(
-      'Inactive, with no samples.',
+    expect(streakLine({ ...none, mandate: mandate(false) }, NOW)).toBe('Inactive, with no samples.')
+  })
+})
+
+describe('scorecard answer (visual-v4 §6.7)', () => {
+  const sample = (breaches: string[], withinKpi: boolean | null = breaches.length === 0) =>
+    ({
+      timestamp: NOW - 120,
+      withinKpi,
+      breaches,
+      attribution: { depthDownUsd: 386_000, depthUpUsd: 425_000, spreadBps: 52 },
+    }) as never
+  const sc = (latest: unknown, maxSpreadBps: number | null = null) => {
+    const m = mandate()
+    return {
+      mandate: { ...m, kpis: { ...m.kpis, minDepthUsd: 400_000, maxSpreadBps } },
+      latest,
+    } as never
+  }
+
+  it('names the side below the KPI with its depth, from the stored evaluation', () => {
+    expect(scorecardAnswer(sc(sample(['depthDown'])), NOW)).toBe(
+      `The sell side is below its $400K KPI: $386K sits within 2${NB}% of the price.`,
+    )
+    expect(scorecardAnswer(sc(sample(['depthUp'])), NOW)).toBe(
+      `The buy side is below its $400K KPI: $425K sits within 2${NB}% of the price.`,
+    )
+    expect(scorecardAnswer(sc(sample(['depthUp', 'depthDown'])), NOW)).toBe(
+      `Both sides are below the $400K KPI: $386K and $425K sit within 2${NB}% of the price.`,
+    )
+  })
+
+  it('reads a spread breach, no liquidity, an unpriced sample and a sample within KPI', () => {
+    expect(scorecardAnswer(sc(sample(['spread']), 40), NOW)).toBe(
+      `Both sides hold the $400K KPI, but the spread at $10K is 52.0${NB}bps, above its 40.0${NB}bps KPI.`,
+    )
+    expect(scorecardAnswer(sc(sample(['noLiquidity'])), NOW)).toBe(
+      'The latest sample found none of the market maker’s liquidity in the pool.',
+    )
+    expect(scorecardAnswer(sc(sample([], null)), NOW)).toBe(
+      'The latest sample has no USD price, so it can’t be checked.',
+    )
+    expect(scorecardAnswer(sc(sample([])), NOW)).toBe(
+      'Both sides are within the $400K KPI at the latest sample.',
+    )
+    expect(scorecardAnswer(sc(null), NOW)).toBe('No samples yet.')
+    expect(scorecardAnswer({ mandate: mandate(false), latest } as never, NOW)).toBe(
+      `Inactive since its last sample, 2${NB}min ago.`,
     )
   })
 })
@@ -122,17 +170,25 @@ describe('list answer (ia-v3 §4.5)', () => {
       'All 2 mandates are inactive.',
     )
     expect(listAnswer([])).toBe('No market-maker mandates are registered yet.')
+    expect(listAnswer([], true)).toBe('No market-maker mandates are registered in this snapshot.')
   })
 })
 
 describe('labels and lines', () => {
-  it('words a KPI mark and the uptime comparison (ia-v3 §4.6)', () => {
+  it('words a KPI mark and the uptime fact (visual-v4 §6.7)', () => {
     expect(markWord('pass')).toBe('within')
     expect(markWord('fail')).toBe('below')
     expect(markWord('fail', 'above')).toBe('above')
     expect(markWord('n/a')).toBe('not evaluable against')
-    expect(uptimeLabel({ uptime: 0.429 }, 0.95)).toBe(`uptime, 7${NB}d, below the 95${NB}% target`)
-    expect(uptimeLabel({ uptime: 0.964 }, 0.95)).toBe(`uptime, 7${NB}d, meets the 95${NB}% target`)
+    expect(uptimeLabel({ samples: 84, uptime: 0.429 }, 0.95)).toBe(
+      `samples within KPI in 7${NB}d: uptime 42.9${NB}%, target 95${NB}%`,
+    )
+    expect(uptimeLabel({ samples: 0, uptime: null }, 0.95)).toBe(
+      `samples within KPI in 7${NB}d: none evaluable yet, target 95${NB}%`,
+    )
+    // The count leads the uptime fact, so one sample never reads as a rate alone.
+    expect(uptimeFact({ samples: 1, withinKpi: 0, uptime: 0 })).toBe('0 of 1')
+    expect(uptimeFact({ samples: 0, withinKpi: 0, uptime: null })).toBe('—')
   })
 
   it('carries the counts in the Uptime takeaway (ia-v3 §4.6)', () => {
@@ -157,6 +213,8 @@ describe('labels and lines', () => {
     expect(episodeWhat(ep({ samples: 1, ongoing: false, kinds: ['depthDown'] }))).toBe(
       '1 sample, sell side',
     )
+    expect(alertsLine(3)).toBe('Alerts fire after 3 in a row.')
+    expect(alertsLine(1)).toBe('Alerts fire on the first breached sample.')
     expect(episodeLowest(ep())).toBe(7400)
     expect(episodeLowest(ep({ minUpUsd: null, minDownUsd: null }))).toBeNull()
     expect(sampleWords({ withinKpi: false, breaches: ['depthUp', 'spread'] })).toBe(
@@ -175,6 +233,15 @@ describe('labels and lines', () => {
     )
     expect(maxSpreadWords({ maxSpreadBps: null, spreadNotionalUsd: 10_000 })).toBe('None')
     expect(midAddress('0xa29d93f3c0ffee000000000000000000a0f0a0f7')).toBe('0xa29d93f3…f0a0f7')
+    const meta = {
+      token0: { symbol: 'WETH' },
+      token1: { symbol: 'USDC' },
+      dex: 'uniswap-v3',
+      feePips: 500,
+    }
+    expect(mandateWhere({ marketMaker: 'Alice', poolId: 'uniswap-v3:0xabc' }, meta)).toBe(
+      `Alice on WETH / USDC, Uniswap v3 0.05${NB}%`,
+    )
     expect(poolWords('aerodrome-v2:0x6cdcb1c4a4d1c3c6d054b27ac5b77e89eafb971d', null)).toEqual({
       pair: '0x6cdc…971d',
       dex: 'Aerodrome v2',

@@ -1,7 +1,7 @@
-/* Fonts (docs/design/visual-v3.md §3.2, T1–T3): self-hosted subsets of the google/fonts TTFs in
-   public/fonts/, licensed under the SIL Open Font License (OFL-*.txt beside them). Hanken Grotesk
-   sets every word and number; IBM Plex Mono only addresses, pool ids, About-list blocks and code.
-   No request to a third-party font host. */
+/* Fonts (docs/design/visual-v4.md §3.3): self-hosted subsets in public/fonts/, licensed under the
+   SIL Open Font License (OFL-*.txt beside them). Hanken Grotesk sets every word and number, from
+   12 px captions to the 196 px Home figure; IBM Plex Mono sets eyebrows (uppercase, 12 px, 500,
+   +0.09em), on-chain identifiers and code. No request to a third-party font host. */
 
 @font-face {
   font-family: "Hanken Grotesk";
@@ -40,7 +40,7 @@
 }
 
 /* Fallback check only (?nofonts=1, set by index.html): the layout with the web faces dropped
-   (§3.2 "Fallback check"). */
+   (the metric-matched fallback above). */
 :root[data-nofonts] {
   --sans: "Hanken Fallback", ui-sans-serif, system-ui, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

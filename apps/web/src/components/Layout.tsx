@@ -1,24 +1,28 @@
 /**
- * The app shell (docs/design/visual-v3.md §5.1) and route transitions (§4 rows 6–8, §7 "Routing
- * transitions"): skip link, demo line (or the snapshot line of a published live snapshot), app
- * bar, <main>, footer.
+ * The app shell (docs/design/visual-v4.md §5.1) and its motion (§4.1, §4.2): skip link, demo line
+ * (or the snapshot line of a published live snapshot), app bar, <main>, footer, and in an installed
+ * app on a phone the bottom dock. The app column (#root) is a flex column of at least 100dvh.
  *
- * A pointer click on an in-app link cross-fades <main> only (React `<ViewTransition>`, 100 ms out
- * and 180 ms in, `--ease-out`) and slides the nav indicator; root and chrome never animate. Keyboard
- * navigation and reduced motion are instant, and keyboard navigation moves focus to <main>.
- * Back and Forward are instant and restore the scroll position; other navigations to a new path
- * start at the top. Theme changes suppress transitions for two frames (C8). A link's route data
- * loads on intent, and a pointer click waits up to 120 ms for it, so the cross-fade lands on a
- * populated page (`routeIntent.ts`).
+ * The first render of a session plays the first view on the landing route (`lib/firstView.ts`),
+ * once. After that, a pointer click on an in-app link cross-fades <main> only (React
+ * `<ViewTransition>`: 100 ms out and 180 ms in from the same instant, `--ease-out`) and slides the
+ * nav indicator; root and chrome never animate. Keyboard navigation and reduced motion are
+ * instant, and keyboard navigation moves focus to <main>. Back and Forward are instant and restore
+ * the scroll position; other navigations to a new path start at the top. Theme changes suppress
+ * transitions for two frames. A link's route data loads on intent, and a pointer click waits up to
+ * 120 ms for it, so the cross-fade lands on a populated page (`routeIntent.ts`).
  */
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useLayoutEffect, useRef, ViewTransition } from 'react'
 import { Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import { useApi, useIsDemo, useIsMock, useSnapshot } from '../api/context.js'
+import { useFirstView } from '../lib/firstView.js'
 import { isKeyboardClick, prefersReducedMotion } from '../lib/motion.js'
+import { useMediaQuery } from '../lib/useMediaQuery.js'
 import { type ClickHold, createClickHold, linkOf, prefetchRoute } from './routeIntent.js'
 import { AppBar } from './shell/AppBar.js'
 import { DemoLine } from './shell/DemoLine.js'
+import { DOCK_QUERY, Dock } from './shell/Dock.js'
 import { type DataSourceKind, Footer } from './shell/Footer.js'
 import { SkipLink } from './shell/SkipLink.js'
 import { SnapshotLine } from './shell/SnapshotLine.js'
@@ -110,8 +114,10 @@ export function Layout() {
   const prev = useRef({ key: location.key, pathname: location.pathname })
 
   const clicks = useRef<ClickHold | null>(null)
+  const docked = useMediaQuery(DOCK_QUERY)
   useThemeSwitchGuard()
   useRouteData(clicks)
+  useFirstView(mainRef, location)
 
   useEffect(() => {
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
@@ -176,6 +182,7 @@ export function Layout() {
         </main>
       </ViewTransition>
       <Footer source={source} />
+      {docked ? <Dock /> : null}
     </>
   )
 }

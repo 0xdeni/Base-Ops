@@ -1,11 +1,12 @@
-/* App shell (docs/design/visual-v3.md §5.1): skip link, demo line, app bar with the one <nav>,
-   freshness, main and footer. Monochrome chrome; colour only in the logo mark and the status dot. */
+/* App shell (docs/design/visual-v4.md §5.1): skip link, the snapshot or demo line, the app bar
+   with the one <nav> (inline from 840 px, a 44 px tab strip below), the circle freshness dot,
+   the standalone-only dock and the ink footer. */
 
 .skip {
-  position: absolute;
+  position: fixed;
   left: 8px;
-  top: -100px;
-  z-index: 50;
+  top: 8px;
+  z-index: 100;
   height: 44px;
   display: inline-flex;
   align-items: center;
@@ -14,62 +15,40 @@
   color: var(--canvas);
   border-radius: var(--r-ctl);
   font-size: var(--t-data);
-  font-weight: 500;
+  font-weight: 700;
+  translate: 0 -200%;
 }
 .skip:focus-visible {
-  top: 8px;
+  translate: none;
 }
 
-/* Demo line: 28 px, one line at every width, never wraps. */
+/* ---------- Snapshot and demo line: 32 px, one line, never wraps ---------- */
 .demo-line {
-  height: var(--demo-h);
-  background: var(--well);
+  min-height: var(--line-h);
+  background: var(--note-bg);
+  box-shadow: var(--note-rule);
   color: var(--text-2);
   font-size: var(--t-small);
-  line-height: var(--demo-h);
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
 }
 .demo-inner {
   display: flex;
-  gap: var(--s3);
+  gap: var(--s4);
   align-items: center;
-  height: var(--demo-h);
+  min-height: var(--line-h);
 }
-/* Touch (A5): "About the demo" sits on the 28 px line at the top of the page, so its 44 px hit area
-   reaches down 16 px over the app bar's empty top edge, stopping short of the freshness button. The
-   line clips sideways only, and sits above the app bar while it is in view. */
-@media (pointer: coarse) {
-  .demo-line {
-    position: relative;
-    z-index: 21;
-    overflow: clip visible;
-  }
-  .demo-inner .touch-hit::after {
-    left: -8px;
-    top: 0;
-    width: calc(100% + 8px);
-    height: 44px;
-    translate: none;
-  }
+.demo-inner .quiet-link {
+  flex: none;
+  min-height: var(--line-h);
+  font-size: var(--t-small);
 }
-/* Below 360 px the link shortens to "About" so the line still fits on one line (ia-v3 §3.1), and
-   the snapshot line drops its year. */
-@media (max-width: 22.49em) {
-  .demo-more,
-  .snap-year {
-    display: none;
-  }
-}
-/* Snapshot line (a published live snapshot, web-v2 §4): the long sentence from 840 px, the short
-   one and "About" below. Should it still not fit, the text takes the ellipsis, not the link. */
+/* The snapshot sentence takes the ellipsis as a last resort, never the trigger. */
 .snap-text {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.demo-inner .quiet-link {
-  flex: none;
 }
 @media (max-width: 52.49em) {
   .snap-wide,
@@ -82,105 +61,122 @@
     display: none;
   }
 }
+/* Below 360 px the trigger reads "About" and the snapshot sentence drops its year. */
+@media (max-width: 22.49em) {
+  .demo-more,
+  .snap-year {
+    display: none;
+  }
+}
+/* Touch (A5): the trigger's 44 px hit area reaches down over the app bar's empty top edge. */
+@media (pointer: coarse) {
+  .demo-line {
+    position: relative;
+    z-index: 41;
+    overflow: clip visible;
+  }
+  .demo-inner .touch-hit::after {
+    left: -8px;
+    top: 0;
+    width: calc(100% + 8px);
+    height: 44px;
+    translate: none;
+  }
+}
 
-/* App bar: sticky, canvas; its hairline fades in past 36 px of scroll (§4 row 18). */
+/* ---------- App bar: 64 px from 840 px, sticky; its hairline fades in past 8 px ---------- */
 .appbar {
   position: sticky;
   top: 0;
-  z-index: 20;
-  height: var(--appbar-h);
+  z-index: 40;
   background: var(--canvas);
 }
 .appbar::after {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: var(--border-subtle);
+  inset: 0;
+  box-shadow: 0 1px 0 var(--line);
   opacity: 0;
-  transition: opacity 200ms ease;
   pointer-events: none;
+  transition: opacity 200ms ease;
 }
 .appbar.is-scrolled::after {
   opacity: 1;
 }
 .appbar-inner {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
-  height: 100%;
-  gap: var(--s6);
+  gap: 40px;
+  height: var(--bar-h);
 }
 
+/* The wordmark: the 22 px mark and "Depthwatch" at 21 px / 850, 10 px apart. */
 .brand {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   min-height: 44px;
   color: var(--text-1);
+  font-size: var(--t-mark);
+  font-weight: 850;
+  letter-spacing: -0.045em;
+  line-height: 1;
+  flex: none;
 }
 .mark .m-spine {
-  fill: var(--text-1);
+  fill: currentColor;
 }
 .mark .m-sell {
   fill: var(--sell);
 }
 .mark .m-buy {
   fill: var(--buy);
-}
-.wordmark {
-  font-size: var(--t-title);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 1.375;
+  stroke: var(--buy-edge);
+  stroke-width: 0.5;
 }
 
+/* Nav: 15 px / 650, 28 px apart; the current item text-1 over a 4 px indicator. */
 .nav {
   position: relative;
   display: flex;
-  gap: var(--s5);
+  gap: 28px;
   align-self: stretch;
 }
 .nav a {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  color: var(--text-2);
   font-size: var(--t-data);
-  font-weight: 500;
-  letter-spacing: 0;
+  font-weight: 650;
+  color: var(--text-2);
+  white-space: nowrap;
 }
 .nav a[aria-current="page"] {
   color: var(--text-1);
 }
-/* The link keeps the bar's full height as its hit area and reaches 6 px past its label on each
-   side; its focus ring is drawn on a label-sized layer (32 px high, radius 6), not around the
-   whole 56 px box. */
-.nav a {
-  position: relative;
-  padding-inline: 6px;
-  margin-inline: -6px;
-  border-radius: var(--r-ctl);
-}
+/* The focus ring sits on a label-sized layer, not around the bar-high link. */
 .nav a:focus-visible {
   outline: none;
 }
 .nav a:focus-visible::before {
   content: "";
   position: absolute;
-  inset: 12px 0;
-  border-radius: var(--r-ctl);
+  inset: 14px -6px;
+  border-radius: 6px;
   outline: 2px solid var(--focus);
   pointer-events: none;
 }
-/* The 2 px indicator: translateX(x) scaleX(width) from a 1 px bar (§4 row 8). */
+/* Placed with left and width; moved by transform only (§4.2). */
 .nav-ind {
   position: absolute;
   left: 0;
   bottom: 0;
-  height: 2px;
-  width: 1px;
-  background: var(--text-1);
+  width: 0;
+  height: 4px;
+  border-radius: 2px 2px 0 0;
+  background: var(--nav-ind);
   transform-origin: 0 0;
   opacity: 0;
   pointer-events: none;
@@ -189,61 +185,56 @@
   opacity: 1;
 }
 
+/* Freshness: an 8 px Green circle and the block eyebrow; a 40 px button. Never a square. */
 .fresh {
   margin-left: auto;
+  margin-right: -12px;
   display: inline-flex;
   align-items: center;
-  gap: var(--s2);
-  color: var(--text-3);
-  font-size: var(--t-small);
-  min-height: 32px;
-  padding: 0 var(--s2);
-  margin-right: calc(-1 * var(--s2));
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
   border-radius: var(--r-ctl);
+  color: var(--text-2);
+  font-size: var(--t-small);
   white-space: nowrap;
 }
 .fresh-dot {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--ok);
   flex: none;
 }
-/* A published snapshot is not live: a hollow `text-3` dot instead of the `ok` one. */
-.fresh-dot.is-snapshot {
-  background: none;
-  box-shadow: inset 0 0 0 1px var(--text-3);
-}
 .fresh-off {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   color: var(--bad);
   flex: none;
 }
-.fresh.is-offline {
-  color: var(--text-2);
-}
-/* Booting on a slow API: "Connecting…" in words, no dot, not a button. */
-.fresh.is-connecting {
-  margin-right: calc(-1 * var(--s2));
+.fresh.is-offline .fresh-text {
+  color: var(--text-1);
+  font-weight: 650;
 }
 
-/* Phone chrome (PH2): a 52 px top bar plus the same <nav> as a 44 px tab strip. */
+/* ---------- Phones, below 840 px: a 56 px bar plus the same <nav> as a 44 px tab strip ---------- */
 @media (max-width: 52.49em) {
   .appbar-inner {
     flex-wrap: wrap;
-    gap: 0;
     align-content: flex-start;
+    gap: 0;
+    height: auto;
   }
   .appbar .brand {
-    height: 52px;
+    height: var(--bar-h);
   }
   .fresh {
     order: 2;
-    min-height: 44px;
     min-width: 44px;
+    min-height: 44px;
     justify-content: center;
-    margin-right: -12px;
+    margin-right: -10px;
+    padding: 0;
   }
   .fresh-text {
     position: absolute;
@@ -256,8 +247,8 @@
   .nav {
     order: 3;
     flex: 1 0 100%;
-    height: 44px;
-    gap: 20px;
+    height: var(--strip-h);
+    gap: 2px;
     overflow-x: auto;
     scrollbar-width: none;
     margin-inline: calc(-1 * var(--gutter));
@@ -267,125 +258,146 @@
     display: none;
   }
   .nav a {
-    font-size: var(--t-body);
+    flex: 1 0 auto;
+    justify-content: center;
     min-height: 44px;
-    white-space: nowrap;
+    padding: 0 10px;
+    font-weight: 700;
   }
   .nav a:focus-visible::before {
-    inset: 6px 0;
+    inset: 6px 2px;
+  }
+  /* The strip's indicator is inset 10 px inside its tab. */
+  .nav a[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 0;
+    height: 4px;
+    border-radius: 2px 2px 0 0;
+    background: var(--nav-ind);
+  }
+  .nav-ind {
+    display: none;
   }
 }
-/* Below 360 px the tab strip scrolls; its trailing edge fades to say so (PH2). */
+/* Below 360 px the tab strip scrolls; its trailing edge fades to say so. */
 @media (max-width: 22.49em) {
   .nav {
     mask-image: linear-gradient(to right, #000 calc(100% - var(--gutter)), transparent);
   }
 }
-/* <main> takes the room #root (a 100dvh flex column) leaves, so on a short page the footer rests
-   at the viewport bottom and never below the fold. Only while a route's skeleton shows, and during
-   the route cross-fade, does <main> fill the first viewport under the chrome, so the footer never
-   flashes up before the content arrives. `:is()` keeps the rule valid where the view-transition
-   pseudo-class is unknown. */
+/* PH3: a bottom bar only in an installed app; a browser tab keeps the top strip. */
+@media (max-width: 52.49em) and (display-mode: standalone) {
+  .appbar .nav {
+    display: none;
+  }
+  /* The dock: Gray 100, four 48 px tabs, sticky at the bottom of the app column. */
+  .dock {
+    position: sticky;
+    bottom: 0;
+    z-index: 45;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    background: var(--g100);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -12px 32px -12px rgb(10 11 13 / 0.35);
+  }
+  .dock a {
+    display: grid;
+    place-items: center;
+    height: 48px;
+    border-radius: var(--r-ctl);
+    font-size: var(--t-ui);
+    font-weight: 700;
+    color: rgb(255 255 255 / 0.8);
+  }
+  .dock a[aria-current="page"] {
+    background: var(--blue);
+    color: #ffffff;
+  }
+  .dock a:focus-visible {
+    outline-color: var(--focus-band);
+    outline-offset: -2px;
+  }
+}
+
+/* <main> takes the room the app column leaves. While a route's skeleton shows, or during the
+   route cross-fade, it fills the first viewport under the chrome, so the footer never flashes up
+   before the content arrives. `:is()` keeps the rule valid where the pseudo-class is unknown. */
 main {
-  flex: 1;
+  flex: 1 0 auto;
   outline: none;
 }
 main:is(:has(.skel-stack), :root:active-view-transition *) {
-  min-height: calc(100dvh - var(--appbar-h));
+  min-height: calc(100dvh - var(--chrome-h));
 }
 :root:has(.demo-line) main:is(:has(.skel-stack), :root:active-view-transition *) {
-  min-height: calc(100dvh - var(--appbar-h) - var(--demo-h));
+  min-height: calc(100dvh - var(--chrome-h) - var(--line-h));
+}
+/* The first view waits a moment for the landing route's data (lib/firstView.ts): nothing in
+   <main> paints until its timeline starts, or the wait ends. */
+:root[data-first-view="wait"] main {
+  opacity: 0;
 }
 
-/* Footer: wordmark and promise, links, data source. A two-column grid on phones. */
+/* ---------- Footer: the ink block in both themes ---------- */
 .foot {
   margin-top: var(--s8);
-  border-top: 1px solid var(--border-subtle);
-  color: var(--text-2);
-  font-size: var(--t-small);
+  background: var(--ink);
+  color: var(--on-ink);
+  box-shadow: inset 0 1px 0 var(--ink-edge);
 }
 .foot-inner {
-  display: flex;
-  gap: var(--s6);
+  display: grid;
+  gap: var(--s4) var(--s7);
   align-items: center;
-  padding-block: var(--s6) calc(var(--s6) + env(safe-area-inset-bottom));
-  flex-wrap: wrap;
+  padding-block: var(--s7) calc(var(--s7) + env(safe-area-inset-bottom));
 }
-.foot-a {
-  display: flex;
-  align-items: center;
-  gap: var(--s4);
+.foot .brand {
+  color: var(--on-ink);
+  font-size: var(--t-mark-lg);
 }
-.foot-a .brand {
-  min-height: 0;
+.foot .mark {
+  width: 28px;
+  height: 28px;
 }
-@media (pointer: coarse) {
-  .foot-a .brand {
-    min-height: 44px;
-  }
-}
-.foot-a .wordmark {
+.foot-say {
+  max-width: 52ch;
+  color: var(--on-ink-2);
   font-size: var(--t-data);
 }
 .foot-links {
   display: flex;
-  gap: var(--s5);
+  flex-wrap: wrap;
+  gap: 4px 28px;
+  align-items: center;
+  font-size: var(--t-data);
+  font-weight: 650;
 }
 .foot-links a {
-  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  text-underline-offset: 4px;
 }
-/* Touch (A5): every footer link is a 44 × 44 target ("API" alone is 19 px wide). The width comes
-   from a centred hit layer, not the box, so the row still fits at 320 px and the links keep their
-   16 px rhythm; no two layers overlap. */
-@media (pointer: coarse) {
-  .foot-links a {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    min-height: 44px;
+@media (min-width: 64em) {
+  .foot-inner {
+    grid-template-columns: auto minmax(0, 1fr) auto;
   }
-  .foot-links a::after {
-    content: "";
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: max(44px, 100%);
-    height: max(44px, 100%);
-    translate: -50% -50%;
-  }
-}
-.foot-data {
-  margin-left: auto;
-  color: var(--text-3);
 }
 @media (max-width: 52.49em) {
   .foot {
     margin-top: var(--s7);
   }
   .foot-inner {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: var(--s1) var(--s4);
-    padding-block: var(--s3) calc(var(--s5) + env(safe-area-inset-bottom));
-  }
-  .foot-a {
-    display: contents;
-  }
-  .foot-a p {
-    grid-column: 1 / -1;
-    grid-row: 2;
+    gap: var(--s3);
+    padding-block: var(--s6) calc(var(--s6) + env(safe-area-inset-bottom));
   }
   .foot-links {
-    justify-self: end;
-    gap: var(--s4);
-  }
-  .foot-links a {
-    display: inline-flex;
-    min-height: 44px;
-    align-items: center;
-  }
-  .foot-data {
-    grid-column: 1 / -1;
-    margin-left: 0;
+    gap: 4px 20px;
   }
 }

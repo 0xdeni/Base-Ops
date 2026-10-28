@@ -1,12 +1,12 @@
 /**
- * Disclosure (K10, docs/design/visual-v3.md §5.2, §4 row 14): a quiet trigger with a chevron and
- * `aria-expanded`, its panel following in the DOM. Opening animates height and opacity over
- * 200 ms, closing over 150 ms (`--ease-out`, WAAPI); keyboard toggles are instant (M2), the
- * chevron included; reduced motion keeps the opacity only. A long label wraps instead of widening
- * the page, balanced, with the chevron after its last word; a `phoneLabel` replaces it below
- * 840 px. Its open state is never stored in the URL.
+ * Disclosure (docs/design/visual-v4.md §5.3, §4.4): a trigger with a 16 px chevron and
+ * `aria-expanded`, its panel following in the DOM. Opening by pointer fades the panel in and
+ * settles it from `translateY(-8px)` over 200 ms `--ease-out` while the chevron turns 180°; closing
+ * is instant. Keyboard toggles are instant, the chevron included; reduced motion keeps the opacity
+ * only. A long label wraps instead of widening the page, with the chevron after its last word; a
+ * `phoneLabel` replaces it below 840 px. Its open state is never stored in the URL.
  *
- * The trigger and the panel can live apart (a section's Details sits in its heading, K10): use
+ * The trigger and the panel can live apart (a section's Details sits in its head): use
  * `useDisclosure` with `DisclosureTrigger` and `DisclosurePanel`. `Disclosure` keeps them together.
  */
 import {
@@ -21,12 +21,10 @@ import {
 import { animate, DUR, EASE, isKeyboardClick, prefersReducedMotion } from '../../lib/motion.js'
 import { Icon } from './Icon.js'
 
-type Pending = { open: boolean; instant: boolean } | null
-
 export interface DisclosureState {
   id: string
   open: boolean
-  /** The panel is in the layout: open, or closing with its exit animation. */
+  /** The panel is in the layout (open). */
   visible: boolean
   toggle: (e?: MouseEvent) => void
   panelRef: RefObject<HTMLDivElement | null>
@@ -41,60 +39,35 @@ export function useDisclosure({
 } = {}): DisclosureState {
   const id = useId()
   const [open, setOpen] = useState(defaultOpen)
-  const [closing, setClosing] = useState(false)
   const panelRef = useRef<HTMLDivElement | null>(null)
-  const pending = useRef<Pending>(null)
+  // An open by pointer that the next layout effect animates.
+  const enter = useRef(false)
 
   useLayoutEffect(() => {
-    const p = pending.current
     const panel = panelRef.current
-    if (!p || !panel) return
-    pending.current = null
+    if (!enter.current || !panel) return
+    enter.current = false
     for (const a of panel.getAnimations?.() ?? []) a.cancel()
-    if (p.instant) {
-      if (!p.open) setClosing(false)
-      return
-    }
-    const reduced = prefersReducedMotion()
-    if (p.open) {
-      const h = panel.scrollHeight
-      animate(
-        panel,
-        reduced
-          ? [{ opacity: 0 }, { opacity: 1 }]
-          : [
-              { height: '0px', opacity: 0 },
-              { height: `${h}px`, opacity: 1 },
-            ],
-        { duration: DUR.disclosure, easing: EASE.out },
-      )
-      return
-    }
-    const h = panel.offsetHeight
-    const anim = animate(
+    animate(
       panel,
-      reduced
-        ? [{ opacity: 1 }, { opacity: 0 }]
+      prefersReducedMotion()
+        ? [{ opacity: 0 }, { opacity: 1 }]
         : [
-            { height: `${h}px`, opacity: 1 },
-            { height: '0px', opacity: 0 },
+            { opacity: 0, transform: 'translateY(-8px)' },
+            { opacity: 1, transform: 'none' },
           ],
-      { duration: DUR.disclosureClose, easing: EASE.out },
+      { duration: DUR.disclosure, easing: EASE.out },
     )
-    if (anim) anim.onfinish = () => setClosing(false)
-    else setClosing(false)
   })
 
   const toggle = (e?: MouseEvent) => {
     const next = !open
-    const instant = e ? isKeyboardClick(e) : true
-    pending.current = { open: next, instant }
+    enter.current = next && (e ? !isKeyboardClick(e) : false)
     setOpen(next)
-    setClosing(!next && !instant)
     onOpenChange?.(next)
   }
 
-  return { id, open, visible: open || closing, toggle, panelRef }
+  return { id, open, visible: open, toggle, panelRef }
 }
 
 /**

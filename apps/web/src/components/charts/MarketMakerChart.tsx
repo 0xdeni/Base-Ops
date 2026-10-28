@@ -1,13 +1,15 @@
 /**
- * The market-maker chart (docs/design/visual-v3.md §5.9, ia-v3 §4.6): the Scorecard focal. The
- * market maker's buy-side depth above a zero line and sell-side depth mirrored below it, on one
- * symmetric scale, against the KPI drawn dashed on both sides; breach episodes as `--bad-mark` bands
- * at `--band-op` (CH7); a dashed registration line when the window reaches back past it; the whole
- * pool as 1 px `text-3` context lines behind a toggle. No halftone here (§1.4).
+ * The market-maker chart over time (docs/design/visual-v4.md §5.9.5, ia-v3 §4.6): the first
+ * section of a scorecard, when per-side history exists. The market maker's buy-side depth above a
+ * zero line and sell-side depth mirrored below it, on one symmetric scale: 2 px lines, buy Yellow
+ * (with its 1 px ink edge in light) and sell Cerulean; the KPI as 1 px dashed `--text-2` lines
+ * labelled "KPI $400K"; breach episodes as Red bands at `--breach-op`, full plot height; a dashed
+ * registration line when the window reaches back past it; the whole pool as 1 px context lines
+ * behind a toggle.
  *
- * Window and context changes morph (§4 rows 10–11). Scrubbing (pointer or arrow keys) shows a
- * crosshair with a dot on each line, reports the sample through `onScrub` so the page rewrites its
- * facts, and fills the foot row's caption with the status and the full UTC time (CH2).
+ * Window and context changes morph (§4.3). Scrubbing (pointer or arrow keys) shows a crosshair
+ * with a dot on each line, reports the sample through `onScrub` so the page rewrites its facts,
+ * and fills the foot row's caption with the status and the full UTC time (CH2).
  */
 import { type ReactNode, useRef, useState } from 'react'
 import type { MmSampleDto } from '../../api/types.js'
@@ -165,7 +167,7 @@ export function MarketMakerChart({
             Sell side, below
           </span>
           <span>
-            <span className="sw band" />
+            <span className="sw breach" />
             Breached
           </span>
         </div>
@@ -231,7 +233,13 @@ export function MarketMakerChart({
                   y1={top}
                   y2={H - bottom}
                 />
-                <text className="chart-text" x={fx(registeredAt) - 8} y={top + 12} textAnchor="end">
+                {/* Left of the line, or right of it when the plot's edge is too near. */}
+                <text
+                  className="chart-text"
+                  x={fx(registeredAt) + (fx(registeredAt) < 112 ? 8 : -8)}
+                  y={top + 12}
+                  textAnchor={fx(registeredAt) < 112 ? 'start' : 'end'}
+                >
                   Registered {day(registeredAt)}
                 </text>
               </>
@@ -247,6 +255,7 @@ export function MarketMakerChart({
                 </>
               ) : null}
             </g>
+            <path className="mm-line-edge" d={line('depthUpUsd')} />
             <path className="mm-line buy" d={line('depthUpUsd')} />
             <path className="mm-line sell" d={line('depthDownUsd')} />
           </g>

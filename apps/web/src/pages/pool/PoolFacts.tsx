@@ -1,30 +1,69 @@
 /**
- * The Pool facts row (ia-v3 §4.3, D3): health with its grade, spread at $10K, 24 h volume and TVL,
- * value first and label second; a 2 × 2 grid on phones. When the pool trades 3× its depth a day or
- * more, a quiet gap callout follows (TB9). Unknown values are "—" with the reason on hover, focus
- * or tap (D6).
+ * The Pool facts row (docs/design/visual-v4.md §6.4, §5.6): one ink block stacked over the band's
+ * lower edge, value first and the comparison in the label (P4): health with its grade, "the
+ * median rated pool scores 61"; spread at $10K, a round trip; 24 h volume, "14× the depth within
+ * 2 %"; TVL, "of which 10 % sits within 2 %". Four columns from 1024 px, 2 × 2 on phones. When the
+ * pool trades 3× its depth a day or more, the gap callout follows under a Gray 80 rule with "See
+ * all gaps" (TB9). Unknown values are "—" with the reason on hover, focus or tap (D6).
  */
 import { Link } from 'react-router-dom'
+import { useGaps, useStats } from '../../api/hooks.js'
 import type { PoolDetail } from '../../api/types.js'
 import { MEANINGFUL_GAP_TURNOVER } from '../../components/charts/TurnoverGlyph.js'
-import { Fact, Facts } from '../../components/ui/Fact.js'
+import { Overlap } from '../../components/ui/Block.js'
+import { Fact, FactsRow } from '../../components/ui/Fact.js'
 import { Glossary } from '../../components/ui/Glossary.js'
 import { NotRatedChip } from '../../components/ui/GradeGlyph.js'
 import { Unknown } from '../../components/ui/Unknown.js'
-import { bps, cantAbsorb, NB, ratio, score, usd } from '../../lib/format.js'
+import { bps, cantAbsorb, score, usd } from '../../lib/format.js'
 import { tvlReason } from '../../lib/poolsTable.js'
-import { spreadAt } from './poolText.js'
+import {
+  gapCallout,
+  healthFactSuffix,
+  spreadAt,
+  tvlFactLabel,
+  volumeFactLabel,
+} from './poolText.js'
+
+/** The gap feed's page that Home and Token read too, so the count shares their cache. */
+export const GAP_FEED = { limit: 200 } as const
+
+function GapNote({ detail }: { detail: PoolDetail }) {
+  const gaps = useGaps(GAP_FEED)
+  const turnover = detail.gap?.turnoverRatio ?? null
+  if (turnover === null || turnover < MEANINGFUL_GAP_TURNOVER) return null
+  const items = gaps.data?.items ?? []
+  const meaningful = items.filter((g) => (g.gap.turnoverRatio ?? 0) >= MEANINGFUL_GAP_TURNOVER)
+  const listed = meaningful.some((g) => g.pool.pool.id === detail.pool.id)
+    ? meaningful.length
+    : null
+  return (
+    <>
+      {gapCallout(turnover, listed, MEANINGFUL_GAP_TURNOVER)}{' '}
+      <Link className="ulink touch-hit" to="/gaps">
+        See all gaps
+      </Link>
+    </>
+  )
+}
 
 export function PoolFacts({ detail }: { detail: PoolDetail }) {
+  const stats = useStats()
   const { score: health, latest, pool, gap } = detail
   const spread10k = latest ? spreadAt(latest.spreads, 10_000) : null
   // No spread on a priced pool: it "can't absorb" the trade (null, or more than a trade can pay).
   const spreadUnabsorbed =
     latest !== null && health?.unratedReason !== 'unpriced' && spread10k === null
   const gapOn = gap?.turnoverRatio != null && gap.turnoverRatio >= MEANINGFUL_GAP_TURNOVER
+  const depth2 = latest?.depthUsd.find((d) => d.pct === 2)?.totalUsd
   return (
-    <>
-      <Facts layout="pool" className="pool-facts">
+    <Overlap label="Facts" className="pool-facts-wrap">
+      <FactsRow
+        layout="pool"
+        label="Pool facts"
+        className="pool-facts"
+        note={gapOn ? <GapNote detail={detail} /> : undefined}
+      >
         <Fact
           value={
             health ? (
@@ -39,12 +78,15 @@ export function PoolFacts({ detail }: { detail: PoolDetail }) {
           }
           grade={health?.rated ? health.grade : null}
           label={
-            <Glossary
-              definition="One score from 0 to 100, built from depth, spread, concentration and persistence."
-              anchor="health"
-            >
-              health
-            </Glossary>
+            <>
+              <Glossary
+                definition="One score from 0 to 100, built from depth, spread, concentration and persistence."
+                anchor="health"
+              >
+                health
+              </Glossary>
+              {healthFactSuffix(stats.data?.totals.medianHealth)}
+            </>
           }
         />
         <Fact
@@ -57,7 +99,7 @@ export function PoolFacts({ detail }: { detail: PoolDetail }) {
               bps(spread10k)
             )
           }
-          label="spread at $10K"
+          label="spread at $10K, a round trip"
         />
         <Fact
           value={
@@ -67,23 +109,15 @@ export function PoolFacts({ detail }: { detail: PoolDetail }) {
               usd(detail.volume24hUsd)
             )
           }
-          label={`traded in 24${NB}h`}
+          label={volumeFactLabel(gap?.turnoverRatio)}
         />
         <Fact
           value={
             latest?.tvlUsd == null ? <Unknown reason={tvlReason(pool.dex)} /> : usd(latest.tvlUsd)
           }
-          label="TVL"
+          label={tvlFactLabel(depth2, latest?.tvlUsd ?? null)}
         />
-      </Facts>
-      {gapOn ? (
-        <p className="pool-gap-callout">
-          <Link className="plink" to="/gaps">
-            Liquidity gap
-          </Link>
-          : trades {ratio(gap?.turnoverRatio)} its depth daily.
-        </p>
-      ) : null}
-    </>
+      </FactsRow>
+    </Overlap>
   )
 }

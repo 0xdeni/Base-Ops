@@ -1,6 +1,6 @@
 # Depthwatch v3 visual and interaction spec
 
-Status: **binding for the v3 build of `apps/web`**. It replaces [`visual.md`](visual.md) (v2) for v3 work.
+Status: **superseded by [`visual-v4.md`](visual-v4.md) where they differ.** It was binding for the v3 build of `apps/web` and replaced [`visual.md`](visual.md) (v2) for v3 work.
 - Rules are cited by ID from [`principles.md`](principles.md). Screens follow [`ia-v3.md`](ia-v3.md).
 - Where this file changes a rule, §2 gives the wording that `principles.md` and `ia-v3.md` carry at that rule.
 - **Reference implementation:** `apps/web`. When this file and the implementation disagree on a value, this file

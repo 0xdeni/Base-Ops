@@ -1,12 +1,15 @@
 /**
- * The Pool title block (ia-v3 §4.3, docs/design/visual-v3.md §6.3): the back link to Pools, the
- * pair as the h1 with each symbol linking to its token page, then one secondary line: DEX and fee,
- * and "1 WETH = 2,460.32 USDC" with a ⇄ icon button that flips it (N2). The line starts from the
- * pool's base token (`lib/orient.ts`), so a price below 1 ("1 USDC = 0.7951 AERO") only shows
- * behind the toggle. Only the characters that change settle in (§4 row 12); a keyboard flip swaps
- * instantly.
+ * The Pool title section (docs/design/visual-v4.md §6.4): the back link to Pools, the eyebrow
+ * ("UNISWAP V3   0.05 % FEE"), then a two-column grid from 1024 px. At left the pair as the h1,
+ * each symbol linking to its token page, with a no-break space before the slash so a title that
+ * wraps breaks after "WETH /" and no line starts with the slash; under it the price line
+ * "1 WETH = 2,329.96 USDC" with a ⇄ button that flips it (N2); at right, bottom-aligned, the
+ * answer sentence. The line starts from the pool's base token (`lib/orient.ts`), so a price below
+ * 1 ("1 USDC = 0.7576 AERO") only shows behind the toggle. Only the characters that change settle
+ * in (§4.3); a keyboard flip swaps instantly. The title and the answer rise with the first view,
+ * the rest fades in (`data-in`).
  */
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PoolMetaDto } from '../../api/types.js'
 import { BackLink } from '../../components/ui/BackLink.js'
@@ -20,7 +23,7 @@ function priceLine(base: string, quote: string, v: number): string {
   return `1${NB}${base} = ${price(v)}${NB}${quote}`
 }
 
-export function PoolTitle({ pool, spot }: { pool: PoolMetaDto; spot: number | null }) {
+function PriceLine({ pool, spot }: { pool: PoolMetaDto; spot: number | null }) {
   const [inverse, setInverse] = useState(false)
   const [animate, setAnimate] = useState(true)
   const t0 = pool.token0.symbol
@@ -28,38 +31,62 @@ export function PoolTitle({ pool, spot }: { pool: PoolMetaDto; spot: number | nu
   // The default line reads from the base token; ⇄ shows the other direction.
   const { inverted } = baseQuote(pool, spot)
   const flip = inverse !== inverted
-  const line =
-    spot === null || spot <= 0 ? null : flip ? priceLine(t1, t0, 1 / spot) : priceLine(t0, t1, spot)
+  if (spot === null || spot <= 0) return null
+  const line = flip ? priceLine(t1, t0, 1 / spot) : priceLine(t0, t1, spot)
   return (
-    <div className="title-block">
-      <BackLink to="/pools" label="Pools" />
-      <h1 className="h1">
-        <Link className="tlink touch-hit" to={tokenHref(pool.token0.address)}>
-          {t0}
-        </Link>{' '}
-        /{' '}
-        <Link className="tlink touch-hit" to={tokenHref(pool.token1.address)}>
-          {t1}
-        </Link>
-      </h1>
-      <div className="subline">
-        <span>
-          {dexLabel(pool.dex)}, {fee(pool.feePips)} fee
-        </span>
-        {line ? (
-          <span className="pool-price">
-            <TextChange className="num" value={line} animate={animate} />
-            <IconButton
-              icon="swap"
-              label={`Show price in ${flip ? t1 : t0}`}
-              onClick={(e) => {
-                setAnimate(!isKeyboardClick(e))
-                setInverse((v) => !v)
-              }}
-            />
-          </span>
-        ) : null}
+    <p className="pool-line" data-in="">
+      <TextChange className="num pool-price" value={line} animate={animate} />
+      <IconButton
+        icon="swap"
+        label={`Show price in ${flip ? t1 : t0}`}
+        onClick={(e) => {
+          setAnimate(!isKeyboardClick(e))
+          setInverse((v) => !v)
+        }}
+      />
+    </p>
+  )
+}
+
+export function PoolTitle({
+  pool,
+  spot,
+  answer,
+}: {
+  pool: PoolMetaDto
+  spot: number | null
+  /** The answer sentence, or its skeleton while the pool loads. */
+  answer: ReactNode
+}) {
+  return (
+    <section className="wrap ttl pool-ttl" aria-labelledby="pool-title">
+      <div data-in="">
+        <BackLink to="/pools" label="Pools" />
       </div>
-    </div>
+      <p className="eyebrow eb-row pool-eb" data-in="">
+        <span>{dexLabel(pool.dex)}</span> <span>{fee(pool.feePips)} fee</span>
+        {pool.stable ? (
+          <>
+            {' '}
+            <span>Stable pair</span>
+          </>
+        ) : null}
+      </p>
+      <div className="ttl-grid">
+        <div className="pool-ttl-main">
+          <h1 className="title pool-title" id="pool-title" data-rise="">
+            <Link className="pool-tok" to={tokenHref(pool.token0.address)}>
+              {pool.token0.symbol}
+            </Link>
+            {`${NB}/ `}
+            <Link className="pool-tok" to={tokenHref(pool.token1.address)}>
+              {pool.token1.symbol}
+            </Link>
+          </h1>
+          <PriceLine pool={pool} spot={spot} />
+        </div>
+        {answer}
+      </div>
+    </section>
   )
 }

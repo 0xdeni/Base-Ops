@@ -1,6 +1,7 @@
 /**
- * Scorecard status as shape plus word in the status colour, no fill (C4, K5, §5.5): lists,
- * previews and mandate rows. The filled chip is `StatusChip`, on the scorecard's own page only.
+ * Scorecard status as a word in ink with its shape in the status colour (docs/design/visual-v4.md
+ * §5.5): lists, previews and mandate rows, 14 px / 700. Red and Green are never text. The filled
+ * chip is `StatusChip`, on the scorecard's own page only.
  */
 import type { ScorecardStatus } from '@depthwatch/core'
 import { Shape, type ShapeName } from './Icon.js'

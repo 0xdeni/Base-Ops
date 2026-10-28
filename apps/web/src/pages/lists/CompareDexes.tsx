@@ -1,8 +1,8 @@
 /**
- * "Compare DEXes" (ia-v3 §4.2, L2): a disclosure 48 px below the table holding every
- * `StatsResponse.byDex` field per DEX, deepest first, with an "All DEXes" totals row: pools scored,
- * rated, tracked and discovered, depth ±2 %, 24 h volume and median health (over rated pools) with
- * its grade.
+ * "Compare DEXes" (ia-v3 §4.2, L2, docs/design/visual-v4.md §6.3): a panel after the table sheet
+ * whose disclosure holds every `StatsResponse.byDex` field per DEX, deepest first, with an "All
+ * DEXes" totals row: pools scored, rated, tracked and discovered, depth ±2 % and its share of all
+ * depth (the DEX filter's bars), 24 h volume and median health (over rated pools) with its grade.
  */
 import { healthGrade } from '@depthwatch/core'
 import type { DexStatsDto, StatsResponse } from '../../api/types.js'
@@ -10,7 +10,7 @@ import { Disclosure } from '../../components/ui/Disclosure.js'
 import { GradeGlyph } from '../../components/ui/GradeGlyph.js'
 import { TableScroll } from '../../components/ui/TableScroll.js'
 import { Unknown } from '../../components/ui/Unknown.js'
-import { count, dexLabel, NB, score, usd } from '../../lib/format.js'
+import { count, dexLabel, NB, score, shareOf, usd } from '../../lib/format.js'
 
 function MedianHealth({ value }: { value: number | null }) {
   if (value === null) return <Unknown reason="No pool on this DEX is rated yet." />
@@ -25,10 +25,13 @@ function MedianHealth({ value }: { value: number | null }) {
 function Row({
   name,
   row,
+  all,
   total,
 }: {
   name: string
   row: Omit<DexStatsDto, 'dex'>
+  /** Depth within 2 % across every DEX: each row's share is its depth over this. */
+  all: number
   total?: boolean
 }) {
   const Cell = total ? 'th' : 'td'
@@ -42,6 +45,7 @@ function Row({
       <td className="r">{count(row.tracked)}</td>
       <td className="r">{count(row.pools)}</td>
       <td className="r">{usd(row.depth2Usd)}</td>
+      <td className="r">{shareOf(all > 0 ? row.depth2Usd / all : null)}</td>
       <td className="r">{usd(row.volume24hUsd)}</td>
       <td className="r">
         <MedianHealth value={row.medianHealth} />
@@ -52,8 +56,9 @@ function Row({
 
 export function CompareDexes({ stats }: { stats: StatsResponse }) {
   const rows = [...stats.byDex].sort((a, b) => b.depth2Usd - a.depth2Usd)
+  const all = stats.totals.depth2Usd
   return (
-    <Disclosure label="Compare DEXes" className="lists-compare">
+    <Disclosure label="Compare DEXes">
       <TableScroll>
         <table className="tbl dense lists-dex-table">
           <caption className="sr-only">Pools, depth and health per DEX</caption>
@@ -76,6 +81,9 @@ export function CompareDexes({ stats }: { stats: StatsResponse }) {
                 Depth ±2{NB}%
               </th>
               <th scope="col" className="r">
+                Share of depth
+              </th>
+              <th scope="col" className="r">
                 24{NB}h volume
               </th>
               <th scope="col" className="r">
@@ -85,9 +93,9 @@ export function CompareDexes({ stats }: { stats: StatsResponse }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <Row key={r.dex} name={dexLabel(r.dex)} row={r} />
+              <Row key={r.dex} name={dexLabel(r.dex)} row={r} all={all} />
             ))}
-            <Row name="All DEXes" row={stats.totals} total />
+            <Row name="All DEXes" row={stats.totals} all={all} total />
           </tbody>
         </table>
       </TableScroll>

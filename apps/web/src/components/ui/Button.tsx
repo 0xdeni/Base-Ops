@@ -1,20 +1,28 @@
 /**
- * Buttons (K1, docs/design/visual-v3.md §5.2): primary (at most one per view), secondary, quiet,
- * and the icon button with its required accessible name. 36 px high, 44 on coarse pointers. A
- * loading button keeps its label and adds a 12 px spinner. Press feedback is CSS (motion.css).
+ * Buttons (docs/design/visual-v4.md §5.3): 48 px high (40 small), radius 12, 15 px / 750 labels.
+ * - `primary`: Blue fill, white label; at most one filled button per view (P11);
+ * - `on-band`: the white button on the band, Blue label, navy shadow;
+ * - `ghost`: a 1.5 px `--line-2` outline (on the band it turns white, as `on-band-ghost`);
+ * - `on-band-ghost`: a 1.5 px white 55 % outline on the band.
+ * The icon button is 36 × 36 (44 on touch) with its required accessible name. A loading button
+ * keeps its label and adds a 12 px ring. Press scales 0.97 (motion.css).
  */
 import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react'
 import { Link, type LinkProps } from 'react-router-dom'
 import { Icon, type IconName } from './Icon.js'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'quiet'
+/** The variants of §5.3. Each is also the button's class, so none collides with `.band`. */
+export type ButtonVariant = 'primary' | 'on-band' | 'ghost' | 'on-band-ghost'
+export type ButtonSize = 'md' | 'sm'
 
-function classes(variant: ButtonVariant, extra?: string): string {
-  return `btn ${variant}${extra ? ` ${extra}` : ''}`
+/** The class list of a button: `btn`, the variant and the size. */
+export function buttonClass(variant: ButtonVariant, size: ButtonSize = 'md', extra?: string) {
+  return `btn ${variant}${size === 'sm' ? ' is-sm' : ''}${extra ? ` ${extra}` : ''}`
 }
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
+  size?: ButtonSize
   /** A 16 px icon before the label, at an 8 px gap. */
   icon?: IconName
   /** A 16 px icon after the label (the phone Sort button's direction arrow). */
@@ -24,7 +32,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export function Button({
-  variant = 'secondary',
+  variant = 'ghost',
+  size = 'md',
   icon,
   iconEnd,
   loading = false,
@@ -33,10 +42,11 @@ export function Button({
   type = 'button',
   ...rest
 }: ButtonProps) {
+  const extra = `${loading ? 'is-loading ' : ''}${className ?? ''}`.trim()
   return (
     <button
       type={type}
-      className={classes(variant, `${loading ? 'is-loading ' : ''}${className ?? ''}`.trim())}
+      className={buttonClass(variant, size, extra || undefined)}
       aria-busy={loading || undefined}
       {...rest}
     >
@@ -50,14 +60,20 @@ export function Button({
 
 /** An in-app link styled as a button ("Browse pools"). */
 export function ButtonLink({
-  variant = 'secondary',
+  variant = 'ghost',
+  size = 'md',
   icon,
   className,
   children,
   ...rest
-}: LinkProps & { variant?: ButtonVariant; icon?: IconName; children: ReactNode }) {
+}: LinkProps & {
+  variant?: ButtonVariant
+  size?: ButtonSize
+  icon?: IconName
+  children: ReactNode
+}) {
   return (
-    <Link className={classes(variant, className)} {...rest}>
+    <Link className={buttonClass(variant, size, className)} {...rest}>
       {icon ? <Icon name={icon} /> : null}
       {children}
     </Link>
@@ -72,7 +88,7 @@ export interface IconButtonProps
   ref?: Ref<HTMLButtonElement>
 }
 
-/** 28 × 28 (44 coarse) with a 16 px icon and an 8 px invisible hit-area bleed. */
+/** 36 × 36 (44 on a coarse pointer), radius 10, a 16 px icon in a 1.5 px outline. */
 export function IconButton({ icon, label, className, type = 'button', ...rest }: IconButtonProps) {
   return (
     <button

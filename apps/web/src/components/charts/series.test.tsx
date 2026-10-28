@@ -1,172 +1,15 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { HistoryPoint, MmSampleDto } from '../../api/types.js'
+import type { MmSampleDto } from '../../api/types.js'
 import { linear } from '../../lib/scale.js'
 import { MarketMakerTable } from './ChartTables.js'
 import { samples } from './chartFixtures.js'
 import { MarketMakerChart } from './MarketMakerChart.js'
 import { bandSpan, LABEL_GAP, mmScaleMax, mmYLabels, sampleStatus } from './mmModel.js'
-import { type MultipleSeries, SmallMultiples } from './SmallMultiples.js'
-import { seriesRuns } from './seriesRuns.js'
 
 afterEach(cleanup)
 
 const NB = ' '
-const T0 = 1_792_108_800 // 16 Oct 2026, 00:00 UTC
-
-function history(n: number, at: (i: number) => Partial<HistoryPoint> = () => ({})): HistoryPoint[] {
-  return Array.from({ length: n }, (_, i) => ({
-    timestamp: T0 + i * 7200,
-    price: 2460,
-    depth2Usd: 10_000_000 + (i % 6) * 250_000,
-    spread10kBps: 10.3 + (i % 2) * 0.1,
-    tvlUsd: null,
-    health: 88,
-    ...at(i),
-  }))
-}
-
-const SERIES: MultipleSeries<HistoryPoint>[] = [
-  {
-    key: 'depth',
-    label: 'Depth ±2 %',
-    height: 160,
-    value: (p) => p.depth2Usd,
-    format: (v) => (v === null ? '—' : `$${(v / 1e6).toFixed(2)}M`),
-    tick: (v) => `$${v / 1e6}M`,
-    band: [10_100_000, 10_600_000],
-    bandLabel: 'p10 to median, 7 d',
-  },
-  {
-    key: 'spread',
-    label: 'Spread at $10K',
-    height: 120,
-    value: (p) => p.spread10kBps,
-    format: (v) => (v === null ? '—' : `${v.toFixed(1)} bps`),
-    tick: (v) => v.toFixed(1),
-    minSpan: 0.2,
-  },
-]
-
-describe('seriesRuns (CH5: gaps are never interpolated)', () => {
-  it('splits at unknown values and at long silences, and bridges them with dashed segments', () => {
-    const pts = history(10, (i) => (i === 3 ? { depth2Usd: null } : {}))
-    pts[8]!.timestamp += 7200 * 5
-    pts[9]!.timestamp += 7200 * 5
-    const runs = seriesRuns(pts, (p) => p.depth2Usd)
-    expect(runs.solid.map((r) => r.length)).toEqual([3, 4, 2])
-    expect(runs.gaps).toHaveLength(2)
-    expect(runs.gaps[0]?.[0].timestamp).toBe(pts[2]?.timestamp)
-    expect(runs.gaps[0]?.[1].timestamp).toBe(pts[4]?.timestamp)
-  })
-})
-
-describe('SmallMultiples', () => {
-  const pts = history(85)
-  const day = 86_400
-  const end = pts[84]!.timestamp
-
-  it('draws one image per multiple on a shared time axis', () => {
-    const { container } = render(
-      <SmallMultiples
-        points={pts}
-        series={SERIES}
-        domain={[end - day, end]}
-        windowLabel="24 hours"
-      />,
-    )
-    const imgs = screen.getAllByRole('img')
-    expect(imgs.map((i) => i.getAttribute('aria-label'))).toEqual([
-      'Depth ±2 % over 24 hours: latest $10.00M.',
-      'Spread at $10K over 24 hours: latest 10.3 bps.',
-    ])
-    const axis = [...container.querySelectorAll('.ts-axis text')].map((t) => t.textContent)
-    expect(axis.every((l) => /^\d\d:00$/.test(l ?? ''))).toBe(true)
-    expect(container.querySelectorAll('.mult-band')).toHaveLength(1)
-    expect(screen.getByText('p10 to median, 7 d')).toBeTruthy()
-  })
-
-  it('draws a reference line in the y domain, labelled in the right pad (a KPI)', () => {
-    const withKpi: MultipleSeries<HistoryPoint>[] = [
-      { ...SERIES[1]!, reference: { value: 40, label: 'KPI 40.0' } },
-    ]
-    const { container } = render(
-      <SmallMultiples
-        points={pts}
-        series={withKpi}
-        domain={[end - day, end]}
-        windowLabel="24 hours"
-      />,
-    )
-    const line = container.querySelector('.mult-ref')
-    expect(line).toBeTruthy()
-    const y = Number(line?.getAttribute('y1'))
-    // The spread sits near 10 bps, far under the KPI: the KPI still lies inside the plot.
-    expect(y).toBeGreaterThan(0)
-    expect(y).toBeLessThan(84)
-    expect(screen.getByText('KPI 40.0').getAttribute('class')).toContain('is-strong')
-    expect(container.querySelectorAll('.mult-ref')).toHaveLength(1)
-  })
-
-  it('switches to weekday ticks on the 7 d window', () => {
-    const { container } = render(
-      <SmallMultiples
-        points={pts}
-        series={SERIES}
-        domain={[T0, end]}
-        windowLabel="7 days"
-        instant
-      />,
-    )
-    const axis = [...container.querySelectorAll('.ts-axis text')].map((t) => t.textContent)
-    expect(axis).toEqual(['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu'])
-  })
-
-  it('scrubs with the arrow keys: the heads rewrite and the time replaces "now"', () => {
-    const onScrub = vi.fn()
-    const { container } = render(
-      <SmallMultiples
-        points={pts}
-        series={SERIES}
-        domain={[end - day, end]}
-        windowLabel="24 hours"
-        onScrub={onScrub}
-      />,
-    )
-    const group = screen.getByRole('group')
-    const heads = () => [...container.querySelectorAll('.mult-head .mt')].map((e) => e.textContent)
-    expect(heads()).toEqual(['now', 'now'])
-    fireEvent.keyDown(group, { key: 'ArrowLeft' })
-    expect(onScrub).toHaveBeenLastCalledWith(pts[84])
-    expect(heads()).toEqual(['now', 'now'])
-    fireEvent.keyDown(group, { key: 'ArrowLeft' })
-    expect(onScrub).toHaveBeenLastCalledWith(pts[83])
-    expect(heads()).toEqual([`22${NB}Oct, 22:00`, `22${NB}Oct, 22:00`])
-    expect(container.querySelectorAll('.xh')).toHaveLength(2)
-    expect(container.querySelector('[aria-live]')?.textContent).toContain(
-      `22${NB}Oct, 22:00${NB}UTC`,
-    )
-    fireEvent.keyDown(group, { key: 'Escape' })
-    expect(onScrub).toHaveBeenLastCalledWith(null)
-    expect(container.querySelectorAll('.xh')).toHaveLength(0)
-  })
-
-  it('only steps through the samples inside the window', () => {
-    const onScrub = vi.fn()
-    render(
-      <SmallMultiples
-        points={pts}
-        series={SERIES}
-        domain={[end - day, end]}
-        windowLabel="24 hours"
-        onScrub={onScrub}
-      />,
-    )
-    const group = screen.getByRole('group')
-    for (let i = 0; i < 40; i++) fireEvent.keyDown(group, { key: 'ArrowLeft' })
-    expect(onScrub).toHaveBeenLastCalledWith(pts[72])
-  })
-})
 
 describe('market-maker scales', () => {
   const pts = samples('ooobbbbbbbbooo')
@@ -192,7 +35,7 @@ describe('market-maker scales', () => {
     return ys.slice(1).map((y, i) => y - (ys[i] ?? 0))
   }
 
-  it('ticks at 0.5× and 1.5× the KPI, evenly around it (visual-v3.md §5.9)', () => {
+  it('ticks at 0.5× and 1.5× the KPI, evenly around it', () => {
     for (const fy of [yOf(80_000), yPhone(80_000)]) {
       const labels = mmYLabels(50_000, 80_000, fy)
       expect(labels.map((l) => l.text)).toEqual([

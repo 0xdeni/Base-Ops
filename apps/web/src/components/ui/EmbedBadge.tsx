@@ -1,7 +1,7 @@
 /**
- * Embed badge parts (docs/design/visual-v3.md §5.11): the API's badge SVG unaltered in a `well`,
- * "Copy HTML" and "Copy Markdown" with the cache note, and the code blocks that "Show code" in the
- * section heading reveals. Presentational: the page supplies the SVG, snippets and URL.
+ * Embed badge parts (docs/design/visual-v4.md §5.11): the API's badge SVG unaltered, "Copy HTML" and
+ * "Copy Markdown" (ghost, small) with "Cached for 5 minutes", and the code blocks that "Show code"
+ * in the section's head reveals. Presentational: the page supplies the SVG, snippets and URL.
  */
 import { svgDataUri } from '../../lib/badge.js'
 import { CopyButton } from './CopyButton.js'
@@ -15,7 +15,7 @@ export function BadgePreview({ svg, alt }: { svg: string; alt: string }) {
 }
 
 /** The two copy buttons, kept together as one unit whatever the badge's width. */
-export function CopyPair({ html, markdown }: { html: string; markdown: string }) {
+function CopyPair({ html, markdown }: { html: string; markdown: string }) {
   return (
     <div className="copy-row">
       <CopyButton text={html} label="Copy HTML" />
@@ -28,7 +28,7 @@ export function EmbedActions({ html, markdown }: { html: string; markdown: strin
   return (
     <>
       <CopyPair html={html} markdown={markdown} />
-      <p className="small faint">Cached for 5 minutes.</p>
+      <p className="cap">Cached for 5 minutes.</p>
     </>
   )
 }

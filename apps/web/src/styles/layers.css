@@ -1,62 +1,106 @@
-/* Floating layers (docs/design/visual-v3.md §5.10): popover, glossary and chart tooltips, the phone
-   sheet. They live in portals outside <main>, so route transitions never touch them. Shadows only
-   here (E4); in dark an overlay surface plus a 1 px border ring. Motion is WAAPI (ui/*.tsx). */
+/* Floating layers (docs/design/visual-v4.md §5.10): popover, glossary and chart tooltips, the
+   phone sheet. Plane 3 (`--sh-3`). They live in portals outside <main>, so route transitions
+   never touch them. Motion is WAAPI (ui/*.tsx). */
 
+/* Popover: fixed, min(380px, 100vw − 32px), padding 18, radius 16, 14 px / 1.5; never taller than
+   the viewport less 16 px at each edge, so a long one scrolls inside itself. */
 .pop {
   position: fixed;
-  z-index: 40;
-  min-width: min(220px, calc(100vw - 16px));
-  max-width: min(320px, calc(100vw - 16px));
-  padding: var(--s3) var(--s4);
-  background: var(--overlay);
+  z-index: 90;
+  width: min(380px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px;
   border-radius: var(--r-pop);
-  box-shadow: var(--shadow-pop);
-  font-size: var(--t-small);
-  line-height: 1.5;
+  background: var(--surface);
+  box-shadow: var(--edge), var(--sh-3);
   color: var(--text-1);
+  font-size: var(--t-ui);
+  line-height: 1.5;
+}
+.pop:focus-visible {
+  outline-offset: -2px;
 }
 .pop-dl {
   display: grid;
-  gap: 6px;
 }
-.pop-dl div {
+.pop-dl > div {
   display: flex;
   justify-content: space-between;
   gap: var(--s5);
+  padding-block: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.pop-dl > div:last-child {
+  border-bottom: 0;
 }
 .pop-dl dt {
   color: var(--text-2);
+  font-weight: 650;
 }
 .pop-dl dd {
-  font-variant-numeric: tabular-nums;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 .pop-actions {
   margin-top: var(--s3);
 }
-/* "About this snapshot": the exporter's note in paragraphs, then the block and export time. */
 .pop-note p + p {
-  margin-top: var(--s2);
+  margin-top: 10px;
 }
 .pop-meta {
   color: var(--text-2);
 }
 
+/* Glossary term: a dotted underline, focusable; its tooltip opens on hover, focus or tap. */
+.gloss {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--line-2);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+.band .gloss {
+  text-decoration-color: var(--on-band-2);
+}
+
+/* Tooltip and chart tooltip: max 300 px, padding 10 / 12, radius 12, Gray 100 with white text
+   (Gray 80 in dark), 13 px / 1.4. */
 .tip {
   position: fixed;
-  z-index: 45;
-  max-width: min(340px, calc(100vw - 16px));
-  padding: var(--s2) 10px;
-  background: var(--overlay);
-  border-radius: var(--r-pop);
-  box-shadow: var(--shadow-pop);
+  z-index: 95;
+  max-width: min(300px, calc(100vw - 16px));
+  padding: 10px 12px;
+  border-radius: var(--r-tip);
+  background: var(--g100);
+  color: #ffffff;
+  box-shadow: var(--sh-3);
   font-size: var(--t-small);
-  line-height: 1.45;
-  color: var(--text-1);
+  line-height: 1.4;
+}
+:root[data-theme="dark"] .tip {
+  background: var(--g80);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tip {
+    background: var(--g80);
+  }
+}
+.tip .plink {
+  color: #ffffff;
+  text-decoration-color: rgb(255 255 255 / 0.6);
 }
 .tip.is-chart {
-  min-width: 150px;
+  min-width: 180px;
   pointer-events: none;
+}
+.tip .tt-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  font-weight: 800;
 }
 .tip .tt-row {
   display: flex;
@@ -64,21 +108,18 @@
   gap: var(--s4);
 }
 .tip .tt-k {
-  color: var(--text-2);
+  color: rgb(255 255 255 / 0.8);
 }
-.tip .tt-h {
-  font-weight: 500;
-  margin-bottom: 2px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.tip .tt-row > :last-child {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
-/* ---------- Sheet (PH4) ---------- */
+/* ---------- Phone sheet: fixed to the bottom, radius 24 at the top ---------- */
 .sheet-root {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 85;
 }
 .sheet-backdrop {
   position: absolute;
@@ -93,44 +134,61 @@
   max-height: calc(100dvh - env(safe-area-inset-top) - 24px);
   overflow: auto;
   overscroll-behavior: contain;
-  background: var(--overlay);
+  padding: 8px var(--gutter) calc(20px + env(safe-area-inset-bottom));
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
-  box-shadow: var(--shadow-dialog);
-  padding: 0 var(--gutter) calc(16px + env(safe-area-inset-bottom));
+  background: var(--surface);
+  box-shadow: var(--sh-3);
 }
 .sheet:focus-visible {
   outline-offset: -2px;
 }
-.sheet-grip {
-  width: 36px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--border);
-  margin: 8px auto 4px;
-}
+/* A 44 × 5 grip in a 28 px drag area. */
 .sheet-drag {
   touch-action: none;
+  cursor: grab;
 }
-.sheet-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 52px;
+.sheet-grip {
+  display: grid;
+  place-items: center;
+  height: 28px;
+}
+.sheet-grip::before {
+  content: "";
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line-2);
 }
 .sheet-title {
-  font-size: var(--t-title);
-  line-height: 1.375;
-  font-weight: 600;
-  letter-spacing: -0.008em;
+  margin: 4px 0 12px;
+  font-size: var(--t-sheet);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
 }
+/* A sheet with two groups heads each one (13 px / 650, text-2), 24 px above the second. */
+.opt-head {
+  margin: 0;
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-small);
+  font-weight: 650;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+.opt-group + .opt-group {
+  margin-top: var(--s6);
+}
+/* Options: at least 52 px, a rule under each and a check on the selected one. */
 .opt {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
   min-height: 52px;
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 1rem;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-body);
+  font-weight: 650;
   text-align: left;
 }
 .opt svg {
@@ -145,19 +203,19 @@
 .opt:focus-visible {
   outline-offset: -2px;
 }
+.opt-meta {
+  margin-left: auto;
+  margin-right: var(--s3);
+  font-size: var(--t-small);
+  font-weight: 600;
+  color: var(--text-2);
+}
 .sheet-foot {
   padding-top: var(--s4);
 }
-.menu-opt {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  min-height: 32px;
-  font-size: var(--t-data);
-  cursor: pointer;
+.sheet-done {
+  margin-top: 20px;
 }
-
-/* Body scroll lock while a sheet is open. */
-.is-scroll-locked {
-  overflow: hidden;
+.sheet-done .btn {
+  width: 100%;
 }

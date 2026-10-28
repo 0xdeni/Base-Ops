@@ -1,9 +1,10 @@
 /**
- * The range morph (docs/design/visual-v3.md §4 rows 9–11): when a chart's target state changes
- * (x domain, y domains, the symmetric max, context opacity), it interpolates from whatever is drawn
- * now, mid-morph included, over 280 ms `--ease-in-out` on the tween clock, so rapid toggles never
- * jump. Keyboard changes are instant (M2); reduced motion is instant plus a 150 ms opacity settle
- * (M9). Between morphs the chart draws its target directly, so refetched data never animates (M8).
+ * The range morph (docs/design/visual-v4.md §4.3): when a chart's target state changes (x domain,
+ * y domains, the symmetric max, context opacity), it interpolates from whatever is drawn now,
+ * mid-morph included, over 280 ms on the tween clock with the ease-in-out curve of `lib/motion`
+ * (`cubic-bezier(0.65, 0, 0.35, 1)` in v4), so rapid toggles never jump. Keyboard changes are
+ * instant (M2); reduced motion is instant plus a 150 ms opacity settle (M9). Between morphs the
+ * chart draws its target directly, so refetched data never animates (M8).
  */
 import { type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import {

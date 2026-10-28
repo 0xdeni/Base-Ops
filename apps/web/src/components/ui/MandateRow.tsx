@@ -1,10 +1,9 @@
 /**
- * One market-maker mandate in a row list (ia-v3 §4.1, §4.3, §4.5; docs/design/visual-v3.md §6.1,
- * §6.5), shared by the Home preview, the Scorecards list and Pool's "Mandates on this pool": the
- * status as shape plus word with no fill (K5, so a list never turns into a wall of red), the
- * mandate name linking to its scorecard (the row's one tab stop), "Alice Markets on USDC / AERO",
- * then the 7 d uptime over a bullet with its target tick. The Scorecards list may add a middle cell
- * (its 7 d uptime strip).
+ * One market-maker mandate in a row list (ia-v3 §4.1, §4.3, §4.5; docs/design/visual-v4.md §5.8,
+ * §6.6), shared by the Home preview, the Scorecards list and Pool's "Mandates on this pool": the
+ * status as a word in ink with its coloured shape, the mandate name linking to its scorecard (the
+ * row's one tab stop), "Alice Markets on USDC / AERO", then the 7 d uptime over a bullet with its
+ * target tick. The Scorecards list may add a middle cell (its 7 d uptime strip).
  */
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
