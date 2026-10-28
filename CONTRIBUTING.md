@@ -59,10 +59,11 @@ These come from DESIGN.md and are checked in review.
    use `toJsonSafe` / `jsonStringify` and revive with `reviveBigints(value, BIGINT_KEYS)`. If you
    add a bigint-valued property to a stored or served type, add its name to `BIGINT_KEYS`.
 4. **Addresses are lowercase.** Normalise on the way in; never compare case-sensitively.
-5. **Hermetic tests.** `pnpm test` never opens a socket. Chain code is tested through
-   `createFixtureTransport` with hand-built or recorded responses; db and API tests use
-   `openDatabase(':memory:')` and `app.request()`; the web uses the mock client. A test that needs
-   the network is a bug.
+5. **Hermetic tests.** `pnpm test` never reaches the network: the only sockets are loopback
+   servers on `127.0.0.1` that a test starts itself (the API, `serve` and `start` servers, a webhook
+   receiver, a fixture JSON-RPC endpoint). Chain code is tested through `createFixtureTransport`
+   with hand-built or recorded responses; db and API tests use `openDatabase(':memory:')` and
+   `app.request()`; the web uses the mock client. A test that needs the network is a bug.
 6. **Every metric is defined once, in `docs/METRICS.md`, and implemented once, in core.** The CLI,
    API and dashboard only call core; they never re-derive a number.
 7. **Never extrapolate pool state.** A `ConcentratedState` says which ticks it knows; simulations

@@ -2,8 +2,10 @@
  * docs/ARCHITECTURE.md ("API and dashboard") says which documents list the API routes. These
  * checks pin that pointer to the routes `createApp` really registers: a document the page says
  * lists every route must list each of them, and the per-layer pointers must hold for their layer.
+ * DESIGN.md's API section names each response by its `dto.ts` type, which must exist, and its
+ * "May import" column lists every dependency of each workspace package's package.json.
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { IN_MEMORY, openDatabase } from '@depthwatch/db'
@@ -101,5 +103,63 @@ describe('ARCHITECTURE.md: the documents it names list the routes createApp regi
     expect(
       unlisted(listing('[design/scorecards.md](design/scorecards.md)'), scorecardRoutes),
     ).toEqual([])
+  })
+})
+
+describe('DESIGN.md: the API section names the dto.ts types', () => {
+  const api = listing('DESIGN.md')
+  const named = [...api.matchAll(/→\s+`([A-Z]\w+)`/g)].map((m) => m[1] ?? '')
+  const dto = read('apps/api/src/dto.ts')
+
+  it('points at dto.ts and openapi.json for the fields', () => {
+    expect(api).toContain('`apps/api/src/dto.ts`')
+    expect(api).toContain('`apps/api/src/agentDocs/openapi.json`')
+    expect(named).toEqual(
+      expect.arrayContaining(['HealthResponse', 'PoolsResponse', 'PoolDetail', 'GapsResponse']),
+    )
+  })
+
+  it.each(named)('%s is a type dto.ts exports', (name) => {
+    expect(dto).toMatch(new RegExp(`^export (?:interface|type) ${name}\\b`, 'm'))
+  })
+})
+
+/** DESIGN.md "Repository layout": each package path with the names of its "May import" cell. */
+function mayImport(): Map<string, string[]> {
+  const rows = read('DESIGN.md').matchAll(/^\| `((?:packages|apps)\/[\w-]+)` *\|(.*)\|\s*$/gm)
+  return new Map(
+    [...rows].map((m) => {
+      const cells = (m[2] ?? '').split('|')
+      const names = (cells.at(-1) ?? '').split(',').map((n) => n.replace(/`/g, '').trim())
+      return [m[1] ?? '', names]
+    }),
+  )
+}
+
+const workspacePackages = ['packages', 'apps'].flatMap((dir) =>
+  readdirSync(join(ROOT, dir))
+    .map((name) => `${dir}/${name}`)
+    .filter((path) => existsSync(join(ROOT, path, 'package.json'))),
+)
+
+describe('DESIGN.md: "May import" lists every dependency', () => {
+  const allowed = mayImport()
+
+  it('has a row for every workspace package', () => {
+    expect(workspacePackages).toEqual(expect.arrayContaining(['packages/core', 'apps/api']))
+    expect([...allowed.keys()].sort()).toEqual([...workspacePackages].sort())
+  })
+
+  it.each(workspacePackages)('%s: each package.json dependency is in its row', (path) => {
+    const pkg = JSON.parse(read(`${path}/package.json`)) as {
+      dependencies?: Record<string, string>
+    }
+    const names = allowed.get(path) ?? []
+    const missing = Object.keys(pkg.dependencies ?? {}).filter((dep) => {
+      const workspace = dep.match(/^@depthwatch\/(.+)$/)?.[1]
+      if (workspace === undefined) return !names.includes(dep)
+      return !names.includes(workspace) && !names.includes('every workspace package')
+    })
+    expect(missing).toEqual([])
   })
 })

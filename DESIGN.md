@@ -15,14 +15,19 @@ No trading capital, no token, no custody. It is indexing, analytics and a dashbo
 
 ## Repository layout (pnpm workspace, TypeScript, ESM, Node ≥ 22.13)
 
-| Path             | Package             | Responsibility                                                                 | May import                                |
-| ---------------- | ------------------- | ------------------------------------------------------------------------------ | ----------------------------------------- |
-| `packages/core`  | `@depthwatch/core`  | Pure math and scoring. **Zero I/O, zero runtime deps.**                        | nothing                                   |
-| `packages/chain` | `@depthwatch/chain` | viem adapters for Base: discovery, state, positions, swaps, fixture transport. | core, viem                                |
-| `packages/db`    | `@depthwatch/db`    | `node:sqlite` schema, migrations, repositories.                                | core                                      |
-| `apps/api`       | `@depthwatch/api`   | Hono REST API + static serving of the built dashboard.                         | core, db, hono, zod                       |
-| `apps/web`       | `@depthwatch/web`   | Vite + React 19 dashboard. Talks only to `/api`.                               | core, react, react-router, tanstack-query |
-| `apps/cli`       | `@depthwatch/cli`   | `depthwatch` CLI: the pipeline (discover → snapshot → volume → score → serve). | everything                                |
+| Path             | Package             | Responsibility                                                                 | May import                                                      |
+| ---------------- | ------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| `packages/core`  | `@depthwatch/core`  | Pure math and scoring. **Zero I/O, zero runtime deps.**                        | nothing                                                         |
+| `packages/chain` | `@depthwatch/chain` | viem adapters for Base: discovery, state, positions, swaps, fixture transport. | core, viem                                                      |
+| `packages/db`    | `@depthwatch/db`    | `node:sqlite` schema, migrations, repositories.                                | core                                                            |
+| `apps/api`       | `@depthwatch/api`   | Hono REST API + static serving of the built dashboard.                         | core, db, hono, @hono/node-server, zod                          |
+| `apps/web`       | `@depthwatch/web`   | Vite + React 19 dashboard. Talks only to `/api`.                               | core, react, react-dom, react-router-dom, @tanstack/react-query |
+| `apps/cli`       | `@depthwatch/cli`   | `depthwatch` CLI: the pipeline (discover → snapshot → volume → score → serve). | every workspace package, viem, tsx                              |
+
+"May import" lists each package's `dependencies` in its `package.json`: workspace packages by their
+short name, others by their npm name; build and test tools (Vite, Vitest, Biome, TypeScript, jsdom,
+Testing Library, `@types/*`) are `devDependencies`, used to build and test, never by the code that
+runs. `apps/api/src/routes/docs.test.ts` fails when a dependency is missing from its row.
 
 Package entry points are `src/index.ts` (no build step for Node packages; `tsx` runs TypeScript
 directly, a dependency of `apps/cli` so that the server image runs the sources the same way).
@@ -252,14 +257,31 @@ Retention: `snapshots.pruneBefore(ts, limit?)` (the oldest `limit` rows when giv
 
 ## API (apps/api)
 
-`createApp(db, opts?: { staticDir?: string })` returns a Hono app. All responses JSON, bigints as decimal strings.
-- `GET /api/health` → `{ ok, poolCount, trackedCount, latestSnapshotAt, latestBlock }`
-- `GET /api/stats` → totals by dex: pools, tracked, scored, rated, depth2Usd sum (stale quotes left out), volume24hUsd sum, median health over rated pools
-- `GET /api/pools?sort=health|depth|volume|gap|tvl&dir=asc|desc&dex=&q=&minVolume=&rated=true|false&limit=&offset=` → `{ items: PoolSummary[], total }` (sorting by health puts unrated pools last in both directions, sorting by depth stale quotes)
-- `GET /api/pools/:id` → `{ pool, latest: PoolSnapshot, score: HealthScore, gap, persistence24h, persistence7d, volume24hUsd }`
-- `GET /api/pools/:id/history?window=24h|7d` → `{ points: Array<{ timestamp, depth2Usd, spread10kBps, health, price }> }`
-- `GET /api/gaps?limit=` → ranked gaps feed (volume ≥ $10k) with pool summary + gap metrics
-- `GET /api/tokens/:address` → token info, USD price, pools containing it with latest depth
+`createApp(db, opts?: CreateAppOptions)` returns a Hono app. `CreateAppOptions` (`apps/api/src/app.ts`):
+`staticDir` (the built dashboard), `adminToken` (the bearer token `POST /api/mm` and `DELETE /api/mm/:id` require;
+unset or empty, they answer 403 `registration disabled`; the CLI passes `DEPTHWATCH_ADMIN_TOKEN`), `source` (`demo` or
+`live`, default `live`, reported by `/api/health`), `now` (unix-seconds clock) and `onError`. All responses JSON,
+bigints as decimal strings.
+
+Each response body is a type of `apps/api/src/dto.ts`, mirrored in `apps/web/src/api/types.ts`;
+`apps/api/src/agentDocs/openapi.json` describes every field, and `apps/api/src/routes/agentDocs.test.ts` checks real
+responses against it. The list names each route's type and query parameters; the fields are in those files:
+- `GET /api/health` → `HealthResponse`: counts, the newest snapshot's time and block, and `source` (`demo` or `live`);
+  503 with `ok: false` and `error` when the database cannot be read
+- `GET /api/stats` → `StatsResponse`: totals by dex and overall: pools, tracked, scored, rated, depth2Usd sum (stale
+  quotes left out), volume24hUsd sum (null when no pool has a volume), median health over rated pools
+- `GET /api/pools?sort=health|depth|volume|gap|tvl&dir=asc|desc&dex=&q=&minVolume=&rated=true|false&limit=&offset=` →
+  `PoolsResponse` (`{ items: PoolSummary[], total }`; sorting by health puts unrated pools last in both directions,
+  sorting by depth stale quotes)
+- `GET /api/pools/:id` → `PoolDetail`: the pool, whether it is `tracked`, the newest snapshot, the score with its gap,
+  persistence and 24 h volume and the `scoredAt` time; the snapshot and score fields are null until the pool is
+  snapshotted and scored
+- `GET /api/pools/:id/history?window=24h|7d` → `HistoryResponse`: the `window`, its `from` / `to` bounds (ending at the
+  pool's newest snapshot) and `points: HistoryPoint[]` (timestamp, price, depth2Usd, spread10kBps, tvlUsd, health)
+- `GET /api/gaps?limit=&offset=&minVolume=` → `GapsResponse`: `items: GapItem[]` (pool summary + gap metrics) of the
+  pools with 24 h volume ≥ `minVolume` (default $10k) by gap score, and the floor applied as `minVolumeUsd`
+- `GET /api/tokens/:address?sort=&dir=&limit=&offset=` → `TokenDetail`: token info, USD price and the pools it was
+  derived through, the scored pools containing it (default deepest first) and the count of every pool containing it
 - `GET /AGENTS.md`, `GET /llms.txt`, `GET /openapi.json` → the documents for AI agents (usage guide, llms.txt index,
   hand-written OpenAPI 3.1 of the GET routes), written once in `apps/api/src/agentDocs/` and registered before the static
   fallback; the web build copies the files into `dist` unchanged and into `dist-static` with a generated static-site
@@ -282,7 +304,7 @@ it, and `apps/api/src/routes/webhookSecret.test.ts` fails when any part of it sh
 
 ## CLI (apps/cli)
 
-`depthwatch <command>` via `tsx` (`pnpm depthwatch …`). Env: `DEPTHWATCH_RPC_URL`, `DEPTHWATCH_LOGS_RPC_URL` (eth_getLogs only, default: `DEPTHWATCH_RPC_URL`), `DEPTHWATCH_LOG_CHUNK`, `DEPTHWATCH_DB`, `DEPTHWATCH_PORT` (else the platform's `PORT`), `DEPTHWATCH_TOP_POOLS`, `DEPTHWATCH_KEEP_DAYS` (`prune`, `run`, `start`), `DEPTHWATCH_SEED_TOKENS` (`--seed`, `start`); for `start` also `DEPTHWATCH_SNAPSHOT_INTERVAL`, `DEPTHWATCH_VOLUME_INTERVAL`, `DEPTHWATCH_POSITIONS_INTERVAL`, `DEPTHWATCH_POSITIONS_BUDGET`, `DEPTHWATCH_DISCOVER_BUDGET`, `DEPTHWATCH_SHUTDOWN_GRACE` (durations: `90s`, `30m`, `6h`, a plain number is seconds).
+`depthwatch <command>` via `tsx` (`pnpm depthwatch …`). Env: `DEPTHWATCH_RPC_URL`, `DEPTHWATCH_LOGS_RPC_URL` (eth_getLogs only, default: `DEPTHWATCH_RPC_URL`), `DEPTHWATCH_LOG_CHUNK`, `DEPTHWATCH_DB`, `DEPTHWATCH_PORT` (else the platform's `PORT`), `DEPTHWATCH_HOST` (`serve`, `start`, `demo`; default `0.0.0.0`), `DEPTHWATCH_LOG_LEVEL` (`debug|info|warn|error|silent`, default `info`), `DEPTHWATCH_PUBLIC_URL` (base of the scorecard link `mm register` prints and of webhook alerts' `scorecardUrl`; default `http://<host>:<port>`), `DEPTHWATCH_ADMIN_TOKEN` (environment only: `createApp`'s `adminToken` under `serve`, `start` and `demo`), `DEPTHWATCH_TOP_POOLS`, `DEPTHWATCH_KEEP_DAYS` (`prune`, `run`, `start`), `DEPTHWATCH_SEED_TOKENS` (`--seed`, `start`); for `start` also `DEPTHWATCH_SNAPSHOT_INTERVAL`, `DEPTHWATCH_VOLUME_INTERVAL`, `DEPTHWATCH_POSITIONS_INTERVAL`, `DEPTHWATCH_POSITIONS_BUDGET`, `DEPTHWATCH_DISCOVER_BUDGET`, `DEPTHWATCH_SHUTDOWN_GRACE` (durations: `90s`, `30m`, `6h`, a plain number is seconds).
 - `discover [--dex …] [--from-block N]` — incremental factory log scan in windows of 50 log chunks; each window upserts its pools and advances sync_state in one transaction, so reruns resume.
   `--seed [--seed-token <address> …]`: no logs; `ChainReader.seedPools` for the pairs of the reference tokens plus the `--seed-token` ERC-20s (repeatable; `DEPTHWATCH_SEED_TOKENS`, comma-separated; lowercased; also read by `run --seed` and `start`), upsert, `seed:<dex>:lastBlock` = the seed block for each DEX whose seeder succeeded (log cursors untouched; pools already stored keep their creation block and are not searched again). A DEX whose seeder failed gets no marker and is logged; the step stores the other DEXes' pools, then fails naming it.
 - `snapshot [--top N] [--pool id…]` — readOverview for all pools → derive prices → rank by TVL → readState for top N → compute depth/spread/concentration (none for a hooked Uniswap v4 pool, which is also no price edge) and the price deviation → insert snapshots; also rebuild `prices`. One `MmSample` per active mandate of a snapshotted pool; a mandate on a concentrated pool whose positions are not published (`positions:<pool>:lastBlock` unset) is an attribution failure, no sample. Under `start`, a stop before the storing transaction stores nothing.
@@ -294,6 +316,8 @@ it, and `apps/api/src/routes/webhookSecret.test.ts` fails when any part of it sh
 - `start [--snapshot-interval 30m] [--volume-interval 1h] [--positions-interval 6h] [--positions-budget 10m] [--discover-budget 15m]` — the server: `serve`'s API and dashboard, listening at once (after a write probe: an unwritable database is exit code 1), plus a scheduler over the same database. A pass every snapshot interval runs [seed until one succeeds] → snapshot → [volume when due] → score → [positions when due or while an active mandate's concentrated pool has no published positions, budgeted] → [log discovery, budgeted] → [prune once a day], both budgets cut to the time left before the next pass; steps never overlap, a failing step is logged and retried at its next slot, a volume or positions run that found no tracked pool is due again at the next pass, every step logs its requests and estimated Alchemy compute units and each UTC day a total. SIGTERM aborts the chain reader and the pipeline (`PipelineContext.signal`: no further pool read, nothing stored by the step in flight), waits `DEPTHWATCH_SHUTDOWN_GRACE` (8 s) at most, closes server and database, exit 0.
 - `serve` — API + dashboard (`apps/web/dist` if built).
 - `demo` — seed an in-memory DB (or an empty / demo-seeded `--db` file; `DEPTHWATCH_DB` is ignored so the live DB is never touched) from the synthetic fixture set and `serve`. Must work with no network.
+- `export --out <file> [--demo] [--note <text>]` — the static dashboard bundle (`StaticBundle`, JSON) of the database, read route by route through `createApp(db).request()` so it holds what the server would answer; `--demo` bundles the offline demo world instead (in memory), `--note` sets the bundle's `note`.
+- `mm register --file <json>` — validate a registration (docs/SCORECARDS.md), store the mandate (an existing id is replaced, keeping its registration time, samples and alerts) and print its scorecard URL; `mm list` — every mandate with its status; `mm show <id>` — the scorecard summary as JSON (the webhook URL masked to scheme and host); `mm deactivate <id>` — stop sampling, the scorecard stays served as `inactive`; `mm sample` — sample every active mandate now against the latest block (the one live `mm` command). The other `mm` commands only touch the database.
 
 ## Dashboard (apps/web)
 

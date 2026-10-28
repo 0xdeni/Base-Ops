@@ -1,10 +1,11 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createFakeRpcFetch, createSyntheticFixture } from '@depthwatch/chain'
 import { fixturePool, openDatabase } from '@depthwatch/db'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { COMMANDS, DEFAULTS } from './config.js'
+import { COMMANDS, DEFAULTS, MM_SUBCOMMANDS } from './config.js'
 import { createLogger } from './log.js'
 import {
   EXIT_ERROR,
@@ -16,6 +17,7 @@ import {
   usage,
   version,
 } from './main.js'
+import { SCHEDULE_SETTINGS } from './start/settings.js'
 
 interface Run {
   code: number
@@ -317,5 +319,34 @@ describe('loadDotEnv', () => {
     expect(loadDotEnv(join(dir, 'absent.env'))).toBe(false)
     // A directory is not ENOENT: that error must surface.
     expect(() => loadDotEnv(dir)).toThrow()
+  })
+})
+
+describe('DESIGN.md "CLI (apps/cli)"', () => {
+  const here = dirname(fileURLToPath(import.meta.url))
+  const design = readFileSync(join(here, '..', '..', '..', 'DESIGN.md'), 'utf8')
+  const start = design.indexOf('\n## CLI (apps/cli)\n')
+  const cli = design.slice(start, design.indexOf('\n## ', start + 1))
+  const config = readFileSync(join(here, 'config.ts'), 'utf8')
+  const variables = [
+    ...[...config.matchAll(/\benv\.([A-Z][A-Z0-9_]+)/g)].map((m) => m[1] ?? ''),
+    ...Object.values(SCHEDULE_SETTINGS).map((s) => s.env),
+  ]
+
+  it('finds the section and the variables config.ts reads', () => {
+    expect(start).toBeGreaterThan(0)
+    expect(variables).toEqual(expect.arrayContaining(['DEPTHWATCH_HOST', 'DEPTHWATCH_ADMIN_TOKEN']))
+  })
+
+  it.each(COMMANDS)('describes `%s` in a bullet of its own', (command) => {
+    expect(cli).toMatch(new RegExp(`\\n- \`${command}[ \`]`))
+  })
+
+  it.each(MM_SUBCOMMANDS)('describes `mm %s`', (sub) => {
+    expect(cli).toMatch(new RegExp(`\`mm ${sub}[ \`]`))
+  })
+
+  it.each([...new Set(variables)])('names %s', (name) => {
+    expect(cli).toContain(`\`${name}\``)
   })
 })
