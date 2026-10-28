@@ -71,7 +71,10 @@ export interface DiscoverOptions {
   budgetMs?: number
 }
 
-/** First block worth scanning for a DEX: its factory deployment (earliest one for Slipstream). */
+/**
+ * First block worth scanning for a DEX: its factory deployment (the earliest deployment for both
+ * Slipstreams; for Aero v2 the earlier of its two factories).
+ */
 export function defaultStartBlock(addresses: ChainAddresses, dex: Dex): bigint {
   switch (dex) {
     case 'uniswap-v3':

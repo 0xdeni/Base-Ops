@@ -4,6 +4,13 @@
  * effective spread and concentration → one `snapshots` row per pool, written in one transaction
  * together with the rebuilt `prices` table.
  *
+ * Fees are read with the state, at the snapshot block: each snapshot stores the fee its depth and
+ * spread used (`PoolSnapshot.feePips`), and a pool whose stored fee differs (a Slipstream fee
+ * that moves every block, an Aerodrome or Aero v2 override) gets the new one in the same
+ * transaction, so the fee shown is the latest snapshot's. A state read that finds an Aero pool's
+ * configuration changed (`PoolConfigChangedError`: fee module, swap hook, initial fee) fails that
+ * pool like any other read; the others are stored.
+ *
  * Uniswap v4 pools hold no reserves of their own (singleton PoolManager), so their TVL is unknown
  * (null) and they are ranked by the USD value of their ±2 % depth instead. A Uniswap v4 pool with a
  * hook is not modelled (docs/METRICS.md, `hooked`): it is not ranked (tracked only when requested
@@ -20,7 +27,7 @@
  * Under `depthwatch start` the stop signal ends the state reads (no further pool starts) and
  * nothing is stored: a stop mid-snapshot leaves no partial snapshot in the history.
  */
-import type { PoolOverview } from '@depthwatch/chain'
+import { isPoolConfigChangedError, type PoolOverview } from '@depthwatch/chain'
 import {
   type Address,
   computeConcentration,
@@ -80,6 +87,8 @@ export interface SnapshotResult {
   sampleFailures: number
   /** Webhook alerts attempted after the samples were stored. */
   alerts: number
+  /** Snapshotted pools whose stored fee changed to the one read at this block. */
+  fees: number
   failed: Array<{ item: string; error: string }>
 }
 
@@ -243,6 +252,7 @@ export async function snapshotStep(
     samples: 0,
     sampleFailures: 0,
     alerts: 0,
+    fees: 0,
     failed: [],
   }
   if (pools.length === 0) {
@@ -292,7 +302,12 @@ export async function snapshotStep(
   for (const failure of states.failed) {
     const error = errorMessage(failure.error)
     result.failed.push({ item: failure.item, error })
-    log.warn('readState failed', { pool: failure.item, error })
+    if (isPoolConfigChangedError(failure.error))
+      log.warn('pool configuration changed; not snapshotted (review, then discover --seed)', {
+        pool: failure.item,
+        error,
+      })
+    else log.warn('readState failed', { pool: failure.item, error })
   }
   const stateMap = new Map(states.ok.map((entry) => [entry.pool.id, entry.state]))
   const prices = computePrices(views, anchors, { states: stateMap, wrappedNative })
@@ -300,6 +315,7 @@ export async function snapshotStep(
   const mandatesByPool = activeMandatesByPool(db, mandated)
   const snapshots: PoolSnapshot[] = []
   const samples: MmSample[] = []
+  const refreshed: PoolMeta[] = []
   for (const { pool, state } of states.ok) {
     const view = viewById.get(pool.id)
     if (view === undefined) continue
@@ -307,6 +323,7 @@ export async function snapshotStep(
     const custodians = storedCustodians(db, pool.id)
     try {
       snapshots.push(buildSnapshot(pool, view, state, prices, positions, bandPct, custodians))
+      if (state.feePips !== pool.feePips) refreshed.push({ ...pool, feePips: state.feePips })
     } catch (error) {
       const message = errorMessage(error)
       result.failed.push({ item: pool.id, error: message })
@@ -335,6 +352,7 @@ export async function snapshotStep(
   const entries = priceEntries(prices)
   db.transaction(() => {
     result.snapshots = db.snapshots.insertMany(snapshots)
+    result.fees = db.pools.upsertMany(refreshed)
     result.samples = db.mmSamples.insertMany(samples)
     db.prices.replaceAll(entries, latest.timestamp)
     db.syncState.setBigInt(syncKeys.snapshot(), latest.number)
@@ -345,6 +363,7 @@ export async function snapshotStep(
     samples: result.samples,
     sampleFailures: result.sampleFailures,
     prices: entries.length,
+    fees: result.fees,
     failed: result.failed.length,
     block: latest.number,
   })

@@ -2,9 +2,10 @@
  * Market-maker sampling (docs/design/scorecards.md §5): one `MmSample` per active mandate of a
  * pool, from the very same state, prices and stored positions the snapshot used.
  *
- * - Concentrated pools: the stored positions; on Slipstream, positions owned by the pool's CLGauge
- *   are resolved to their depositor (`resolveStakedOwners`, one read per pool for the addresses of
- *   every active mandate; when that read fails, one read per mandate) → `filterPositionsByOwners`
+ * - Concentrated pools: the stored positions; positions a custodian holds (a Slipstream pool's
+ *   CLGauge, Aerodrome or Aero) are resolved to their depositor (`resolveStakedOwners`, one read
+ *   per pool for the addresses of every active mandate, none for a DEX without gauges; when that
+ *   read fails, one read per mandate) → `filterPositionsByOwners`
  *   → `buildMmConcentratedState`. A pool whose positions have never been published
  *   (`positionsPublished`, positions.ts: no `positions` run has reached the head for it) cannot be
  *   attributed at all: its mandates are attribution failures, not samples, so a mandate registered
@@ -13,7 +14,9 @@
  *   mandate whose staked positions cannot be resolved is an attribution failure too: left with the
  *   gauge, they would read as missing liquidity. A hooked Uniswap v4 pool is not modelled
  *   (docs/METRICS.md, `hooked`): its mandates are attribution failures, never samples.
- * - Aerodrome v2: `readLpHoldings` at the sample block → `buildMmReserveState` (method `lp-share`).
+ * - v2 pools (Aerodrome v2, Aero v2): `readLpHoldings` at the sample block, the chain package
+ *   finding each DEX's gauge → `buildMmReserveState` (method `lp-share`). No DEX id is compared
+ *   here: the pool's kind decides, the chain package knows each DEX's contracts.
  *
  * Then `computeMmAttribution` → `evaluateKpis` → the sample. A failing mandate is logged and
  * skipped; it never fails the snapshot. `mmSampleStep` runs the same hook on demand
@@ -103,8 +106,9 @@ export function storedPositions(db: Database, pool: PoolMeta): Position[] | null
 }
 
 /**
- * Positions of a Slipstream pool with gauge-staked positions rewritten to their depositor among
- * `candidates` (the addresses of every mandate of the pool). Other DEXes: the positions as given.
+ * Positions of a concentrated pool with gauge-staked positions rewritten to their depositor among
+ * `candidates` (the addresses of every mandate of the pool): the chain package resolves them for
+ * a DEX whose gauges hold positions (both Slipstreams) and returns the others as given, unread.
  */
 export async function resolvePositionOwners(
   ctx: PipelineContext,
@@ -113,7 +117,7 @@ export async function resolvePositionOwners(
   candidates: readonly Address[],
   blockNumber: bigint,
 ): Promise<Position[]> {
-  if (pool.dex !== 'aerodrome-slipstream' || positions.length === 0 || candidates.length === 0)
+  if (pool.kind !== 'concentrated' || positions.length === 0 || candidates.length === 0)
     return [...positions]
   return ctx.chain.resolveStakedOwners(pool, positions, candidates, blockNumber)
 }
@@ -137,7 +141,7 @@ export function concentratedHoldings(
   }
 }
 
-/** Aerodrome v2 attribution: reserves scaled by the mandate's share of the LP supply. */
+/** v2 attribution (Aerodrome or Aero): reserves scaled by the mandate's share of the LP supply. */
 export function lpShareHoldings(state: PoolState, holdings: readonly LpHolding[]): MmHoldings {
   if (state.kind === 'concentrated') throw new Error('lp-share attribution needs a reserve state')
   const counted = holdings.filter((h) => h.balance + h.staked > 0n).length
@@ -160,11 +164,8 @@ async function holdingsFor(
 ): Promise<MmHoldings> {
   const { pool, state } = input
   if (pool.kind === 'concentrated') return concentratedHoldings(state, resolved, mandate)
-  if (pool.dex === 'aerodrome-v2') {
-    const holdings = await ctx.chain.readLpHoldings(pool, mandate.addresses, input.blockNumber)
-    return lpShareHoldings(state, holdings)
-  }
-  return { method: 'none', mmState: null, holdings: 0, shareOfPool: null }
+  const holdings = await ctx.chain.readLpHoldings(pool, mandate.addresses, input.blockNumber)
+  return lpShareHoldings(state, holdings)
 }
 
 /** One sample for one mandate. Throws on an attribution failure (callers decide what to do). */
@@ -202,8 +203,8 @@ export async function sampleMandate(
 }
 
 /**
- * How each mandate's view of the stored positions is obtained (owners resolved). On Slipstream,
- * gauge-staked positions are resolved once for the addresses of every mandate (first matching
+ * How each mandate's view of the stored positions is obtained (owners resolved). Gauge-staked
+ * positions (Slipstream) are resolved once for the addresses of every mandate (first matching
  * depositor wins, so the union of the candidates yields the same owners as one call per mandate).
  * When that read fails, each mandate resolves its own addresses instead, so a failure (a transient
  * RPC error, or a candidate the node cannot answer for) only concerns the mandates it reaches; the
@@ -216,7 +217,7 @@ async function positionsResolver(
   mandates: readonly Mandate[],
 ): Promise<(mandate: Mandate) => Promise<Position[] | null>> {
   const { pool, positions, blockNumber } = input
-  if (positions === null || pool.dex !== 'aerodrome-slipstream') return async () => positions
+  if (positions === null) return async () => positions
   const candidates = [...new Set(mandates.flatMap((m) => m.addresses))]
   try {
     const resolved = await resolvePositionOwners(ctx, pool, positions, candidates, blockNumber)
@@ -244,7 +245,7 @@ export const HOOKED_NOT_MODELLED = 'hooked pool: not modelled'
 
 /**
  * One sample per active mandate of `input.pool`. A mandate whose attribution fails (its LP
- * holdings or, on Slipstream, its gauge-staked positions cannot be read, its concentrated pool's
+ * holdings or its gauge-staked Slipstream positions cannot be read, its concentrated pool's
  * positions are not published yet, or its pool has a Uniswap v4 hook, whose swap code the depth
  * and spread walk would only guess at) is logged (and reported through `onFailure`) and left out;
  * the others still get their sample.

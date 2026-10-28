@@ -1,7 +1,7 @@
 /**
  * `ChainReader.seedPools`: pool discovery without `eth_getLogs`, for endpoints that cannot serve
  * factory log scans (Alchemy's free tier: 10-block ranges). Each DEX is asked directly for the
- * pools of a token list (./candidates.ts, a dozen multicalls in all at the seed block), then each
+ * pools of a token list (./candidates.ts, ./aero.ts: a dozen multicalls in all at the seed block), then each
  * pool's creation block is found by binary search over archive state (./createdAt.ts, about 26
  * requests per pool, skipped for pools whose creation block is already known), in batches whose
  * pools are handed to `onPools` as each one completes. The PoolMeta are the ones log discovery
@@ -14,12 +14,21 @@ import { type Address, DEXES, type Dex, type PoolMeta } from '@depthwatch/core'
 import type { BackoffEvent } from '../internal/backoff.js'
 import type { ReaderContext } from '../internal/context.js'
 import { errorSummary } from '../internal/errorText.js'
-import { type DexSeed, SEEDERS } from './candidates.js'
+import { seedAeroSlipstream, seedAeroV2 } from './aero.js'
+import {
+  type DexSeed,
+  type DexSeeder,
+  seedAerodromeV2,
+  seedSlipstream,
+  seedUniswapV3,
+  seedUniswapV4,
+} from './candidates.js'
 import { type CreationSearchProgress, findCreationBlocks } from './createdAt.js'
 
 export type { BackoffEvent } from '../internal/backoff.js'
 export {
   type DexSeed,
+  type DexSeeder,
   sortedPairs,
   UNISWAP_V3_CANDIDATE_FEES,
   UNISWAP_V4_STANDARD_KEYS,
@@ -32,6 +41,16 @@ export {
   slot0SqrtPrice,
   v4Slot0Slot,
 } from './createdAt.js'
+
+/** The seeder of every DEX (./candidates.ts, ./aero.ts). */
+export const SEEDERS: Readonly<Record<Dex, DexSeeder>> = Object.freeze({
+  'uniswap-v3': seedUniswapV3,
+  'uniswap-v4': seedUniswapV4,
+  'aerodrome-v2': seedAerodromeV2,
+  'aerodrome-slipstream': seedSlipstream,
+  'aero-v2': seedAeroV2,
+  'aero-slipstream': seedAeroSlipstream,
+})
 
 /** Requests in flight during the creation-block search. */
 export const DEFAULT_SEED_CONCURRENCY = 4
@@ -47,7 +66,7 @@ export interface SeedProgress {
 }
 
 export interface SeedPoolsOptions {
-  /** Default: all four. */
+  /** Default: every DEX (`DEXES`). */
   dexes?: readonly Dex[]
   /**
    * Tokens whose pairs are asked for (default: `addresses.referenceTokens`). Native ETH

@@ -1,9 +1,11 @@
 /**
  * `demo`: the whole pipeline over the time-varying synthetic Base world from `@depthwatch/chain`
- * (six pools, LP positions rebalanced hourly, drifting prices, hourly swaps, two scripted market
- * makers) into an in-memory database (or an explicit `--db` file; the live `DEPTHWATCH_DB` is
- * never opened), then the API and dashboard. Nothing here touches the network, so it works
- * offline and doubles as the end-to-end test.
+ * (eight pools on all six DEXes, LP positions rebalanced hourly, drifting prices, hourly swaps,
+ * an Aero Slipstream fee that moves by the hour, two scripted market makers) into an in-memory
+ * database (or an explicit `--db` file; the live `DEPTHWATCH_DB` is never opened), then the API
+ * and dashboard. Nothing here touches the network, so it works offline and doubles as the
+ * end-to-end test. The demo chain dates the Aero factories inside the synthetic history
+ * (`syntheticAddresses`), so discovery at the first point finds the Aero pools.
  *
  * History (docs/design/web-v2.md §3): `runDemoPipeline` discovers once, then runs positions and
  * snapshot (with mandate sampling) at every point from now − 7 d to now, every 2 h (85 points),
@@ -28,6 +30,7 @@ import {
   SYNTHETIC_OWNERS,
   SYNTHETIC_POOL_IDS,
   type SyntheticOptions,
+  syntheticAddresses,
 } from '@depthwatch/chain'
 import { type Mandate, type MandateRegistration, parseMandate } from '@depthwatch/core'
 import { type Database, IN_MEMORY, openDatabase } from '@depthwatch/db'
@@ -46,9 +49,11 @@ export const DEMO_LOG_CHUNK_SIZE = 100_000
 /** …and in one window per DEX (1 000 chunks = 100 M blocks): no progress lines to resume from. */
 export const DEMO_DISCOVER_WINDOW_CHUNKS = 1_000
 
+/** The chain of the synthetic world at `opts`, with the Aero start blocks of its anchor. */
 export function createDemoChain(opts: SyntheticOptions = {}): ChainReader {
   return createChainReader({
     transport: createFixtureTransport(createSyntheticFixture(opts)),
+    addresses: syntheticAddresses(opts.latestBlock ?? SYNTHETIC_DEFAULTS.latestBlock),
     logChunkSize: DEMO_LOG_CHUNK_SIZE,
   })
 }

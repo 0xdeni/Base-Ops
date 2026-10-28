@@ -13,6 +13,7 @@ import {
   type PoolsResponse,
 } from '@depthwatch/api'
 import {
+  aeroHookFeeAt,
   SYNTHETIC_DEFAULTS,
   SYNTHETIC_POOL_IDS,
   SYNTHETIC_PRICES,
@@ -73,10 +74,10 @@ describe('demo pipeline (end to end, offline, short history)', () => {
 
   afterAll(() => db.close())
 
-  it('discovers pools for all four DEXes once, at the first point', () => {
+  it('discovers pools for all six DEXes once, at the first point', () => {
     expect(result.now).toBe(NOW)
     expect(result.history.timestamps).toEqual(timestamps)
-    expect(result.discover.found).toBe(6)
+    expect(result.discover.found).toBe(8)
     expect(result.discover.failed).toEqual([])
     const first = syntheticWorld({ epochTimestamp: timestamps[0] })
     expect(result.discover.blockNumber).toBe(first.latestBlock)
@@ -87,9 +88,9 @@ describe('demo pipeline (end to end, offline, short history)', () => {
 
   it('tracks the pools and stores one snapshot per point each, with USD depth for USDC-quoted pools', () => {
     const tracked = db.pools.trackedIds()
-    expect(tracked).toHaveLength(6)
-    expect(result.snapshot.snapshots).toBe(6)
-    expect(result.history.snapshots).toBe(6 * SHORT_HISTORY)
+    expect(tracked).toHaveLength(8)
+    expect(result.snapshot.snapshots).toBe(8)
+    expect(result.history.snapshots).toBe(8 * SHORT_HISTORY)
     expect(result.history.failed).toEqual([])
     expect(result.snapshot.failed).toEqual([])
     expect(result.snapshot.blockNumber).toBe(world.latestBlock)
@@ -116,9 +117,14 @@ describe('demo pipeline (end to end, offline, short history)', () => {
       if (pool.dex === 'uniswap-v4') expect(snapshot.tvlUsd).toBeNull()
       else expect(snapshot.tvlUsd ?? 0).toBeGreaterThan(0)
       if (pool.kind === 'concentrated') {
-        // Four owners hold positions; one may sit outside the ±5 % band as the price drifts.
-        expect(snapshot.concentration?.owners?.count).toBeGreaterThanOrEqual(3)
-        expect(snapshot.concentration?.owners?.count).toBeLessThanOrEqual(4)
+        // The owners of the positions no gauge holds (a gauge is a custodian, not an owner); one
+        // may sit outside the ±5 % band as the price drifts.
+        const synthetic = world.pools.find((p) => p.meta.id === id)
+        if (synthetic?.kind !== 'concentrated') throw new Error(`${id} missing`)
+        const own = synthetic.positions.filter((p) => p.holder === p.owner)
+        const owners = new Set(own.map((p) => p.owner)).size
+        expect(snapshot.concentration?.owners?.count).toBeGreaterThanOrEqual(owners - 1)
+        expect(snapshot.concentration?.owners?.count).toBeLessThanOrEqual(owners)
       } else {
         expect(snapshot.concentration).toMatchObject({ rangeHhi: 1, owners: null })
       }
@@ -150,6 +156,9 @@ describe('demo pipeline (end to end, offline, short history)', () => {
     expect(within(db.prices.usd(TOKENS.CBBTC.address), cbbtc, 0.5)).toBe(true)
     const aero = world.pools[3]?.token1Usd ?? 0
     expect(within(db.prices.usd(TOKENS.AERO_AERODROME.address), aero, 0.5)).toBe(true)
+    // Aero's AERO is priced from its own pool, with no edge to Aerodrome's.
+    const aeroNew = world.pools[6]?.token0Usd ?? 0
+    expect(within(db.prices.usd(TOKENS.AERO.address), aeroNew, 0.5)).toBe(true)
     // Native ETH (Uniswap v4 currency0) is tied to WETH.
     expect(within(db.prices.usd('0x0000000000000000000000000000000000000000'), eth, 0.5)).toBe(true)
     expect(db.prices.usd(TOKENS.USDC.address)).toBe(1)
@@ -168,7 +177,7 @@ describe('demo pipeline (end to end, offline, short history)', () => {
   })
 
   it('scores every tracked pool with a grade over the history', () => {
-    expect(result.score.scored).toBe(6)
+    expect(result.score.scored).toBe(8)
     expect(result.score.unsnapshotted).toBe(0)
     for (const id of db.pools.trackedIds()) {
       const score = db.scores.get(id)
@@ -221,6 +230,15 @@ describe('demo pipeline (end to end, offline, short history)', () => {
     expect(aero?.breaches).toEqual(['depthUp', 'depthDown'])
   })
 
+  it('stores the Aero Slipstream fee of the last point on its pool row', () => {
+    // Both Aero DEXes are among the six above, discovered at the first point (syntheticAddresses).
+    const feeAt = (t: number) => aeroHookFeeAt(SYNTHETIC_DEFAULTS.seed, 7, Math.floor(t / 3_600))
+    const cl = db.pools.get(SYNTHETIC_POOL_IDS.wethUsdcAeroSlipstream)
+    expect(cl).toMatchObject({ dex: 'aero-slipstream', hooks: null, feePips: feeAt(NOW) })
+    const previous = timestamps.at(-2) ?? NOW
+    expect(result.snapshot.fees).toBe(feeAt(NOW) === feeAt(previous) ? 0 : 1)
+  })
+
   it('describes the demo mandates in plain language (their notes are shown to visitors)', () => {
     for (const { id, notes } of DEMO_MANDATES) {
       expect(notes, id).toMatch(/^Synthetic mandate: /)
@@ -252,8 +270,8 @@ describe('demo pipeline (end to end, offline, short history)', () => {
     const list = await app.request('/api/pools?sort=health&limit=10')
     expect(list.status).toBe(200)
     const body = (await list.json()) as PoolsResponse
-    expect(body.total).toBe(6)
-    expect(body.items).toHaveLength(6)
+    expect(body.total).toBe(8)
+    expect(body.items).toHaveLength(8)
     const first = body.items[0]
     expect(first?.health.grade).toBeDefined()
     expect(first?.depth2Usd ?? 0).toBeGreaterThan(0)
@@ -310,8 +328,8 @@ describe('demoCommand', () => {
       expect(health.status).toBe(200)
       // `source: 'demo'` tells the dashboard to show the demo banner (docs/design/web-v2.md §1).
       expect((await health.json()) as { poolCount: number }).toMatchObject({
-        poolCount: 6,
-        trackedCount: 6,
+        poolCount: 8,
+        trackedCount: 8,
         source: 'demo',
       })
       const index = await fetch(`${url}/`, { headers: { accept: 'text/html' } })

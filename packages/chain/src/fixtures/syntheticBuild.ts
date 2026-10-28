@@ -18,6 +18,8 @@ import {
 } from '@depthwatch/core'
 import { slipstreamPoolId } from '../adapters/aerodromeSlipstream.js'
 import { aerodromeV2PoolId } from '../adapters/aerodromeV2.js'
+import { aeroSlipstreamPoolId } from '../adapters/aeroSlipstream.js'
+import { aeroV2PoolId } from '../adapters/aeroV2.js'
 import { uniswapV3PoolId } from '../adapters/uniswapV3.js'
 import { computePoolId, uniswapV4PoolId } from '../adapters/uniswapV4.js'
 import { floorDiv } from '../internal/ticks.js'
@@ -25,6 +27,7 @@ import {
   SYNTHETIC_OWNERS,
   type SyntheticActivity,
   type SyntheticConcentratedPool,
+  type SyntheticConcentratedVariant,
   type SyntheticLpHolding,
   type SyntheticPosition,
   type SyntheticV2Pool,
@@ -43,7 +46,7 @@ export interface PositionTemplate {
   liquidity: bigint
   /** Index into SYNTHETIC_OWNERS. */
   owner: number
-  /** Staked in the pool's CLGauge (Slipstream only): the NFPM reports the gauge as `ownerOf`. */
+  /** Staked in the pool's CLGauge (Slipstream, Aerodrome or Aero): the NFPM reports the gauge. */
   staked?: boolean
   /** Liquidity follows this scripted market maker instead of the pool's cycle and noise. */
   scripted?: 'slipstreamMarketMaker'
@@ -65,9 +68,11 @@ export interface ConcentratedFactors {
   price: number
   /** Liquidity multiplier per template (missing entries: 1). */
   liquidity: readonly number[]
+  /** The hour's LP fee in pips, for a pool whose fee moves (default: `spec.feePips`). */
+  feePips?: number
 }
 
-/** One hour of an Aerodrome v2 pool in the time-varying world. */
+/** One hour of a v2 pool (Aerodrome or Aero) in the time-varying world. */
 export interface V2Factors {
   /** Multiplier of the token0 price in token1 (reserve1 / reserve0 of a constant-product pool). */
   price: number
@@ -91,7 +96,7 @@ export function scaleBigint(value: bigint, factor: number): bigint {
 
 export interface ConcentratedSpec {
   label: string
-  variant: 'v3' | 'slipstream' | 'v4'
+  variant: SyntheticConcentratedVariant
   token0: TokenInfo
   token1: TokenInfo
   feePips: number
@@ -106,6 +111,8 @@ export interface ConcentratedSpec {
 
 export interface V2Spec {
   label: string
+  /** Default `aerodrome-v2`; an `aero-v2` pool comes from the volatile or the stable factory. */
+  dex?: 'aerodrome-v2' | 'aero-v2'
   token0: TokenInfo
   token1: TokenInfo
   stable: boolean
@@ -176,16 +183,18 @@ export function buildConcentrated(
   factors: ConcentratedFactors = IDENTITY_CONCENTRATED,
 ): SyntheticConcentratedPool {
   const { sqrtPriceX96, tick, positions: raw } = concentratedLayout(spec, factors)
+  const feePips = factors.feePips ?? spec.feePips
   const state = buildConcentratedState({
     positions: raw,
     tick,
     sqrtPriceX96,
-    feePips: spec.feePips,
+    feePips,
     tickSpacing: spec.tickSpacing,
     blockNumber: world.latestBlock,
     timestamp: world.latestTimestamp,
   })
-  const gauge = spec.variant === 'slipstream' ? syntheticGaugeAddress(spec.label) : null
+  const slipstream = spec.variant === 'slipstream' || spec.variant === 'aero-slipstream'
+  const gauge = slipstream ? syntheticGaugeAddress(spec.label) : null
   let reserve0 = 0n
   let reserve1 = 0n
   const positions: SyntheticPosition[] = raw.map((p, i) => {
@@ -209,7 +218,7 @@ export function buildConcentrated(
     kind: 'concentrated' as const,
     token0: spec.token0,
     token1: spec.token1,
-    feePips: spec.feePips,
+    feePips,
     tickSpacing: spec.tickSpacing,
     stable: false,
     createdAtBlock,
@@ -233,24 +242,13 @@ export function buildConcentrated(
     }
   } else {
     const address = syntheticPoolAddress(spec.label)
+    const keyed = { ...common, address, poolId: null, hooks: null }
     meta =
       spec.variant === 'v3'
-        ? {
-            ...common,
-            id: uniswapV3PoolId(address),
-            dex: 'uniswap-v3',
-            address,
-            poolId: null,
-            hooks: null,
-          }
-        : {
-            ...common,
-            id: slipstreamPoolId(address),
-            dex: 'aerodrome-slipstream',
-            address,
-            poolId: null,
-            hooks: null,
-          }
+        ? { ...keyed, id: uniswapV3PoolId(address), dex: 'uniswap-v3' }
+        : spec.variant === 'slipstream'
+          ? { ...keyed, id: slipstreamPoolId(address), dex: 'aerodrome-slipstream' }
+          : { ...keyed, id: aeroSlipstreamPoolId(address), dex: 'aero-slipstream' }
   }
   return {
     kind: 'concentrated',
@@ -289,9 +287,10 @@ export function buildV2(
   factors: V2Factors = { price: 1, others: 1, holders: spec.holders },
 ): SyntheticV2Pool {
   const address = syntheticPoolAddress(spec.label)
+  const dex = spec.dex ?? 'aerodrome-v2'
   const meta: PoolMeta = {
-    id: aerodromeV2PoolId(address),
-    dex: 'aerodrome-v2',
+    id: dex === 'aero-v2' ? aeroV2PoolId(address) : aerodromeV2PoolId(address),
+    dex,
     kind: spec.stable ? 'stable-swap' : 'constant-product',
     address,
     poolId: null,

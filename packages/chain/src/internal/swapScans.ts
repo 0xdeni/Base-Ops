@@ -1,9 +1,10 @@
 /**
  * `readSwaps`'s log scans: one per distinct `Swap` event source, not one per DEX. Adapters whose
- * pools emit the same event share their `swaps` function (Uniswap v3 and Slipstream both use
- * `readV3StyleSwaps`: identical `Swap` signature, identical topic0), so their pools go into one
- * filter per range, which saves one `eth_getLogs` per chunk on a 10-block plan. Every scan reports
- * its chunks and backoffs to one `SwapScanProgress`.
+ * pools emit the same event share their `swaps` function (Uniswap v3 and both Slipstreams use
+ * `readV3StyleSwaps`, Aerodrome v2 and Aero v2 `readV2StyleSwaps`: identical `Swap` signature,
+ * identical topic0), so their pools go into one filter per range: three scans for six DEXes, which
+ * saves an `eth_getLogs` per chunk and merged DEX on a 10-block plan. Every scan reports its chunks
+ * and backoffs to one `SwapScanProgress`.
  */
 import { DEXES, type Dex, type PoolMeta, type SwapEvent } from '@depthwatch/core'
 import { ADAPTERS } from '../adapters/index.js'

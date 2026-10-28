@@ -208,6 +208,18 @@ describe('loadConfig', () => {
     })
   })
 
+  it('takes the Aero DEX ids and their pool ids', () => {
+    const config = loadConfig(
+      {},
+      {
+        dex: ['aero-v2,aero-slipstream'],
+        pool: ['aero-v2:0xAB', 'aero-slipstream:0xCD'],
+      },
+    )
+    expect(config.dexes).toEqual(['aero-v2', 'aero-slipstream'])
+    expect(config.poolIds).toEqual(['aero-v2:0xab', 'aero-slipstream:0xcd'])
+  })
+
   it('reads DEPTHWATCH_LOGS_RPC_URL, lets --logs-rpc-url win and defaults to the main URL', () => {
     const main = { DEPTHWATCH_RPC_URL: 'https://main.example/v2' }
     expect(loadConfig(main).logsRpcUrl).toBe('https://main.example/v2')

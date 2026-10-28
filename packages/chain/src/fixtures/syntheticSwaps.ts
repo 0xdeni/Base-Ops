@@ -62,11 +62,12 @@ export interface SwapLogInput {
   blockNumber: bigint
   logIndex: number
   txIndex: number
-  /** v3 / Slipstream / v4 only. */
+  /** Concentrated pools only (v3, Slipstream, Aero Slipstream, v4). */
   price: SwapPriceState | null
 }
 
-type SwapPoolKind = 'v2' | 'v3' | 'slipstream' | 'v4'
+/** Aero Slipstream pools emit Uniswap v3's `Swap`, Aero v2 pools Aerodrome v2's (kind 'v2'). */
+type SwapPoolKind = 'v2' | 'v3' | 'slipstream' | 'aero-slipstream' | 'v4'
 
 /** One `Swap` log as the pool's DEX emits it. */
 export function swapLog(
