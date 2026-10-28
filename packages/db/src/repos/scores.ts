@@ -1,50 +1,26 @@
-import {
-  DEXES,
-  type Dex,
-  type GapMetrics,
-  type HealthScore,
-  type PersistenceMetrics,
-  type PoolMeta,
-} from '@depthwatch/core'
+import { type Address, DEXES, type Dex, MEANINGFUL_GAP_TURNOVER } from '@depthwatch/core'
 import type { SqlContext } from '../context.js'
+import { type BindValue, colNumber, colNumberOrNull, colText, page } from '../sql.js'
+import { type PoolFilter, poolFilterClauses, whereSql } from './poolRow.js'
 import {
-  type BindValue,
-  colBigint,
-  colBool,
-  colJson,
-  colNumber,
-  colNumberOrNull,
-  colText,
-  colTextOrNull,
-  page,
-  type Row,
-} from '../sql.js'
-import { type SnapshotSummary, spread10kFromStoredPoint } from '../summary.js'
-import {
-  POOL_SELECT,
-  type PoolFilter,
-  poolFilterClauses,
-  rowToPoolMeta,
-  whereSql,
-} from './poolRow.js'
-import { depth2SideSql, spread10kPointSql } from './snapshots.js'
+  DIRECTIONS,
+  JOINED_SELECT,
+  LATEST_JOIN,
+  type PoolScore,
+  RATED_SQL,
+  rowToPoolScore,
+  rowToScoredPool,
+  SCORE_FROM,
+  SCORE_SELECT,
+  type ScoredPoolRow,
+  SORT_COLUMNS,
+  type SortDir,
+  type TopBySort,
+} from './scoreRow.js'
 
-export interface PoolScore {
-  poolId: string
-  /** When the score was computed (unix seconds). */
-  timestamp: number
-  health: HealthScore
-  gap: GapMetrics
-  persistence24h: PersistenceMetrics
-  persistence7d: PersistenceMetrics
-  volume24hUsd: number | null
-  depth2Usd: number | null
-}
+export type { PoolScore, ScoredPoolRow, SortDir, TopBySort } from './scoreRow.js'
 
 export type ScoreUpsert = PoolScore
-
-export type TopBySort = 'health' | 'gap' | 'depth' | 'volume' | 'tvl'
-export type SortDir = 'asc' | 'desc'
 
 export interface TopByOptions extends PoolFilter {
   /**
@@ -59,14 +35,6 @@ export interface TopByOptions extends PoolFilter {
   offset?: number
   /** Keeps only pools with a known 24 h volume of at least this many USD. */
   minVolumeUsd?: number
-}
-
-export interface ScoredPoolRow {
-  pool: PoolMeta
-  tracked: boolean
-  score: PoolScore
-  /** Summary of the pool's newest snapshot; null when it has none. */
-  latest: SnapshotSummary | null
 }
 
 export interface TopByResult {
@@ -84,6 +52,22 @@ export interface GapsOptions {
   offset?: number
   /** Defaults to DEFAULT_GAP_MIN_VOLUME_USD (10 000). */
   minVolumeUsd?: number
+}
+
+/** The whole gaps feed at one floor, counted (docs/METRICS.md, "Gap score and the gaps feed"). */
+export interface GapCounts {
+  /** Pools in the feed. */
+  total: number
+  /** Feed pools with a turnover of at least MEANINGFUL_GAP_TURNOVER (3×). */
+  meaningful: number
+}
+
+/** A token's ±2 % depth over every scored pool containing it (docs/METRICS.md, "A token's depth"). */
+export interface TokenDepth {
+  /** Sum of the pools' known `depth2Usd`; null when none is known (unknown is not 0). */
+  depth2UsdTotal: number | null
+  /** Pools whose depth is known: the ones the sum covers. */
+  depthKnownPools: number
 }
 
 export interface DexStats {
@@ -112,100 +96,6 @@ const UPSERT = `INSERT INTO scores (
     persistence_7d_json = excluded.persistence_7d_json, volume_24h_usd = excluded.volume_24h_usd,
     depth2_usd = excluded.depth2_usd, health_total = excluded.health_total,
     gap_score = excluded.gap_score`
-
-const SCORE_SELECT = `s.pool_id AS s_pool_id, s.timestamp AS s_timestamp,
-  s.health_json AS s_health_json, s.gap_json AS s_gap_json,
-  s.persistence_24h_json AS s_persistence_24h_json, s.persistence_7d_json AS s_persistence_7d_json,
-  s.volume_24h_usd AS s_volume_24h_usd, s.depth2_usd AS s_depth2_usd`
-
-const LATEST_SELECT = `sn.id AS sn_id, sn.block_number AS sn_block_number,
-  sn.timestamp AS sn_timestamp, sn.price AS sn_price, sn.tvl_usd AS sn_tvl_usd,
-  sn.depth2_usd AS sn_depth2_usd, ${spread10kPointSql('sn.spreads_json')} AS sn_spread10k_point,
-  sn.owner_top1_share AS sn_owner_top1_share,
-  ${depth2SideSql('sn.depth_usd_json', 'upUsd')} AS sn_depth2_up_usd,
-  ${depth2SideSql('sn.depth_usd_json', 'downUsd')} AS sn_depth2_down_usd`
-
-/**
- * Whether the stored score is rated: the flag lives in `health_json`. A row scored before ratings
- * existed has none and counts as unrated until `score` runs again.
- */
-const RATED_SQL = `COALESCE(json_extract(s.health_json, '$.rated'), 0) = 1`
-
-/**
- * `CROSS JOIN` pins the scored set as the outer loop. Without planner statistics SQLite would
- * otherwise start from `pools` for a count or a filtered page: every discovered pool (a full
- * factory scan finds a hundred thousand) scanned for a few hundred scores.
- */
-const SCORE_FROM = `scores s
-  CROSS JOIN pools p ON p.id = s.pool_id
-  JOIN tokens t0 ON t0.address = p.token0
-  JOIN tokens t1 ON t1.address = p.token1`
-
-const LATEST_JOIN = `LEFT JOIN snapshots sn ON sn.id = (
-    SELECT x.id FROM snapshots x WHERE x.pool_id = s.pool_id ORDER BY x.timestamp DESC, x.id DESC LIMIT 1
-  )`
-
-const JOINED_SELECT = `SELECT ${POOL_SELECT}, ${SCORE_SELECT}, ${LATEST_SELECT} FROM ${SCORE_FROM} ${LATEST_JOIN}`
-
-/** Whitelists: the only values ever interpolated into SQL. */
-const SORT_COLUMNS: Readonly<Record<TopBySort, string>> = Object.freeze({
-  health: 's.health_total',
-  gap: 's.gap_score',
-  depth: 's.depth2_usd',
-  volume: 's.volume_24h_usd',
-  tvl: 'sn.tvl_usd',
-})
-const DIRECTIONS: Readonly<Record<SortDir, string>> = Object.freeze({ asc: 'ASC', desc: 'DESC' })
-
-/**
- * A health score as stored. One written before ratings existed has no `rated` flag: it reads as
- * unrated with no reason, and no grade, until the next `score` run replaces it.
- */
-function readHealth(row: Row): HealthScore {
-  const health = colJson<HealthScore>(row, 's_health_json')
-  if (typeof health.rated === 'boolean') return health
-  return { ...health, grade: null, rated: false, unratedReason: null }
-}
-
-export function rowToPoolScore(row: Row): PoolScore {
-  return {
-    poolId: colText(row, 's_pool_id'),
-    timestamp: colNumber(row, 's_timestamp'),
-    health: readHealth(row),
-    gap: colJson<GapMetrics>(row, 's_gap_json'),
-    persistence24h: colJson<PersistenceMetrics>(row, 's_persistence_24h_json'),
-    persistence7d: colJson<PersistenceMetrics>(row, 's_persistence_7d_json'),
-    volume24hUsd: colNumberOrNull(row, 's_volume_24h_usd'),
-    depth2Usd: colNumberOrNull(row, 's_depth2_usd'),
-  }
-}
-
-function rowToLatest(row: Row, poolId: string): SnapshotSummary | null {
-  if (colNumberOrNull(row, 'sn_id') === null) return null
-  const price = colNumber(row, 'sn_price')
-  return {
-    poolId,
-    blockNumber: colBigint(row, 'sn_block_number'),
-    updatedAt: colNumber(row, 'sn_timestamp'),
-    price,
-    tvlUsd: colNumberOrNull(row, 'sn_tvl_usd'),
-    depth2Usd: colNumberOrNull(row, 'sn_depth2_usd'),
-    spread10kBps: spread10kFromStoredPoint(colTextOrNull(row, 'sn_spread10k_point'), price),
-    ownerTop1Share: colNumberOrNull(row, 'sn_owner_top1_share'),
-    depth2UpUsd: colNumberOrNull(row, 'sn_depth2_up_usd'),
-    depth2DownUsd: colNumberOrNull(row, 'sn_depth2_down_usd'),
-  }
-}
-
-export function rowToScoredPool(row: Row): ScoredPoolRow {
-  const pool = rowToPoolMeta(row)
-  return {
-    pool,
-    tracked: colBool(row, 'p_tracked'),
-    score: rowToPoolScore(row),
-    latest: rowToLatest(row, pool.id),
-  }
-}
 
 /** Median of an ascending list; null for an empty list. */
 export function median(sorted: readonly number[]): number | null {
@@ -290,6 +180,39 @@ export class ScoresRepo {
         [minVolumeUsd, limit, offset],
       )
       .map(rowToScoredPool)
+  }
+
+  /** Counts of the whole gaps feed at `minVolumeUsd`: the rows `gaps` pages through. */
+  gapCounts(minVolumeUsd: number = DEFAULT_GAP_MIN_VOLUME_USD): GapCounts {
+    const row = this.ctx.get(
+      `SELECT COUNT(*) AS total,
+          COALESCE(SUM(json_extract(s.gap_json, '$.turnoverRatio') >= ?), 0) AS meaningful
+        FROM ${SCORE_FROM} WHERE s.gap_score IS NOT NULL AND s.volume_24h_usd >= ?`,
+      [MEANINGFUL_GAP_TURNOVER, minVolumeUsd],
+    )
+    return {
+      total: row ? colNumber(row, 'total') : 0,
+      meaningful: row ? colNumber(row, 'meaningful') : 0,
+    }
+  }
+
+  /**
+   * The ±2 % depth of every scored pool containing `token`, as the feeds list it: the score's
+   * `depth2Usd`, else the newest snapshot's.
+   */
+  tokenDepth(token: Address): TokenDepth {
+    const { clauses, params } = poolFilterClauses({ token })
+    const row = this.ctx.get(
+      `SELECT COUNT(d) AS known, SUM(d) AS total FROM (
+          SELECT COALESCE(s.depth2_usd, sn.depth2_usd) AS d
+            FROM ${SCORE_FROM} ${LATEST_JOIN} ${whereSql(clauses)})`,
+      params,
+    )
+    const known = row ? colNumber(row, 'known') : 0
+    return {
+      depth2UsdTotal: known > 0 && row ? colNumberOrNull(row, 'total') : null,
+      depthKnownPools: known,
+    }
   }
 
   /** Per-dex totals, in DEXES order (dexes without pools included with zeros). */

@@ -17,6 +17,7 @@ import { NotRatedChip } from '../../components/ui/GradeGlyph.js'
 import { Unknown } from '../../components/ui/Unknown.js'
 import { bps, cantAbsorb, score, usd } from '../../lib/format.js'
 import { tvlReason } from '../../lib/poolsTable.js'
+import { GAP_FEED } from '../../lib/useGapFeed.js'
 import {
   gapCallout,
   healthFactSuffix,
@@ -25,17 +26,14 @@ import {
   volumeFactLabel,
 } from './poolText.js'
 
-/** The gap feed's page that Home and Token read too, so the count shares their cache. */
-export const GAP_FEED = { limit: 200 } as const
-
 function GapNote({ detail }: { detail: PoolDetail }) {
   const gaps = useGaps(GAP_FEED)
   const turnover = detail.gap?.turnoverRatio ?? null
   if (turnover === null || turnover < MEANINGFUL_GAP_TURNOVER) return null
+  // The count is the API's over the whole feed; the first page shows the pool is in it.
   const items = gaps.data?.items ?? []
-  const meaningful = items.filter((g) => (g.gap.turnoverRatio ?? 0) >= MEANINGFUL_GAP_TURNOVER)
-  const listed = meaningful.some((g) => g.pool.pool.id === detail.pool.id)
-    ? meaningful.length
+  const listed = items.some((g) => g.pool.pool.id === detail.pool.id)
+    ? (gaps.data?.meaningful ?? null)
     : null
   return (
     <>

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { makeToken } from '../testing.js'
-import { computeGap, GAP_FEED_MIN_VOLUME_USD } from './gap.js'
+import {
+  computeGap,
+  GAP_FEED_MIN_VOLUME_USD,
+  isMeaningfulGap,
+  MEANINGFUL_GAP_TURNOVER,
+} from './gap.js'
 import { tvlUsd } from './tvl.js'
 
 describe('computeGap', () => {
@@ -31,6 +36,15 @@ describe('computeGap', () => {
     expect(computeGap(1_000, 0).turnoverRatio).toBeNull()
     expect(computeGap(Number.NaN, 1).gapScore).toBeNull()
     expect(GAP_FEED_MIN_VOLUME_USD).toBe(10_000)
+  })
+
+  it('a meaningful gap trades 3× its depth or more (a gap score of 23.86)', () => {
+    expect(MEANINGFUL_GAP_TURNOVER).toBe(3)
+    expect(computeGap(3_000, 1_000).gapScore).toBeCloseTo(23.856, 3)
+    expect(isMeaningfulGap(computeGap(3_000, 1_000))).toBe(true)
+    expect(isMeaningfulGap(computeGap(2_999, 1_000))).toBe(false)
+    expect(isMeaningfulGap(computeGap(300_000, 1_000))).toBe(true)
+    expect(isMeaningfulGap(computeGap(null, 1_000))).toBe(false)
   })
 })
 

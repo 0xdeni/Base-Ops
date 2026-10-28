@@ -186,6 +186,13 @@ export interface GapItem {
 /** `GET /api/gaps` */
 export interface GapsResponse {
   items: GapItem[]
+  /** Pools in the whole feed at this floor, ignoring limit/offset. */
+  total: number
+  /**
+   * Pools in the whole feed trading 3× their ±2 % depth or more (core's `isMeaningfulGap`),
+   * ignoring limit/offset.
+   */
+  meaningful: number
   /** Volume floor applied (USD, default 10 000). */
   minVolumeUsd: number
 }
@@ -205,6 +212,13 @@ export interface TokenDetail {
   total: number
   /** Every discovered pool containing the token, scored or not. */
   poolCount: number
+  /**
+   * `depth2Usd` summed over every scored pool containing the token with a known depth, ignoring
+   * limit/offset (docs/METRICS.md, "A token's depth"); null when none has one.
+   */
+  depth2UsdTotal: number | null
+  /** Scored pools of the token whose depth is known: the ones `depth2UsdTotal` sums. */
+  depthKnownPools: number
 }
 
 // ---------------------------------------------------------------------------------------------

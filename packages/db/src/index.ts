@@ -16,11 +16,13 @@ export type { PriceEntry, PriceInput } from './repos/prices.js'
 export { PricesRepo } from './repos/prices.js'
 export type {
   DexStats,
+  GapCounts,
   GapsOptions,
   PoolScore,
   ScoredPoolRow,
   ScoreUpsert,
   SortDir,
+  TokenDepth,
   TopByOptions,
   TopByResult,
   TopBySort,

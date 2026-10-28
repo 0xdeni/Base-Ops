@@ -5,31 +5,28 @@
  * which states the volume floor, "How the score works" and the List / Table control. The focal
  * ranked gap rows sit in a block over the band's lower edge: 20 rows, "Show all 48" and the rows
  * under 3× behind one disclosure; the table view puts every v2 column in a table sheet instead.
- * `view`, `sort`, `dir` and `rows` live in the URL, replaced, not pushed.
+ * Both read the whole feed (every page of it) and the answer counts the API's `meaningful`, so
+ * neither stops at a page. `view`, `sort`, `dir` and `rows` live in the URL, replaced, not pushed.
  */
 import type { ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useGaps } from '../api/hooks.js'
 import { Band } from '../components/ui/Band.js'
 import { Overlap } from '../components/ui/Block.js'
 import { SegmentedControl } from '../components/ui/SegmentedControl.js'
 import { EmptyState, SectionError, Skeleton, useDelayedPending } from '../components/ui/States.js'
 import { NB, usd } from '../lib/format.js'
+import { useGapFeed } from '../lib/useGapFeed.js'
 import { GapRows } from './lists/GapRows.js'
 import { GapsTable } from './lists/GapsTable.js'
 import {
   type GapsState,
   type GapsView,
   gapsAnswer,
-  isMeaningful,
   readGapsState,
   writeGapsState,
 } from './lists/gapsModel.js'
 import { AnswerSkeleton, RowsSkeleton } from './lists/ListSkeleton.js'
 import './lists/lists.css'
-
-/** The API's page for the feed (ia-v3 §4.4: `useGaps({limit: 100})`). */
-const LIMIT = 100
 
 const VIEWS: ReadonlyArray<{ value: GapsView; label: string }> = [
   { value: 'list', label: 'List' },
@@ -41,10 +38,10 @@ export function Gaps() {
   const state = readGapsState(params)
   const update = (patch: Partial<GapsState>) =>
     setParams((prev) => writeGapsState(prev, patch), { replace: true })
-  const gaps = useGaps({ limit: LIMIT })
+  const gaps = useGapFeed()
   const waiting = !useDelayedPending(gaps.isPending)
-  const items = gaps.data?.items
-  const meaningful = items?.filter(isMeaningful).length
+  const items = gaps.items
+  const meaningful = gaps.data?.meaningful
   const table = state.view === 'table'
 
   let body: ReactNode
@@ -80,7 +77,7 @@ export function Gaps() {
       )
     }
   } else if (gaps.isError) {
-    body = <SectionError what="gaps" onRetry={() => void gaps.refetch()} />
+    body = <SectionError what="gaps" onRetry={gaps.refetch} />
   } else {
     body = <RowsSkeleton waiting={waiting} rows={6} label="Loading gaps" header={false} />
   }

@@ -73,13 +73,13 @@ async function allPools(app: App): Promise<PoolSummary[]> {
   }
 }
 
-/** The whole gaps feed at the default floor (the feed has no total: page until a short page). */
+/** The whole gaps feed at the default floor: every page up to the feed's `total`. */
 async function allGaps(app: App): Promise<GapsResponse> {
   const items: GapsResponse['items'] = []
   for (let offset = 0; ; offset += MAX_LIMIT) {
     const page = await getJson<GapsResponse>(app, `/api/gaps?limit=${MAX_LIMIT}&offset=${offset}`)
     items.push(...page.items)
-    if (page.items.length < MAX_LIMIT) return { items, minVolumeUsd: page.minVolumeUsd }
+    if (page.items.length < MAX_LIMIT || items.length >= page.total) return { ...page, items }
   }
 }
 

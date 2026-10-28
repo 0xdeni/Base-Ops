@@ -99,25 +99,19 @@ function SheetFoot({
   offerUnrated,
 }: PoolsSheetProps & { held: number; offerUnrated: boolean }) {
   const unratedOpen = !state.ratedOnly && state.unrated > 0
-  const note = pools.truncated ? (
-    <p className="tbl-note">
-      Sorted within the 200 healthiest of {pools.total} pools; the API sorts the rest by health.
-    </p>
-  ) : null
   const more =
     held > 0 ? (
       <Button onClick={() => update({ allRows: true })}>
-        {showAllRowsLabel(pools.rows?.length ?? 0, pools.remaining === 0 && !pools.truncated)}
+        {showAllRowsLabel(pools.rows?.length ?? 0, pools.remaining === 0)}
       </Button>
     ) : pools.remaining > 0 ? (
       <Button loading={pools.loadingMore} onClick={() => update({ page: state.page + 1 })}>
         Show {Math.min(PAGE_SIZE, pools.remaining)} more pools
       </Button>
     ) : null
-  if (!note && !more && !offerUnrated) return null
+  if (!more && !offerUnrated) return null
   return (
     <div className="tbl-foot">
-      {note}
       {more}
       {offerUnrated ? (
         <>

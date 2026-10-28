@@ -1,11 +1,11 @@
 /**
  * The Token page's words (ia-v3 §4.7, docs/design/visual-v4.md §6.8): the answer, the price route
  * and the Pools takeaway, plus the one view change the butterfly needs. Values are read as stored
- * and only formatted; the answer's total is the client-side sum of the pools' ±2 % depth that
- * ia-v3 §6.4 specifies.
+ * and only formatted; the token's total depth is the API's `depth2UsdTotal`, summed over every
+ * scored pool of the token, so it holds whatever page of the pools is loaded and in any order.
  */
 import type { PoolMetaDto, PoolSummary, TokenDetail } from '../../api/types.js'
-import { dexLabel, isPoolId, NB, pairLabel, shareOf, usd } from '../../lib/format.js'
+import { count, dexLabel, isPoolId, NB, pairLabel, shareOf, usd } from '../../lib/format.js'
 import { swapSides } from '../../lib/orient.js'
 
 /** The non-pool edge a route can cross, in words (ia-v3 §4.7). */
@@ -27,23 +27,19 @@ export function orientPools(pools: readonly PoolSummary[], address: string): Poo
   )
 }
 
+/** The token's totals the answer and the takeaway read: the API's, over every scored pool. */
+export type TokenTotals = Pick<TokenDetail, 'total' | 'depth2UsdTotal'>
+
 /** "$16.5M sits within 2 % of the price across WETH’s 2 scored pools." */
 export function tokenAnswer(detail: TokenDetail): string {
   const sym = detail.token.symbol
-  const n = detail.pools.length
+  const n = detail.total
   if (n === 0) return `${sym} has no scored pools yet.`
   if (detail.usd === null)
     return `${sym} has no USD price yet, so depth is shown in pool terms only.`
-  const known = detail.pools.filter((p) => p.depth2Usd !== null)
-  if (!known.length) return `Depth around ${sym}’s price is not known yet.`
-  const total = known.reduce((s, p) => s + (p.depth2Usd ?? 0), 0)
-  const where =
-    n === 1
-      ? `in ${sym}’s one scored pool`
-      : n < detail.total
-        ? `across the ${n} deepest of ${sym}’s ${detail.total} scored pools`
-        : `across ${sym}’s ${n} scored pools`
-  return `${usd(total)} sits within 2${NB}% of the price ${where}.`
+  if (detail.depth2UsdTotal === null) return `Depth around ${sym}’s price is not known yet.`
+  const where = n === 1 ? `in ${sym}’s one scored pool` : `across ${sym}’s ${count(n)} scored pools`
+  return `${usd(detail.depth2UsdTotal)} sits within 2${NB}% of the price ${where}.`
 }
 
 export interface RouteStep {
@@ -72,14 +68,21 @@ export function stepWords(step: RouteStep): string {
   return 'a pool not tracked here'
 }
 
-/** The Pools takeaway: the deepest pool's share of the token's depth. */
-export function poolsTakeaway(pools: readonly PoolSummary[], symbol: string): string {
+/**
+ * The Pools takeaway: the deepest loaded pool's share of the token's depth, over the API's total
+ * for all of the token's scored pools.
+ */
+export function poolsTakeaway(
+  pools: readonly PoolSummary[],
+  symbol: string,
+  totals: TokenTotals,
+): string {
+  if (totals.depth2UsdTotal === null) return `No ${symbol} pool has a priced depth yet.`
   const known = pools.filter((p) => p.depth2Usd !== null)
-  if (!known.length) return `No ${symbol} pool has a priced depth yet.`
   const deepest = [...known].sort((a, b) => (b.depth2Usd ?? 0) - (a.depth2Usd ?? 0))[0]
   if (!deepest) return ''
   const pair = `${pairLabel(deepest.pool.token0, deepest.pool.token1)} on ${dexLabel(deepest.pool.dex)}`
-  if (pools.length === 1) return `${pair} is ${symbol}’s only scored pool.`
-  const total = known.reduce((s, p) => s + (p.depth2Usd ?? 0), 0)
+  if (totals.total === 1) return `${pair} is ${symbol}’s only scored pool.`
+  const total = totals.depth2UsdTotal
   return `${pair} holds ${shareOf(total > 0 ? (deepest.depth2Usd ?? 0) / total : null)} of ${symbol}’s depth.`
 }

@@ -227,6 +227,10 @@ describe('mock client', () => {
     const high = await client.gaps({ minVolume: 10_000_000 })
     expect(high.minVolumeUsd).toBe(10_000_000)
     expect(high.items.every((g) => (g.gap.volume24hUsd ?? 0) >= 10_000_000)).toBe(true)
+    // The counts are the whole feed's at the floor, like the API's, on every page.
+    const meaningful = items.filter((g) => (g.gap.turnoverRatio ?? 0) >= 3).length
+    expect(page).toMatchObject({ total: items.length, meaningful })
+    expect(high.total).toBe(high.items.length)
   })
 
   it('resolves tokens by address, case-insensitively, with their sorted and paged pools', async () => {
@@ -254,6 +258,11 @@ describe('mock client', () => {
     expect([...totals].sort((a, b) => a - b)).toEqual(totals)
     const rest = await client.token(WETH, { sort: 'health', dir: 'asc', offset: 2 })
     expect(rest.pools).toHaveLength(weth.total - 2)
+    // The token's depth covers every pool, whatever the page.
+    const all = await client.token(WETH, { limit: 200 })
+    const known = all.pools.filter((p) => p.depth2Usd !== null)
+    const sum = known.reduce((total, p) => total + (p.depth2Usd ?? 0), 0)
+    expect(byHealthAsc).toMatchObject({ depth2UsdTotal: sum, depthKnownPools: known.length })
   })
 
   it('reports stats per dex in DEXES order plus totals, and a healthy /health', async () => {

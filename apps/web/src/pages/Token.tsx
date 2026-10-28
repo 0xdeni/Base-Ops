@@ -90,6 +90,7 @@ function TokenView({
         <TokenPools
           pools={pools}
           symbol={token.symbol}
+          totals={detail}
           state={state}
           allRows={allRows}
           busy={busy}

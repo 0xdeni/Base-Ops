@@ -21,6 +21,7 @@ import { SyncStateRepo } from './repos/syncState.js'
 import { TokensRepo } from './repos/tokens.js'
 import { VolumeRepo } from './repos/volume.js'
 import { applyMigrations, type MigrationResult } from './schema.js'
+import { registerSummaryFunctions } from './summary.js'
 import { installSqliteWarningFilter } from './warnings.js'
 
 export interface OpenDatabaseOptions {
@@ -147,6 +148,7 @@ export function openDatabase(path: string, options: OpenDatabaseOptions = {}): D
     }
     raw.exec('PRAGMA temp_store = MEMORY')
     raw.exec(`PRAGMA analysis_limit = ${ANALYSIS_LIMIT}`)
+    registerSummaryFunctions(raw)
     const migration = applyMigrations(raw, now)
     return new SqliteDatabase(path, raw, migration, new SqlContext(raw, now))
   } catch (error) {

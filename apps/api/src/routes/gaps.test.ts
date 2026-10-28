@@ -73,6 +73,20 @@ describe('GET /api/gaps', () => {
     expect(high.items.map((item) => item.pool.pool.id)).toEqual([seed.pools.wethUsdcV3.id])
   })
 
+  it('counts the whole feed and its meaningful gaps on every page', async () => {
+    // Turnover 25×, 6×, 5× and 2×: three trade 3× their depth or more.
+    for (const query of ['', '?limit=1', '?limit=2&offset=3', '?offset=10']) {
+      const body = await gaps(query)
+      expect({ total: body.total, meaningful: body.meaningful }, query).toEqual({
+        total: 4,
+        meaningful: 3,
+      })
+    }
+    // The floor moves the counts with the feed: wethAeroSlip (0.02×) joins at $0.
+    expect(await gaps('?minVolume=0')).toMatchObject({ total: 5, meaningful: 3 })
+    expect(await gaps('?minVolume=1000000')).toMatchObject({ total: 1, meaningful: 0 })
+  })
+
   it('validates its parameters', async () => {
     for (const query of ['?limit=0', '?limit=500', '?offset=x', '?minVolume=-2']) {
       const res = await app.request(`/api/gaps${query}`)

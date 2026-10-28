@@ -10,7 +10,7 @@ import { healthGrade } from '@depthwatch/core'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createMockClient } from '../api/mock.js'
-import type { ApiClient } from '../api/types.js'
+import type { ApiClient, PoolsQuery } from '../api/types.js'
 import { bps, NB, score, usd } from '../lib/format.js'
 import { poolsAnswer } from './lists/poolsText.js'
 import { manyPools, NOW, renderPage, unstubPhone } from './lists/testing.js'
@@ -113,11 +113,25 @@ describe('Pools: the table (TB2–TB4)', () => {
     await waitFor(() => expect(last(h)).toBe('/pools?sort=depth&dir=asc'))
   })
 
-  it('sorts spread on the page, lowest first by default, nulls last', async () => {
-    const h = renderAt('/pools')
+  it('sorts spread on the server, lowest first by default, nulls last', async () => {
+    const mock = createMockClient({ now: NOW })
+    const asked: PoolsQuery[] = []
+    const client: ApiClient = {
+      ...mock,
+      pools: (query) => {
+        if (query) asked.push(query)
+        return mock.pools(query)
+      },
+    }
+    const h = renderAt('/pools', client)
     const t = await table()
     fireEvent.click(within(t).getByRole('button', { name: 'Spread at $10K' }))
     await waitFor(() => expect(last(h)).toBe('/pools?sort=spread'))
+    await waitFor(() =>
+      expect(asked).toContainEqual(
+        expect.objectContaining({ sort: 'spread', dir: 'asc', rated: true, limit: 50, offset: 0 }),
+      ),
+    )
     const all = (await h.client.pools({ limit: 200 })).items
     const lowest = Math.min(...all.map((p) => p.spread10kBps ?? Number.POSITIVE_INFINITY))
     await waitFor(() => expect(cellText(bodyRows(t)[0] as HTMLElement, bps(lowest))).toBe(true))
@@ -247,6 +261,16 @@ describe('Pools: paging and failures', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show 20 more pools' }))
     await waitFor(() => expect(bodyRows(t)).toHaveLength(120))
     expect(screen.queryByRole('button', { name: /more pools/ })).toBeNull()
+  })
+
+  it('pages a spread or top LP sort like any other, past the 200 healthiest', async () => {
+    const h = renderAt('/pools?sort=top', manyPools(250))
+    const t = await table()
+    expect(bodyRows(t)).toHaveLength(50)
+    expect(screen.queryByText(/Sorted within/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Show 50 more pools' }))
+    await waitFor(() => expect(last(h)).toBe('/pools?sort=top&page=2'))
+    await waitFor(() => expect(bodyRows(t)).toHaveLength(100))
   })
 
   it('keeps the page usable when pools fail to load (ST3)', async () => {

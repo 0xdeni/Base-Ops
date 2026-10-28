@@ -7,7 +7,13 @@
  * found` 404, …) so the UI cannot tell the two apart. Histories are deterministic per pool id;
  * the two scorecards mirror the API seed (`mockScorecards.ts`).
  */
-import { DEXES, type Dex, GAP_FEED_MIN_VOLUME_USD, toJsonSafe } from '@depthwatch/core'
+import {
+  DEXES,
+  type Dex,
+  GAP_FEED_MIN_VOLUME_USD,
+  isMeaningfulGap,
+  toJsonSafe,
+} from '@depthwatch/core'
 import { renderBadge } from '../lib/badge.js'
 import { compareScorecards, SAMPLE_WINDOW_HOURS } from '../lib/scorecard.js'
 import { matchesQuery, sortSummaries } from '../lib/sort.js'
@@ -220,7 +226,12 @@ export function createMockClient(opts: MockOptions = {}): ApiClient {
         .filter((p) => (p.volume24hUsd ?? 0) >= minVolumeUsd && p.gap.gapScore !== null)
         .sort((a, b) => (b.gap.gapScore ?? 0) - (a.gap.gapScore ?? 0))
         .map((p) => ({ pool: summarize(p), gap: p.gap }))
-      return { items: page(ranked, query.limit, query.offset), minVolumeUsd }
+      return {
+        items: page(ranked, query.limit, query.offset),
+        total: ranked.length,
+        meaningful: ranked.filter((item) => isMeaningfulGap(item.gap)).length,
+        minVolumeUsd,
+      }
     },
     async token(address: string, query: TokenQuery = {}): Promise<TokenDetail> {
       const needle = address.trim().toLowerCase()
@@ -231,6 +242,7 @@ export function createMockClient(opts: MockOptions = {}): ApiClient {
       if (!entry) throw new ApiError(404, 'token not found')
       const [symbol, seed] = entry
       const inPools = sortSummaries(containing(needle), query.sort ?? 'depth', query.dir ?? 'desc')
+      const depths = inPools.map((p) => p.depth2Usd)
       return {
         token: tokenInfo(symbol),
         usd: seed.usd > 0 ? seed.usd : null,
@@ -239,6 +251,8 @@ export function createMockClient(opts: MockOptions = {}): ApiClient {
         pools: page(inPools, query.limit, query.offset),
         total: inPools.length,
         poolCount: inPools.length,
+        depth2UsdTotal: sumKnown(depths),
+        depthKnownPools: depths.filter((d) => d !== null).length,
       }
     },
     async scorecards(query: ScorecardsQuery = {}) {

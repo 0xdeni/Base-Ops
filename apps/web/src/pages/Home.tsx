@@ -14,6 +14,7 @@ import type { ButterflyGap } from '../components/charts/index.js'
 import { Overlap } from '../components/ui/Block.js'
 import { useDelayedPending } from '../components/ui/States.js'
 import { useAllPools } from '../lib/useAllPools.js'
+import { GAP_FEED } from '../lib/useGapFeed.js'
 import { isMeaningfulGap } from './home/copy.js'
 import { HomeFacts } from './home/HomeFacts.js'
 import { type HeroFigure, HomeHero } from './home/HomeHero.js'
@@ -21,13 +22,11 @@ import { FactsSkeleton } from './home/HomeSkeleton.js'
 import { GapsPreview, MandatesPreview } from './home/Previews.js'
 import './home/home.css'
 
-/** Enough of the gap feed to count every pool trading 3× its depth or more (the API's page). */
-const GAP_FEED_LIMIT = 200
-
 export function Home() {
   const stats = useStats()
   const all = useAllPools()
-  const gaps = useGaps({ limit: GAP_FEED_LIMIT })
+  // The feed's first page: its biggest gaps, and the API's count of every meaningful one.
+  const gaps = useGaps(GAP_FEED)
   const scorecards = useScorecards()
   const snapshot = useSnapshot() !== undefined
 
@@ -65,7 +64,12 @@ export function Home() {
       <HomeHero stats={stats} figure={figure} closed={noFacts} waiting={waiting} />
       {facts ? <Overlap label="Key facts">{facts}</Overlap> : null}
       <div className={`wrap grid home-prev${facts ? '' : ' is-first'}`}>
-        <GapsPreview gaps={gaps} meaningful={meaningful} waiting={waiting} />
+        <GapsPreview
+          gaps={gaps}
+          meaningful={meaningful}
+          count={gaps.data?.meaningful}
+          waiting={waiting}
+        />
         <MandatesPreview
           scorecards={scorecards}
           pools={all.pools}

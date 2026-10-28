@@ -7,7 +7,7 @@ import { createMockClient } from '../api/mock.js'
 import type { ApiClient, PoolSummary, TokenDetail } from '../api/types.js'
 import { NB, poolHref } from '../lib/format.js'
 import { readTableState, writeTableState } from './token/tokenSort.js'
-import { orientPools, tokenAnswer } from './token/tokenText.js'
+import { orientPools, poolsTakeaway, tokenAnswer } from './token/tokenText.js'
 
 const WETH = '0x4200000000000000000000000000000000000006'
 const V3_WETH_USDC = 'uniswap-v3:0xd0b53d9277642d899df5c87a3966a349a798f224'
@@ -300,6 +300,8 @@ describe('token helpers', () => {
         usd: 2460,
         pools: [pool('a', '0xaa', '0xbb', 6_079_641, 5_102_004)],
         total: 1,
+        depth2UsdTotal: 11_181_645,
+        depthKnownPools: 1,
         ...over,
       }) as unknown as TokenDetail
     expect(tokenAnswer(detail({}))).toBe(
@@ -307,6 +309,35 @@ describe('token helpers', () => {
     )
     expect(tokenAnswer(detail({ usd: null }))).toBe(
       'WETH has no USD price yet, so depth is shown in pool terms only.',
+    )
+    expect(tokenAnswer(detail({ depth2UsdTotal: null, depthKnownPools: 0 }))).toBe(
+      'Depth around WETH’s price is not known yet.',
+    )
+  })
+
+  it("states the API's total over every scored pool, not the sum of the loaded page", () => {
+    // One pool of 1,250 loaded (any sort, any page): the answer and the share use the API's total.
+    const one = pool('a', '0xaa', '0xbb', 6_000_000, 4_000_000)
+    const loaded = [{ ...one, pool: { ...one.pool, dex: 'uniswap-v3' } }] as PoolSummary[]
+    const detail = {
+      token: { symbol: 'WETH' },
+      usd: 2460,
+      pools: loaded,
+      total: 1_250,
+      depth2UsdTotal: 40_000_000,
+      depthKnownPools: 1_200,
+    } as unknown as TokenDetail
+    expect(tokenAnswer(detail)).toBe(
+      `$40M sits within 2${NB}% of the price across WETH’s 1,250 scored pools.`,
+    )
+    expect(poolsTakeaway(loaded, 'WETH', detail)).toBe(
+      `A / B on Uniswap v3 holds 25${NB}% of WETH’s depth.`,
+    )
+    expect(poolsTakeaway(loaded, 'WETH', { total: 1, depth2UsdTotal: 10_000_000 })).toBe(
+      'A / B on Uniswap v3 is WETH’s only scored pool.',
+    )
+    expect(poolsTakeaway(loaded, 'WETH', { total: 3, depth2UsdTotal: null })).toBe(
+      'No WETH pool has a priced depth yet.',
     )
   })
 

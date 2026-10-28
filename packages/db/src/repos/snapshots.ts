@@ -23,6 +23,7 @@ import {
   capSpreadPoint,
   type SnapshotHealthSummary,
   type SnapshotSummary,
+  SPREAD10K_SQL_FUNCTION,
   SUMMARY_DEPTH_PCT,
   SUMMARY_SPREAD_NOTIONAL_USD,
   snapshotSummaryFields,
@@ -55,6 +56,16 @@ export function depth2SideSql(ladder: string, side: 'upUsd' | 'downUsd'): string
 export function spread10kPointSql(spreads: string): string {
   return `(SELECT d.value FROM json_each(${spreads}) AS d
     WHERE json_extract(d.value, '$.notionalUsd') = ${SUMMARY_SPREAD_NOTIONAL_USD} LIMIT 1)`
+}
+
+/**
+ * SQL for a snapshot's $10,000 spread in bps under core's price impact cap, NULL when it has no
+ * such point or the point is infeasible: the stored point through `dw_spread10k_bps`, the same
+ * rule `spread10kFromStoredPoint` applies in JS. `spreads` and `price` are fixed column references
+ * written by this package, never user input.
+ */
+export function spread10kSql(spreads: string, price: string): string {
+  return `${SPREAD10K_SQL_FUNCTION}(${spread10kPointSql(spreads)}, ${price})`
 }
 
 /** The summary columns of the newest-row query: the ±2 % sides and the $10k point come from JSON. */

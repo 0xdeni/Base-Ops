@@ -10,7 +10,8 @@ import type { ErrorResponse } from './dto.js'
 export const DEFAULT_LIMIT = 50
 export const MAX_LIMIT = 200
 
-export const POOL_SORTS = ['health', 'depth', 'volume', 'gap', 'tvl'] as const
+/** Sort keys of `/api/pools` and `/api/tokens/:address`: `spread` is `spread10kBps`, `top` `ownerTop1Share`. */
+export const POOL_SORTS = ['health', 'depth', 'volume', 'gap', 'tvl', 'spread', 'top'] as const
 export const SORT_DIRS = ['asc', 'desc'] as const
 export const HISTORY_WINDOWS = ['24h', '7d'] as const
 /** Scorecard sample windows (`GET /api/mm/:id/samples`), matching the uptime windows. */

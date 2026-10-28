@@ -5,6 +5,7 @@
  * ladder and `spreads_json` when listed, so a spread stored before the price impact cap reads
  * under today's rule.
  */
+import type { DatabaseSync } from 'node:sqlite'
 import { feasibleSpreadBps, type PoolSnapshot, type SpreadPoint } from '@depthwatch/core'
 
 export interface SnapshotSummaryFields {
@@ -90,6 +91,22 @@ export function capSpreadPoint(point: SpreadPoint, mid: number): SpreadPoint {
 export function spread10kFromStoredPoint(pointJson: string | null, mid: number): number | null {
   if (pointJson === null) return null
   return feasibleSpreadBps(JSON.parse(pointJson) as SpreadPoint, mid)
+}
+
+/**
+ * Name of the SQL function `openDatabase` registers on every connection:
+ * `dw_spread10k_bps(point_json, price)` is `spread10kFromStoredPoint` (core's rule), so a query
+ * can list and order by the $10,000 spread exactly as read back here.
+ */
+export const SPREAD10K_SQL_FUNCTION = 'dw_spread10k_bps'
+
+/** Registers the summary's SQL functions on a connection (deterministic: same inputs, same value). */
+export function registerSummaryFunctions(raw: DatabaseSync): void {
+  raw.function(SPREAD10K_SQL_FUNCTION, { deterministic: true }, (point, mid) =>
+    typeof point === 'string' && typeof mid === 'number'
+      ? spread10kFromStoredPoint(point, mid)
+      : null,
+  )
 }
 
 export function snapshotDepthSides(snapshot: PoolSnapshot): SnapshotDepthSides {
