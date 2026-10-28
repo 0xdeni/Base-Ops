@@ -18,7 +18,9 @@ export function gapsRoutes(ctx: ApiContext): Hono {
     const minVolumeUsd = q.minVolume ?? DEFAULT_GAP_MIN_VOLUME_USD
     const rows = ctx.db.scores.gaps({ limit: q.limit, offset: q.offset, minVolumeUsd })
     const { total, meaningful } = ctx.db.scores.gapCounts(minVolumeUsd)
-    const body: GapsResponse = { items: rows.map(toGapItem), total, meaningful, minVolumeUsd }
+    const shared = ctx.db.tokens.sharedSymbols()
+    const items = rows.map((row) => toGapItem(row, shared))
+    const body: GapsResponse = { items, total, meaningful, minVolumeUsd }
     return c.json(body)
   })
   return app
