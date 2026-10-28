@@ -130,13 +130,8 @@ describe('static build startup', () => {
 
   it('answers unknown ids with the page not-found state', async () => {
     await boot('#/pools/nope', async () => DEMO)
-    // The app's query client retries once (about a second) before showing the 404.
-    const heading = await screen.findByRole(
-      'heading',
-      { name: 'pool not found' },
-      { timeout: 4000 },
-    )
-    expect(heading).toBeTruthy()
+    // A 4xx is final (shouldRetry): the 404 state shows at once.
+    expect(await screen.findByRole('heading', { name: 'pool not found' })).toBeTruthy()
     // The static copy says why a shared link can miss: the bundle only holds what was exported.
     expect(
       screen.getByText(/This static copy only holds the data it was exported with\./),

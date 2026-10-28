@@ -39,6 +39,15 @@ npx tsc --noEmit -p packages/core/tsconfig.json
 npx vitest run packages/core
 ```
 
+Besides the demo world, the web suite runs every route of the static app on
+`apps/web/src/testing/liveShape.json`: 60 pools cut from a real Base mainnet export, with the
+shapes the demo lacks (Uniswap v4 pools without a TVL, mostly unrated pools, pools that share pair,
+DEX and fee, prices from 1e-39 to 1e38). To refresh it, work on a copy of a live database: leave
+about 60 pools of those shapes tracked (`UPDATE pools SET tracked = 0 WHERE id NOT IN (…)`), run
+`depthwatch score`, then `depthwatch export --out apps/web/src/testing/liveShape.json --note …`
+with `DEPTHWATCH_DB` set to the copy. `apps/web/src/liveShape.test.tsx` checks that the shapes are
+still there.
+
 Code style is enforced by Biome (`biome.json`): single quotes, no semicolons, two-space indent,
 100 columns, trailing commas. Do not argue with the formatter; run `pnpm lint:fix`.
 
