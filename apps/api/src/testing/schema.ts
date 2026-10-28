@@ -1,7 +1,7 @@
 /**
  * A small validator for the JSON Schema subset `src/agentDocs/openapi.json` uses (`$ref`,
  * `anyOf`, `type` incl. type arrays, `properties`, `required`, `items`, `enum`, `const`,
- * `pattern`, `minimum`, `maximum`, `maxLength`), so tests can check real responses against the
+ * `pattern`, `minimum`, `maximum`, `maxLength`, `maxItems`), so tests can check real responses against the
  * hand-written document without a schema dependency.
  *
  * It is stricter than JSON Schema in one way, on purpose: an object property the schema does not
@@ -21,6 +21,7 @@ export interface Schema {
   minimum?: number
   maximum?: number
   maxLength?: number
+  maxItems?: number
 }
 
 /** The node a local `#/a/b/c` reference points at; throws for a dangling reference. */
@@ -112,6 +113,8 @@ export function validate(doc: unknown, schema: Schema, value: unknown, path = '$
     }
   }
   const errors = validateScalar(schema, value, path)
+  if (Array.isArray(value) && schema.maxItems !== undefined && value.length > schema.maxItems)
+    errors.push(`${path}: more than ${schema.maxItems} items`)
   if (Array.isArray(value) && schema.items !== undefined) {
     const items = schema.items
     value.forEach((item, index) => {

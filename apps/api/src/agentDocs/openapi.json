@@ -780,16 +780,20 @@
         "required": ["id", "name", "poolId", "marketMaker", "addresses", "kpis", "alertWebhookConfigured", "alertAfterSamples", "active", "createdAt", "notes"],
         "properties": {
           "id": { "type": "string" },
-          "name": { "type": "string" },
-          "poolId": { "type": "string" },
-          "marketMaker": { "type": "string" },
-          "addresses": { "type": "array", "items": { "$ref": "#/components/schemas/Address" } },
+          "name": { "type": "string", "maxLength": 120 },
+          "poolId": {
+            "type": "string",
+            "pattern": "^((uniswap-v3|aerodrome-v2|aerodrome-slipstream):0x[0-9a-f]{40}|uniswap-v4:0x[0-9a-f]{64})$",
+            "description": "The mandate's pool, lowercase: <dex>:<pool address>, or uniswap-v4:<poolId>. Registration accepts any case and stores it lowercase."
+          },
+          "marketMaker": { "type": "string", "maxLength": 120 },
+          "addresses": { "type": "array", "maxItems": 50, "items": { "$ref": "#/components/schemas/Address" } },
           "kpis": { "$ref": "#/components/schemas/MandateKpis" },
           "alertWebhookConfigured": { "type": "boolean", "description": "True when an alert webhook is set. The webhook URL itself is a secret and is never returned by any route." },
           "alertAfterSamples": { "type": "integer" },
           "active": { "type": "boolean" },
           "createdAt": { "$ref": "#/components/schemas/UnixSeconds" },
-          "notes": { "type": ["string", "null"] }
+          "notes": { "type": ["string", "null"], "maxLength": 2000 }
         }
       },
       "BreachKind": { "type": "string", "enum": ["depthUp", "depthDown", "spread", "noLiquidity"] },

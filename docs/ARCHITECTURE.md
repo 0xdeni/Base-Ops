@@ -589,8 +589,11 @@ mandate until a new sample, a changed mandate or a new minute; the badge is an S
 `apps/api/src/caching.ts`); `/api/health?maxAge=<seconds>` answers 503 when the newest snapshot
 is older, so a probe can fail on stale data. `POST /api/mm` and `DELETE /api/mm/:id` require
 `Authorization: Bearer <adminToken>` (`DEPTHWATCH_ADMIN_TOKEN`, which `serve` and `demo` pass
-through; environment only, no flag); without a configured token they answer 403, so a public
-deployment that does not set the token is read-only. `DELETE` removes the mandate's samples and
+through; environment only, no flag, at least 32 characters); without a configured token they
+answer 403, so a public deployment that does not set the token is read-only. `POST` reads at most
+64 KiB of body (413 beyond). `createApp`'s `onRequest` hook is the access log: the CLI logs one
+`request` line per request (method, path without the query string, status, milliseconds) and an
+`admin request refused` warning with the reason and the peer address for every 401. `DELETE` removes the mandate's samples and
 alerts in the same transaction. The root also serves the documents for AI agents
 (`/AGENTS.md`, `/llms.txt`, `/openapi.json`, written once in `apps/api/src/agentDocs/`), registered
 ahead of the dashboard's SPA fallback; the web build copies the files into `dist` unchanged and

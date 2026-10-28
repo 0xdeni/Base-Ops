@@ -1,11 +1,12 @@
 /**
  * `depthwatch mm …`: market-maker mandates (docs/design/scorecards.md §5).
  *
- * - `register --file <json>`: `parseMandate` → upsert (an existing id is replaced, its samples and
- *   alerts kept, and its `createdAt` unless the file sets one, as `POST /api/mm` does); prints the
- *   scorecard URL on stdout. A pool the database does not know yet is a
- *   warning, not an error (the API and the demo accept the same): the mandate is sampled from the
- *   first `snapshot` after `discover` finds the pool, as docs/design/scorecards.md §5 asks.
+ * - `register --file <json>`: `parseMandate` → `mergeRegistration` → upsert (an existing id is
+ *   replaced, its samples and alerts kept, and its `active` flag and `createdAt` unless the file
+ *   sets them, as `POST /api/mm` does); prints the scorecard URL on stdout. A malformed pool id is
+ *   a validation error; a well-formed one the database does not know yet is a warning, not an
+ *   error (the API and the demo accept the same): the mandate is sampled from the first
+ *   `snapshot` after `discover` finds the pool, as docs/design/scorecards.md §5 asks.
  * - `list`: one line per mandate with its status, active mandates first, then by name.
  * - `show <id>`: the `ScorecardSummary` as JSON (bigints as decimal strings); the alert webhook URL
  *   is printed masked (`https://host/…`), since its path and query are a secret.
@@ -20,6 +21,7 @@ import {
   jsonStringify,
   type Mandate,
   maskWebhookUrl,
+  mergeRegistration,
   parseMandate,
   type ScorecardSummary,
   summarizeScorecard,
@@ -49,29 +51,17 @@ export function readRegistrationFile(path: string): unknown {
   }
 }
 
-/** Whether a registration sets `createdAt` itself (the same test `POST /api/mm` applies). */
-function setsCreatedAt(input: unknown): boolean {
-  return (
-    typeof input === 'object' &&
-    input !== null &&
-    (input as Record<string, unknown>).createdAt !== undefined
-  )
-}
-
 /**
  * Validates a registration and stores it (an existing id is replaced). Re-registering an id
- * corrects the mandate in place: like its samples and alerts, its registration time survives
- * unless the registration sets `createdAt`, exactly as over `POST /api/mm`. From the next
+ * corrects the mandate in place: like its samples and alerts, its `active` flag and registration
+ * time survive unless the registration sets them (`mergeRegistration`, exactly as over
+ * `POST /api/mm`), so a deactivated mandate stays deactivated. From the next
  * `snapshot` on, the pool is tracked whatever its rank; a pool not in the database yet is skipped
  * by the snapshot until `discover` finds it (`poolIsKnown` tells the caller whether to warn).
  */
 export function registerMandate(db: Database, input: unknown, now: number): Mandate {
   const parsed = parseMandate(input, now)
-  const existing = db.mandates.get(parsed.id)
-  const mandate =
-    existing !== undefined && !setsCreatedAt(input)
-      ? { ...parsed, createdAt: existing.createdAt }
-      : parsed
+  const mandate = mergeRegistration(parsed, db.mandates.get(parsed.id), input)
   db.mandates.upsert(mandate)
   return mandate
 }
@@ -185,6 +175,7 @@ export async function mmCommand(opts: MmCommandOptions): Promise<void> {
       log.info('mandate registered', {
         mandate: mandate.id,
         pool: mandate.poolId,
+        active: mandate.active,
         addresses: mandate.addresses.length,
         replaced: db.mandates.count() === existed,
         poolKnown: known,
@@ -192,7 +183,7 @@ export async function mmCommand(opts: MmCommandOptions): Promise<void> {
       if (!known)
         log.warn(
           'mandate pool is not in the database yet; it is sampled once "depthwatch discover" ' +
-            'finds it (ids look like <dex>:<address>)',
+            'finds it',
           { mandate: mandate.id, pool: mandate.poolId },
         )
       stdout(scorecardUrl(config, mandate.id))

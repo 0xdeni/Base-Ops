@@ -1,6 +1,14 @@
-import { type Mandate, MandateValidationError, parseMandate, toJsonSafe } from '@depthwatch/core'
+import {
+  type Mandate,
+  MandateValidationError,
+  mergeRegistration,
+  parseMandate,
+  toJsonSafe,
+} from '@depthwatch/core'
 import { Hono, type MiddlewareHandler } from 'hono'
-import { checkAdminAuth } from '../auth.js'
+import { bodyLimit } from 'hono/body-limit'
+import type { AdminAuthFailure } from '../accessLog.js'
+import { bearerToken, checkAdminAuth } from '../auth.js'
 import { BADGE_CACHE_CONTROL, BADGE_CONTENT_TYPE, renderBadge } from '../badge.js'
 import { type ApiContext, DAY_SECONDS } from '../context.js'
 import type {
@@ -25,6 +33,10 @@ const MANDATE_NOT_FOUND: ErrorResponse = { error: 'mandate not found' }
 const REGISTRATION_DISABLED: ErrorResponse = { error: 'registration disabled' }
 const UNAUTHORIZED: ErrorResponse = { error: 'unauthorized' }
 const INVALID_JSON: ErrorResponse = { error: 'invalid JSON body' }
+const BODY_TOO_LARGE: ErrorResponse = { error: 'request body too large' }
+
+/** Largest registration body `POST /api/mm` reads: 64 KiB, far above any valid registration. */
+export const MAX_REGISTRATION_BYTES = 64 * 1024
 
 /** The field a `parseMandate` problem names ("kpis.minDepthUsd must be …"), or `(body)`. */
 const PROBLEM_FIELD_RE =
@@ -41,21 +53,15 @@ function validationError(error: MandateValidationError): ErrorResponse {
   }
 }
 
-function hasOwnCreatedAt(body: unknown): boolean {
-  return (
-    typeof body === 'object' &&
-    body !== null &&
-    (body as Record<string, unknown>).createdAt !== undefined
-  )
-}
-
 /**
  * `GET /api/mm`, `GET /api/mm/:id`, `GET /api/mm/:id/samples`, `GET /api/mm/:id/badge.svg`,
  * `POST /api/mm` and `DELETE /api/mm/:id` (docs/design/scorecards.md §6).
  *
  * Mandate ids are slugs, so they never clash with the `badge.svg` / `samples` sub-paths. The two
  * write routes require `Authorization: Bearer <adminToken>`: 403 `registration disabled` when
- * no token is configured, 401 for a missing or wrong one.
+ * no token is configured, 401 for a missing or wrong one (reported to the access log with the
+ * reason). `POST` reads at most `MAX_REGISTRATION_BYTES` of body (413 beyond), and only once the
+ * token has been checked.
  */
 export function mmRoutes(ctx: ApiContext): Hono {
   const app = new Hono()
@@ -64,6 +70,9 @@ export function mmRoutes(ctx: ApiContext): Hono {
     const check = checkAdminAuth(ctx.adminToken, c.req.header('authorization'))
     if (check === 'disabled') return c.json(REGISTRATION_DISABLED, 403)
     if (check === 'unauthorized') {
+      const failure: AdminAuthFailure =
+        bearerToken(c.req.header('authorization')) === undefined ? 'missing token' : 'wrong token'
+      c.set('adminAuthFailure', failure)
       c.header('WWW-Authenticate', 'Bearer realm="depthwatch"')
       return c.json(UNAUTHORIZED, 401)
     }
@@ -121,7 +130,12 @@ export function mmRoutes(ctx: ApiContext): Hono {
     })
   })
 
-  app.post('/', requireAdmin, async (c) => {
+  const limitBody = bodyLimit({
+    maxSize: MAX_REGISTRATION_BYTES,
+    onError: (c) => c.json(BODY_TOO_LARGE, 413),
+  })
+
+  app.post('/', requireAdmin, limitBody, async (c) => {
     let body: unknown
     try {
       body = await c.req.json()
@@ -135,10 +149,9 @@ export function mmRoutes(ctx: ApiContext): Hono {
       if (error instanceof MandateValidationError) return c.json(validationError(error), 400)
       throw error
     }
-    // Re-registering an id corrects the mandate in place; its registration time survives unless
-    // the body sets one, like its samples and alerts do.
-    const existing = ctx.db.mandates.get(mandate.id)
-    if (existing && !hasOwnCreatedAt(body)) mandate = { ...mandate, createdAt: existing.createdAt }
+    // Re-registering an id corrects the mandate in place; its active flag and registration time
+    // survive unless the body sets them, like its samples and alerts do.
+    mandate = mergeRegistration(mandate, ctx.db.mandates.get(mandate.id), body)
     ctx.db.mandates.upsert(mandate)
     return c.json(toScorecardDto(loadScorecard(ctx, mandate)), 201)
   })

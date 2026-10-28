@@ -1,3 +1,4 @@
+export type { AdminAuthFailure, RequestLogEntry, RequestLogger } from './accessLog.js'
 export type { CreateAppOptions } from './app.js'
 export { createApp } from './app.js'
 export type { AdminCheck } from './auth.js'

@@ -28,11 +28,18 @@ names packages, functions and routes that implementation agents must match.
   (`toPublicMandate`: every field of `Mandate`, with `alertWebhookConfigured: boolean` in place of
   `alertWebhookUrl`), and `maskWebhookUrl` (scheme + host + `/…`) is what the operator's CLI prints.
 - Validation lives in core: `parseMandate(input: unknown, now: number): Mandate` throws
-  `MandateValidationError` listing every problem (id pattern, non-empty name/marketMaker/poolId,
-  ≥ 1 valid lowercase address, `minDepthUsd > 0`, `0 < bandPct < 100`, `maxSpreadBps` null or > 0,
-  `spreadNotionalUsd > 0`, `0 < targetUptime ≤ 1`, `alertWebhookUrl` null or http(s) URL,
-  `alertAfterSamples` integer ≥ 1). Defaults are applied for omitted optional fields;
-  `active` defaults to true, `createdAt` to `now`.
+  `MandateValidationError` listing every problem (id pattern, non-empty name/marketMaker,
+  `poolId` = `<dex>:0x<40 hex>` with `dex` in `DEXES` or `uniswap-v4:0x<64 hex>`, any case,
+  returned lowercase, 1..50 valid lowercase addresses, `minDepthUsd > 0`, `0 < bandPct < 100`,
+  `maxSpreadBps` null or > 0, `spreadNotionalUsd > 0`, `0 < targetUptime ≤ 1`, `alertWebhookUrl`
+  null or http(s) URL, `alertAfterSamples` integer ≥ 1, name/marketMaker ≤ 120 and notes ≤ 2,000
+  characters). The bounds are `MANDATE_LIMITS = { addresses: 50, name: 120, marketMaker: 120,
+  notes: 2000 }`. Defaults are applied for omitted optional fields; `active` defaults to true,
+  `createdAt` to `now`.
+- Re-registration: `mergeRegistration(parsed: Mandate, existing: Mandate | undefined, input:
+  unknown): Mandate` is what the CLI and `POST /api/mm` store: an existing mandate keeps its
+  `active` flag and `createdAt` unless `input` sets them, so a deactivated mandate stays
+  deactivated when its file is registered again.
 - Registration JSON (the file passed to the CLI and the body of `POST /api/mm`) is the
   `Mandate` shape minus `active`/`createdAt` (optional). Example in docs/SCORECARDS.md.
 
@@ -189,7 +196,10 @@ DTOs in `dto.ts` (`Jsonified` of the core types):
 - `GET /api/mm/:id/badge.svg` → an SVG badge "depthwatch | <status> · 7d <uptime>%" (colours: ok green, breached red, no-data grey), `Content-Type: image/svg+xml`, `Cache-Control: public, max-age=300`.
 - `POST /api/mm` and `DELETE /api/mm/:id`: require `Authorization: Bearer <DEPTHWATCH_ADMIN_TOKEN>`
   (`createApp` opt `adminToken`); without a configured token respond 403 `{ error: 'registration disabled' }`;
-  wrong token 401. POST validates with `parseMandate` (400 with the problems), upserts, returns 201 with the summary.
+  wrong token 401. POST validates with `parseMandate` (400 with the problems), merges with the stored mandate
+  (`mergeRegistration`), upserts, returns 201 with the summary; a body over 64 KiB answers 413
+  `{ error: 'request body too large' }` (`hono/body-limit`, after the token check). A 401 is reported to
+  `createApp`'s `onRequest` hook with `authFailure` (`missing token` / `wrong token`) and the peer address.
 - Summaries use `mmSamples.seriesFor(id, now − 30 d)` and core `summarizeScorecard`. The app keeps the last summary per
   mandate (`ScorecardCache` in `scorecard.ts`, on `ApiContext`) and serves it again while the mandate (serialised), its
   newest sample id (`mmSamples.latestIdFor`) and the clock's minute are unchanged, so a list, a detail and a badge

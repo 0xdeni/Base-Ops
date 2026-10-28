@@ -1,15 +1,16 @@
 /**
  * `serve` wiring: the admin token from `DEPTHWATCH_ADMIN_TOKEN` reaches the API (through
  * `serveApi` and through `main`), so `POST /api/mm` answers 403 without a configured token, 401
- * with a wrong one and 201 with the right one. Servers bind to a free port on 127.0.0.1.
+ * with a wrong one and 201 with the right one; the access log reaches the CLI's log, refused
+ * admin requests as warnings. Servers bind to a free port on 127.0.0.1.
  */
 import { openDatabase } from '@depthwatch/db'
 import { describe, expect, it } from 'vitest'
-import { silentLogger } from './log.js'
+import { createLogger, silentLogger } from './log.js'
 import { EXIT_OK, main } from './main.js'
 import { serveApi } from './serve.js'
 
-const TOKEN = 'serve-test-token'
+const TOKEN = 'serve-test-token-0123456789abcdef0123'
 const REGISTRATION = {
   id: 'acme-weth-usdc',
   name: 'ACME / WETH-USDC',
@@ -71,6 +72,39 @@ describe('serveApi', () => {
       })
       expect(removed.status).toBe(200)
       expect(db.mandates.count()).toBe(0)
+    } finally {
+      await server.close()
+      db.close()
+    }
+  })
+})
+
+describe('serveApi access log', () => {
+  it('logs every request and warns about each refused admin request, never the token', async () => {
+    const db = openDatabase(':memory:')
+    const lines: string[] = []
+    const server = await serveApi({
+      db,
+      port: 0,
+      hostname: '127.0.0.1',
+      adminToken: TOKEN,
+      log: createLogger({ write: (line) => lines.push(line), now: () => new Date(0) }),
+      stdout: () => {},
+    })
+    try {
+      await fetch(`${server.url}/api/health?maxAge=600`)
+      await post(server.url, 'a-guessed-token')
+      const requests = lines.filter((line) => line.includes(' request '))
+      expect(requests[0]).toMatch(
+        /^\S+ INFO {2}request method=GET path=\/api\/health status=503 ms=\d+$/,
+      )
+      const refused = lines.filter((line) => line.includes('admin request refused'))
+      expect(refused).toHaveLength(1)
+      expect(refused[0]).toMatch(
+        /^\S+ WARN {2}admin request refused method=POST path=\/api\/mm status=401 ms=\d+ authFailure="wrong token" client=\S*127\.0\.0\.1$/,
+      )
+      expect(lines.join('\n')).not.toContain('a-guessed-token')
+      expect(lines.join('\n')).not.toContain('maxAge')
     } finally {
       await server.close()
       db.close()
