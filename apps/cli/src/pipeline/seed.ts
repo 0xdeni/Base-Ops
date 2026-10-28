@@ -1,19 +1,23 @@
 /**
- * `discover --seed` (and `run --seed`): pool discovery without `eth_getLogs`, for an endpoint that
- * cannot serve factory log scans (Alchemy's free tier answers 10-block ranges only). The chain
- * reader asks each DEX for the pools of the reference tokens at the head (`ChainReader.seedPools`,
- * about a dozen multicalls) and finds each new pool's creation block by binary search over
- * archive state (about 26 requests per pool). Pools already in the database keep their stored
- * creation block and cost no search, so a rerun costs only the factory reads.
+ * `discover --seed` (and `run --seed`, `start`): pool discovery without `eth_getLogs`, for an
+ * endpoint that cannot serve factory log scans (Alchemy's free tier answers 10-block ranges only).
+ * The chain reader asks each DEX for the pools of every pair of the reference tokens and the
+ * configured extra tokens (`--seed-token`, DEPTHWATCH_SEED_TOKENS) at the head
+ * (`ChainReader.seedPools`, about a dozen multicalls) and finds each new pool's creation block by
+ * binary search over archive state (about 26 requests per pool). Pools already in the database
+ * keep their stored creation block and cost no search, so a rerun costs only the factory reads.
  *
  * Pools are upserted as the search completes each batch, so a failed or interrupted seed resumes
  * with the pools it had not dated yet; rate-limited requests are retried with backoff, each one
- * logged as a warning. At the end `seed:<dex>:lastBlock` records the seed block. The log cursors
- * (`discover:<dex>:lastBlock`) are left alone: a later log scan from an endpoint that serves wide
- * ranges still finds every pool outside the reference-token pairs.
+ * logged as a warning. At the end `seed:<dex>:lastBlock` records the seed block of every DEX whose
+ * seeder succeeded. A DEX whose factory views failed gets no marker and a warning; its pools are
+ * missing, the other DEXes' are stored, and the step then fails naming it, so it is seeded again
+ * (under `start`, at the next pass). The log cursors (`discover:<dex>:lastBlock`) are left alone:
+ * a later log scan from an endpoint that serves wide ranges still finds every pool outside the
+ * seeded pairs.
  */
 import type { SeedDexResult } from '@depthwatch/chain'
-import type { Dex } from '@depthwatch/core'
+import type { Address, Dex } from '@depthwatch/core'
 import { type PipelineContext, syncKeys } from './context.js'
 
 export interface SeedStepResult {
@@ -24,6 +28,7 @@ export interface SeedStepResult {
   added: number
   /** Requests of the creation-block search. */
   searchRequests: number
+  /** The DEXes seeded (a failed one makes the step throw after storing these). */
   dexes: SeedDexResult[]
 }
 
@@ -39,13 +44,21 @@ export async function seedStep(
 ): Promise<SeedStepResult> {
   const { db, chain, log } = ctx
   const dexes = opts.dexes ?? ctx.config.dexes
+  const tokens = [
+    ...new Set<Address>([
+      ...chain.addresses.referenceTokens.map((t) => t.address),
+      ...ctx.config.seedTokens,
+    ]),
+  ]
   log.info('seeding from factory views', {
     dexes: dexes.join(','),
-    tokens: chain.addresses.referenceTokens.length,
+    tokens: tokens.length,
+    ...(ctx.config.seedTokens.length > 0 ? { extra: ctx.config.seedTokens.join(',') } : {}),
   })
   let added = 0
   const result = await chain.seedPools({
     dexes,
+    tokens,
     knownCreatedAt: (id) => db.pools.get(id)?.createdAtBlock,
     concurrency: ctx.config.concurrency,
     batchSize: opts.batchSize,
@@ -73,8 +86,10 @@ export async function seedStep(
       }),
   })
   db.transaction(() => {
-    for (const dex of dexes) db.syncState.setBigInt(syncKeys.seed(dex), result.blockNumber)
+    for (const d of result.dexes) db.syncState.setBigInt(syncKeys.seed(d.dex), result.blockNumber)
   })
+  // Planner statistics for the pools written, so the feeds search the scored set, not every pool.
+  db.analyze()
   for (const d of result.dexes)
     log.info('seeded', {
       dex: d.dex,
@@ -83,6 +98,12 @@ export async function seedStep(
       searched: d.searched,
       total: db.pools.count({ dex: d.dex }),
     })
+  for (const f of result.failed) log.warn('seed failed', { dex: f.dex, error: f.error })
+  if (result.failed.length > 0)
+    throw new Error(
+      `seeding failed for ${result.failed.map((f) => f.dex).join(', ')} ` +
+        `(${result.pools.length} pools of the other DEXes stored): ${result.failed[0]?.error}`,
+    )
   return {
     blockNumber: result.blockNumber,
     found: result.pools.length,

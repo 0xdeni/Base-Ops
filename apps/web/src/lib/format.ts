@@ -317,9 +317,17 @@ export function dexLabel(dex: string): string {
   return (DEX_LABEL as Record<string, string>)[dex] ?? dex
 }
 
-/** The pool cell's secondary line: "Aerodrome Slipstream, 0.05 %" (", stable pair"). */
-export function poolDesc(pool: { dex: string; feePips: number; stable?: boolean }): string {
-  return `${dexLabel(pool.dex)}, ${fee(pool.feePips)}${pool.stable ? ', stable pair' : ''}`
+/**
+ * The pool cell's secondary line: "Aerodrome Slipstream, 0.05 %" (", stable pair"), then the
+ * `tieBreak` that tells it from a pool with the same pair, DEX and fee in the same list
+ * (`poolTieBreaks`): "…, 0.05 %, tick spacing 50".
+ */
+export function poolDesc(
+  pool: { dex: string; feePips: number; stable?: boolean },
+  tieBreak?: string,
+): string {
+  const desc = `${dexLabel(pool.dex)}, ${fee(pool.feePips)}${pool.stable ? ', stable pair' : ''}`
+  return tieBreak ? `${desc}, ${tieBreak}` : desc
 }
 
 export function pairLabel(token0: Pick<TokenInfo, 'symbol'>, token1: Pick<TokenInfo, 'symbol'>) {

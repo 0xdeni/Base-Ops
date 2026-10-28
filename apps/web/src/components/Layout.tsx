@@ -1,7 +1,8 @@
 /**
  * The app shell (docs/design/visual-v4.md §5.1) and its motion (§4.1, §4.2): skip link, demo line
  * (or the snapshot line of a published live snapshot), app bar, <main>, footer, and in an installed
- * app on a phone the bottom dock. The app column (#root) is a flex column of at least 100dvh.
+ * app on a phone the bottom dock. The app column (#root) is a flex column of at least 100dvh. A
+ * route that fails to draw is replaced inside <main> only, until the next navigation.
  *
  * The first render of a session plays the first view on the landing route (`lib/firstView.ts`),
  * once. After that, a pointer click on an in-app link cross-fades <main> only (React
@@ -19,6 +20,7 @@ import { useApi, useIsDemo, useIsMock, useSnapshot } from '../api/context.js'
 import { useFirstView } from '../lib/firstView.js'
 import { isKeyboardClick, prefersReducedMotion } from '../lib/motion.js'
 import { useMediaQuery } from '../lib/useMediaQuery.js'
+import { RouteErrorBoundary } from './ErrorBoundary.js'
 import { type ClickHold, createClickHold, linkOf, prefetchRoute } from './routeIntent.js'
 import { AppBar } from './shell/AppBar.js'
 import { DemoLine } from './shell/DemoLine.js'
@@ -178,7 +180,9 @@ export function Layout() {
         update={animate ? ROUTE_TRANSITION_CLASS : 'none'}
       >
         <main id="main" ref={mainRef} tabIndex={-1}>
-          <Outlet />
+          <RouteErrorBoundary resetKey={location.key}>
+            <Outlet />
+          </RouteErrorBoundary>
         </main>
       </ViewTransition>
       <Footer source={source} />

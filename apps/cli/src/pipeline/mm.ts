@@ -11,7 +11,8 @@
  *   before its pool is indexed never records a false `noLiquidity` breach. An indexed pool with no
  *   stored positions means attribution method `none` (a breach by rule 1 of `evaluateKpis`). A
  *   mandate whose staked positions cannot be resolved is an attribution failure too: left with the
- *   gauge, they would read as missing liquidity.
+ *   gauge, they would read as missing liquidity. A hooked Uniswap v4 pool is not modelled
+ *   (docs/METRICS.md, `hooked`): its mandates are attribution failures, never samples.
  * - Aerodrome v2: `readLpHoldings` at the sample block → `buildMmReserveState` (method `lp-share`).
  *
  * Then `computeMmAttribution` → `evaluateKpis` → the sample. A failing mandate is logged and
@@ -28,6 +29,7 @@ import {
   type DerivedPrice,
   evaluateKpis,
   filterPositionsByOwners,
+  isHookedPool,
   type LpHolding,
   lpShareOfPool,
   type Mandate,
@@ -237,12 +239,15 @@ async function positionsResolver(
 
 /** The attribution failure of every mandate of a concentrated pool with no positions published. */
 export const POSITIONS_NOT_INDEXED = 'positions not indexed yet'
+/** The attribution failure of every mandate of a hooked Uniswap v4 pool (docs/METRICS.md). */
+export const HOOKED_NOT_MODELLED = 'hooked pool: not modelled'
 
 /**
  * One sample per active mandate of `input.pool`. A mandate whose attribution fails (its LP
- * holdings or, on Slipstream, its gauge-staked positions cannot be read, or its concentrated
- * pool's positions are not published yet) is logged (and reported through `onFailure`) and left
- * out; the others still get their sample.
+ * holdings or, on Slipstream, its gauge-staked positions cannot be read, its concentrated pool's
+ * positions are not published yet, or its pool has a Uniswap v4 hook, whose swap code the depth
+ * and spread walk would only guess at) is logged (and reported through `onFailure`) and left out;
+ * the others still get their sample.
  */
 export async function sampleMandates(
   ctx: PipelineContext,
@@ -251,6 +256,14 @@ export async function sampleMandates(
   const { log } = ctx
   const mandates = input.mandates ?? ctx.db.mandates.list({ active: true, poolId: input.pool.id })
   if (mandates.length === 0) return []
+  if (isHookedPool(input.pool)) {
+    log.warn('hooked pool is not modelled; mandates not sampled', {
+      pool: input.pool.id,
+      mandates: mandates.map((m) => m.id),
+    })
+    for (const mandate of mandates) input.onFailure?.(mandate.id, HOOKED_NOT_MODELLED)
+    return []
+  }
   if (input.pool.kind === 'concentrated' && !positionsPublished(ctx.db, input.pool.id)) {
     log.warn('positions not indexed yet; mandates not sampled (run positions)', {
       pool: input.pool.id,
@@ -287,6 +300,7 @@ export interface MmSampleResult {
   mandates: number
   /** Pools sampled (every active mandate's pool that the database knows). */
   pools: number
+  /** Samples stored: a mandate already sampled at the block keeps that sample. */
   samples: number
   /** Mandates (and pools) whose state read or attribution failed. */
   failed: Array<{ item: string; error: string }>
@@ -367,11 +381,8 @@ export async function mmSampleStep(ctx: PipelineContext): Promise<MmSampleResult
   }
   const samples = settled.ok.flat()
   throwIfStopped(ctx)
-  db.transaction(() => {
-    db.mmSamples.insertMany(samples)
-  })
-  result.samples = samples.length
-  log.info('stored samples', { samples: samples.length, failed: result.failed.length })
+  result.samples = db.mmSamples.insertMany(samples)
+  log.info('stored samples', { samples: result.samples, failed: result.failed.length })
   const sampled = new Set(samples.map((s) => s.mandateId))
   result.alerts = await deliverAlerts(
     ctx,

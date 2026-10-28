@@ -4,7 +4,7 @@
     "title": "Depthwatch API",
     "version": "0.1.0",
     "summary": "Read-only liquidity metrics for Uniswap v3/v4 and Aerodrome pools on Base mainnet (chain id 8453).",
-    "description": "Depthwatch measures executable liquidity: USD depth at ±1/2/5 % per side, round-trip effective spread at $1k/$10k/$100k (fees included), LP concentration, liquidity persistence over 24 h and 7 d, a 0–100 Liquidity Health Score and a liquidity gaps feed. Conventions: price is token1 per token0, decimal adjusted; the up side is buy pressure on token0 (input token1), the down side sell pressure (input token0); raw token amounts and block numbers are decimal strings; times are unix seconds; null means not known, never zero; USD prices are derived from the pools and are not an oracle. Check GET /api/health first: source \"demo\" means synthetic data. Errors are JSON { error, issues? }. This document lists every GET route; the operator-only write routes POST /api/mm and DELETE /api/mm/{id} (bearer DEPTHWATCH_ADMIN_TOKEN) are not described here. The full guide is GET /AGENTS.md; metric definitions are in docs/METRICS.md of the repository.",
+    "description": "Depthwatch measures executable liquidity: USD depth at ±1/2/5 % per side, round-trip effective spread at $1k/$10k/$100k (fees included), LP concentration, liquidity persistence over 24 h and 7 d, a 0–100 Liquidity Health Score and a liquidity gaps feed. Conventions: price is token1 per token0, decimal adjusted; the up side is buy pressure on token0 (input token1), the down side sell pressure (input token0); raw token amounts and block numbers are decimal strings; times are unix seconds; null means not known, never zero; USD prices are derived from the pools and are not an oracle. Check GET /api/health first: source \"demo\" means synthetic data; snapshotAgeSeconds says how old the newest snapshot is, and ?maxAge=<seconds> makes it answer 503 when older. Responses are compressed when Accept-Encoding allows it and carry an ETag (304 on If-None-Match); GET /AGENTS.md \"Caching\" has the Cache-Control values. Errors are JSON { error, issues? }. This document lists every GET route; the operator-only write routes POST /api/mm and DELETE /api/mm/{id} (bearer DEPTHWATCH_ADMIN_TOKEN) are not described here. The full guide is GET /AGENTS.md; metric definitions are in docs/METRICS.md of the repository.",
     "license": { "name": "MIT", "identifier": "MIT" }
   },
   "externalDocs": {
@@ -27,15 +27,28 @@
       "get": {
         "operationId": "getHealth",
         "tags": ["observatory"],
-        "summary": "Database counts, newest snapshot and data source",
+        "summary": "Database counts, newest snapshot and its age, data source; a liveness probe with maxAge",
+        "parameters": [
+          {
+            "name": "maxAge",
+            "in": "query",
+            "description": "Seconds. When given, the server answers 503 (ok false, error \"stale: …\", counts still filled) when snapshotAgeSeconds is null or above this value, so a liveness probe fails on stale data; 2 x the pipeline's snapshot interval (3600 for the default 30 minutes) is a sensible value.",
+            "schema": { "type": "integer", "minimum": 1 }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "The database is readable.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
+            "description": "The database is readable and, when maxAge is given, the newest snapshot is at most maxAge seconds old.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } }
+            }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "503": {
-            "description": "The database cannot be read: ok is false, counts are 0 and error is set.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
+            "description": "The database cannot be read (ok is false, counts are 0, error is the database error), or maxAge was given and the newest snapshot is older than that or missing (ok is false, counts filled, error starts with \"stale: \").",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } }
+            }
           }
         }
       }
@@ -48,7 +61,9 @@
         "responses": {
           "200": {
             "description": "One row per DEX in the order uniswap-v3, uniswap-v4, aerodrome-v2, aerodrome-slipstream, plus the totals.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StatsResponse" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/StatsResponse" } }
+            }
           },
           "500": { "$ref": "#/components/responses/Internal" }
         }
@@ -87,7 +102,9 @@
         "responses": {
           "200": {
             "description": "Scored pools; null sort values last, ties by pool id ascending. Sorting by health puts unrated pools after the rated ones in both directions.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PoolsResponse" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PoolsResponse" } }
+            }
           },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "500": { "$ref": "#/components/responses/Internal" }
@@ -103,7 +120,9 @@
         "responses": {
           "200": {
             "description": "Any discovered pool; latest and the score fields are null until the pool is snapshotted and scored.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PoolDetail" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PoolDetail" } }
+            }
           },
           "404": { "$ref": "#/components/responses/NotFound" },
           "500": { "$ref": "#/components/responses/Internal" }
@@ -126,7 +145,12 @@
         "responses": {
           "200": {
             "description": "One point per stored snapshot in [from, to], ascending; health is recomputed per snapshot.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HistoryResponse" } } }
+            "headers": {
+              "Cache-Control": { "schema": { "type": "string", "const": "public, max-age=60" } }
+            },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/HistoryResponse" } }
+            }
           },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "404": { "$ref": "#/components/responses/NotFound" },
@@ -151,8 +175,10 @@
         ],
         "responses": {
           "200": {
-            "description": "The feed page; there is no total, page until a page is shorter than limit.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GapsResponse" } } }
+            "description": "The feed page, with total and meaningful counted over the whole feed (ignoring limit and offset).",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/GapsResponse" } }
+            }
           },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "500": { "$ref": "#/components/responses/Internal" }
@@ -175,7 +201,12 @@
           {
             "name": "sort",
             "in": "query",
-            "schema": { "type": "string", "enum": ["health", "depth", "volume", "gap", "tvl"], "default": "depth" }
+            "description": "As for /api/pools: health total, ±2 % depth, 24 h volume, gap score, TVL, spread10kBps (spread) or ownerTop1Share (top); null values sort last in both directions.",
+            "schema": {
+              "type": "string",
+              "enum": ["health", "depth", "volume", "gap", "tvl", "spread", "top"],
+              "default": "depth"
+            }
           },
           { "$ref": "#/components/parameters/Dir" },
           { "$ref": "#/components/parameters/Limit" },
@@ -184,7 +215,9 @@
         "responses": {
           "200": {
             "description": "The token and a page of its scored pools.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TokenDetail" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TokenDetail" } }
+            }
           },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "404": { "$ref": "#/components/responses/NotFound" },
@@ -214,7 +247,11 @@
         "responses": {
           "200": {
             "description": "Scorecards computed on request from the last 30 days of samples.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ScorecardsResponse" } } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ScorecardsResponse" }
+              }
+            }
           },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "500": { "$ref": "#/components/responses/Internal" }
@@ -230,7 +267,9 @@
         "responses": {
           "200": {
             "description": "The scorecard; pool is null until the mandated pool is scored.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ScorecardDetail" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ScorecardDetail" } }
+            }
           },
           "404": { "$ref": "#/components/responses/NotFound" },
           "500": { "$ref": "#/components/responses/Internal" }
@@ -259,7 +298,9 @@
         "responses": {
           "200": {
             "description": "Samples ascending by time.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SamplesResponse" } } }
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/SamplesResponse" } }
+            }
           },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "404": { "$ref": "#/components/responses/NotFound" },
@@ -345,8 +386,12 @@
       "PoolSort": {
         "name": "sort",
         "in": "query",
-        "description": "health total, ±2 % depth, 24 h volume, gap score or TVL; null values sort last in both directions, and unrated pools come after the rated ones when sorting by health.",
-        "schema": { "type": "string", "enum": ["health", "depth", "volume", "gap", "tvl"], "default": "health" }
+        "description": "health total, ±2 % depth, 24 h volume, gap score, TVL, spread10kBps (spread) or ownerTop1Share (top); null values sort last in both directions, unrated pools come after the rated ones when sorting by health, and stale quotes after the others when sorting by depth.",
+        "schema": {
+          "type": "string",
+          "enum": ["health", "depth", "volume", "gap", "tvl", "spread", "top"],
+          "default": "health"
+        }
       },
       "Dir": {
         "name": "dir",
@@ -373,15 +418,21 @@
     "responses": {
       "BadRequest": {
         "description": "Invalid query parameter (issues has one entry per parameter) or, on /api/tokens/{address}, a malformed address.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+        }
       },
       "NotFound": {
         "description": "Unknown pool, token or mandate (error is \"pool not found\", \"token not found\" or \"mandate not found\").",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+        }
       },
       "Internal": {
         "description": "Unexpected server error (error is \"internal error\").",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } }
+        }
       }
     },
     "schemas": {
@@ -431,17 +482,45 @@
       },
       "UnratedReason": {
         "type": ["string", "null"],
-        "enum": ["thin", "one-sided", "unpriced", null],
-        "description": "Why a pool has no grade, null when it is rated: thin (neither ±2 % side holds $5,000), one-sided (the deeper side does, the thinner does not) or unpriced (a side has no USD price)."
+        "enum": ["hooked", "unpriced", "one-sided", "thin", null],
+        "description": "Why a pool has no grade, null when it is rated: hooked (a Uniswap v4 pool with a hook: depth, spread and concentration are not computed), unpriced (a side has no USD price), one-sided (the deeper ±2 % side holds $5,000, the thinner does not) or thin (neither side does)."
+      },
+      "ConcentrationBasis": {
+        "type": ["string", "null"],
+        "enum": ["owners", "ranges", "neutral", null],
+        "description": "What the 20 concentration points stand on: owners (the largest owner's share, from indexed owners covering at least 90 % of the in-band liquidity), ranges (the range HHI of a concentrated pool: owners not indexed or covering less) or neutral (10 points: a reserve pool without owner data, or no data). null only for a score stored before the basis was recorded."
       },
       "HealthResponse": {
         "type": "object",
-        "required": ["ok", "poolCount", "trackedCount", "latestSnapshotAt", "latestBlock", "source"],
+        "required": [
+          "ok",
+          "poolCount",
+          "trackedCount",
+          "latestSnapshotAt",
+          "latestScoredAt",
+          "snapshotAgeSeconds",
+          "latestBlock",
+          "source"
+        ],
         "properties": {
           "ok": { "type": "boolean" },
           "poolCount": { "type": "integer", "description": "Discovered pools." },
-          "trackedCount": { "type": "integer", "description": "Pools the pipeline snapshots and scores." },
-          "latestSnapshotAt": { "type": ["integer", "null"], "description": "Unix seconds of the newest snapshot." },
+          "trackedCount": {
+            "type": "integer",
+            "description": "Pools the pipeline snapshots and scores."
+          },
+          "latestSnapshotAt": {
+            "type": ["integer", "null"],
+            "description": "Unix seconds of the newest snapshot."
+          },
+          "latestScoredAt": {
+            "type": ["integer", "null"],
+            "description": "Unix seconds of the newest score: a pass writes its snapshots first and its scores at its end, so data that read scores (health, gap, 24 h volume) are new once this moves. null before the first score."
+          },
+          "snapshotAgeSeconds": {
+            "type": ["integer", "null"],
+            "description": "The server's clock minus latestSnapshotAt; null before the first snapshot."
+          },
           "latestBlock": {
             "anyOf": [{ "$ref": "#/components/schemas/DecimalString" }, { "type": "null" }],
             "description": "Block number of the newest snapshot."
@@ -452,27 +531,69 @@
       },
       "DexStatsTotals": {
         "type": "object",
-        "required": ["pools", "tracked", "scored", "rated", "depth2Usd", "volume24hUsd", "medianHealth"],
+        "required": [
+          "pools",
+          "tracked",
+          "scored",
+          "rated",
+          "depth2Usd",
+          "depthKnownPools",
+          "volume24hUsd",
+          "medianHealth"
+        ],
         "properties": {
           "pools": { "type": "integer", "description": "Discovered pools." },
           "tracked": { "type": "integer" },
           "scored": { "type": "integer" },
-          "rated": { "type": "integer", "description": "Scored pools that are rated: both ±2 % sides known and the thinner at least $5,000." },
-          "depth2Usd": { "type": "number", "description": "Sum of ±2 % depth (USD) over scored pools." },
-          "volume24hUsd": { "type": ["number", "null"], "description": "Sum of 24 h volume (USD) over scored pools with a known volume; null when none has one." },
-          "medianHealth": { "$ref": "#/components/schemas/NullableNumber", "description": "Median health total over rated pools only; null when none is rated." }
+          "rated": {
+            "type": "integer",
+            "description": "Scored pools that are rated: both ±2 % sides known and the thinner at least $5,000."
+          },
+          "depth2Usd": {
+            "type": "number",
+            "description": "Sum of ±2 % depth (USD) over scored pools, stale quotes (staleQuote) left out."
+          },
+          "depthKnownPools": {
+            "type": "integer",
+            "description": "Scored pools with a known ±2 % depth and no stale quote: the pools depth2Usd sums."
+          },
+          "volume24hUsd": {
+            "type": ["number", "null"],
+            "description": "Sum of 24 h volume (USD) over scored pools with a known volume; null when none has one."
+          },
+          "medianHealth": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "Median health total over rated pools only; null when none is rated."
+          }
         }
       },
       "DexStats": {
         "type": "object",
-        "required": ["dex", "pools", "tracked", "scored", "rated", "depth2Usd", "volume24hUsd", "medianHealth"],
+        "required": [
+          "dex",
+          "pools",
+          "tracked",
+          "scored",
+          "rated",
+          "depth2Usd",
+          "depthKnownPools",
+          "volume24hUsd",
+          "medianHealth"
+        ],
         "properties": {
           "dex": { "$ref": "#/components/schemas/Dex" },
           "pools": { "type": "integer" },
           "tracked": { "type": "integer" },
           "scored": { "type": "integer" },
           "rated": { "type": "integer" },
-          "depth2Usd": { "type": "number" },
+          "depth2Usd": {
+            "type": "number",
+            "description": "Sum of ±2 % depth (USD) over the DEX's scored pools, stale quotes (staleQuote) left out."
+          },
+          "depthKnownPools": {
+            "type": "integer",
+            "description": "The DEX's scored pools with a known ±2 % depth and no stale quote: the pools depth2Usd sums."
+          },
           "volume24hUsd": { "type": ["number", "null"] },
           "medianHealth": { "$ref": "#/components/schemas/NullableNumber" }
         }
@@ -497,47 +618,120 @@
       },
       "PoolMeta": {
         "type": "object",
-        "required": ["id", "dex", "kind", "address", "poolId", "token0", "token1", "feePips", "tickSpacing", "stable", "hooks", "createdAtBlock"],
+        "required": [
+          "id",
+          "dex",
+          "kind",
+          "address",
+          "poolId",
+          "token0",
+          "token1",
+          "feePips",
+          "tickSpacing",
+          "stable",
+          "hooks",
+          "createdAtBlock"
+        ],
         "properties": {
-          "id": { "type": "string", "description": "<dex>:<pool address>, or uniswap-v4:<poolId>." },
+          "id": {
+            "type": "string",
+            "description": "<dex>:<pool address>, or uniswap-v4:<poolId>."
+          },
           "dex": { "$ref": "#/components/schemas/Dex" },
           "kind": { "type": "string", "enum": ["concentrated", "constant-product", "stable-swap"] },
-          "address": { "anyOf": [{ "$ref": "#/components/schemas/Address" }, { "type": "null" }], "description": "Null for Uniswap v4." },
-          "poolId": { "type": ["string", "null"], "description": "Uniswap v4 PoolId (bytes32); null otherwise." },
+          "address": {
+            "anyOf": [{ "$ref": "#/components/schemas/Address" }, { "type": "null" }],
+            "description": "Null for Uniswap v4."
+          },
+          "poolId": {
+            "type": ["string", "null"],
+            "description": "Uniswap v4 PoolId (bytes32); null otherwise."
+          },
           "token0": { "$ref": "#/components/schemas/TokenInfo" },
           "token1": { "$ref": "#/components/schemas/TokenInfo" },
-          "feePips": { "type": "integer", "description": "LP fee in millionths: 500 = 0.05 %. Uniswap v4 swaps (and so v4 depth and spread) also pay the slot0 protocol fee, which this value does not include." },
+          "feePips": {
+            "type": "integer",
+            "description": "LP fee in millionths: 500 = 0.05 %. Uniswap v4 swaps (and so v4 depth and spread) also pay the slot0 protocol fee, which this value does not include."
+          },
           "tickSpacing": { "type": ["integer", "null"], "description": "Concentrated pools only." },
           "stable": { "type": "boolean", "description": "Aerodrome v2 stable (x³y + xy³) pool." },
-          "hooks": { "anyOf": [{ "$ref": "#/components/schemas/Address" }, { "type": "null" }], "description": "Uniswap v4 hooks address." },
+          "hooks": {
+            "anyOf": [{ "$ref": "#/components/schemas/Address" }, { "type": "null" }],
+            "description": "Uniswap v4 hooks address."
+          },
           "createdAtBlock": { "$ref": "#/components/schemas/DecimalString" }
         }
       },
       "PoolSummary": {
         "type": "object",
-        "required": ["pool", "price", "tvlUsd", "depth2Usd", "depth2UpUsd", "depth2DownUsd", "spread10kBps", "health", "gapScore", "volume24hUsd", "ownerTop1Share", "updatedAt"],
+        "required": [
+          "pool",
+          "price",
+          "tvlUsd",
+          "depth2Usd",
+          "depth2UpUsd",
+          "depth2DownUsd",
+          "spread10kBps",
+          "priceDeviationBps",
+          "staleQuote",
+          "health",
+          "gapScore",
+          "volume24hUsd",
+          "ownerTop1Share",
+          "updatedAt"
+        ],
         "properties": {
           "pool": { "$ref": "#/components/schemas/PoolMeta" },
-          "price": { "$ref": "#/components/schemas/NullableNumber", "description": "token1 per token0, decimal adjusted, from the newest snapshot." },
+          "price": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "token1 per token0, decimal adjusted, from the newest snapshot."
+          },
           "tvlUsd": { "$ref": "#/components/schemas/NullableNumber" },
-          "depth2Usd": { "$ref": "#/components/schemas/NullableNumber", "description": "±2 % depth, up and down sides summed, USD (only the priced side when one token has no USD price)." },
-          "depth2UpUsd": { "$ref": "#/components/schemas/NullableNumber", "description": "Buy side of the ±2 % depth: USD of token1 that lifts the price 2 %, the newest snapshot's depthUsd[pct = 2].upUsd. null when token1 has no USD price or the pool has no snapshot." },
-          "depth2DownUsd": { "$ref": "#/components/schemas/NullableNumber", "description": "Sell side of the ±2 % depth: USD of token0 that pushes the price down 2 %, the newest snapshot's depthUsd[pct = 2].downUsd. null when token0 has no USD price or the pool has no snapshot." },
-          "spread10kBps": { "$ref": "#/components/schemas/NullableNumber", "description": "Round-trip effective spread at $10,000, bps, fees included." },
+          "depth2Usd": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "±2 % depth, up and down sides summed, USD (only the priced side when one token has no USD price)."
+          },
+          "depth2UpUsd": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "Buy side of the ±2 % depth: USD of token1 that lifts the price 2 %, the newest snapshot's depthUsd[pct = 2].upUsd. null when token1 has no USD price or the pool has no snapshot."
+          },
+          "depth2DownUsd": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "Sell side of the ±2 % depth: USD of token0 that pushes the price down 2 %, the newest snapshot's depthUsd[pct = 2].downUsd. null when token0 has no USD price or the pool has no snapshot."
+          },
+          "spread10kBps": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "Round-trip effective spread at $10,000, bps, fees included."
+          },
+          "priceDeviationBps": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "The newest snapshot's priceDeviationBps: |price / (token0Usd / token1Usd) − 1| × 10,000. null when a token has no USD price or the pool has no snapshot (or one stored before the field existed)."
+          },
+          "staleQuote": {
+            "type": "boolean",
+            "description": "True when priceDeviationBps is at least 500: the pool quotes a price 5 % or more away from the market's. Its depth is left out of the stats' depth sums and sorts last on depth."
+          },
           "health": {
             "type": "object",
-            "required": ["total", "grade", "rated", "unratedReason"],
+            "required": ["total", "grade", "rated", "unratedReason", "concentrationBasis"],
             "properties": {
               "total": { "type": "number", "minimum": 0, "maximum": 100 },
               "grade": { "$ref": "#/components/schemas/NullableGrade" },
               "rated": { "type": "boolean" },
-              "unratedReason": { "$ref": "#/components/schemas/UnratedReason" }
+              "unratedReason": { "$ref": "#/components/schemas/UnratedReason" },
+              "concentrationBasis": { "$ref": "#/components/schemas/ConcentrationBasis" }
             }
           },
           "gapScore": { "$ref": "#/components/schemas/NullableNumber" },
           "volume24hUsd": { "$ref": "#/components/schemas/NullableNumber" },
-          "ownerTop1Share": { "$ref": "#/components/schemas/NullableNumber", "description": "Share of in-band liquidity held by the largest owner, 0..1." },
-          "updatedAt": { "type": ["integer", "null"], "description": "Unix seconds of the newest snapshot." }
+          "ownerTop1Share": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "The largest owner's share of the newest snapshot's in-band liquidity, 0..1, where the indexed owners describe the pool: some hold liquidity in the band (concentration.owners.count > 0) and together they cover at least 90 % of it (concentration.owners.coverage ≥ 0.9). Null otherwise: owners not indexed, none in the band, or covering less (a lone unstaked LP beside a gauge holding most of a Slipstream pool would otherwise read 100 %)."
+          },
+          "updatedAt": {
+            "type": ["integer", "null"],
+            "description": "Unix seconds of the newest snapshot."
+          }
         }
       },
       "PoolsResponse": {
@@ -545,16 +739,28 @@
         "required": ["items", "total"],
         "properties": {
           "items": { "type": "array", "items": { "$ref": "#/components/schemas/PoolSummary" } },
-          "total": { "type": "integer", "description": "Matching scored pools, ignoring limit and offset." }
+          "total": {
+            "type": "integer",
+            "description": "Matching scored pools, ignoring limit and offset."
+          }
         }
       },
       "DepthSide": {
         "type": "object",
         "required": ["amountIn", "amountOut", "reached"],
         "properties": {
-          "amountIn": { "$ref": "#/components/schemas/DecimalString", "description": "Raw input amount, fee included (token1 for up, token0 for down)." },
-          "amountOut": { "$ref": "#/components/schemas/DecimalString", "description": "Raw output amount received on the way." },
-          "reached": { "type": "boolean", "description": "False when liquidity or the known tick range ended first; the amounts are then totals to that point." }
+          "amountIn": {
+            "$ref": "#/components/schemas/DecimalString",
+            "description": "Raw input amount, fee included (token1 for up, token0 for down)."
+          },
+          "amountOut": {
+            "$ref": "#/components/schemas/DecimalString",
+            "description": "Raw output amount received on the way."
+          },
+          "reached": {
+            "type": "boolean",
+            "description": "False when the known tick range ended before the target price (or the pool cannot move); the amounts are then totals to that point. A stretch with no liquidity inside the known range is crossed at no cost, as on chain, so the target is reached."
+          }
         }
       },
       "DepthLevel": {
@@ -573,15 +779,24 @@
           "pct": { "type": "number" },
           "upUsd": { "$ref": "#/components/schemas/NullableNumber" },
           "downUsd": { "$ref": "#/components/schemas/NullableNumber" },
-          "totalUsd": { "$ref": "#/components/schemas/NullableNumber", "description": "upUsd + downUsd when both are known, else the known side, else null." }
+          "totalUsd": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "upUsd + downUsd when both are known, else the known side, else null."
+          }
         }
       },
       "SpreadPoint": {
         "type": "object",
         "required": ["notionalUsd", "spreadBps", "feasible", "buyAvgPrice", "sellAvgPrice"],
         "properties": {
-          "notionalUsd": { "type": "number", "description": "1000, 10000 or 100000." },
-          "spreadBps": { "$ref": "#/components/schemas/NullableNumber", "description": "(buyAvgPrice − sellAvgPrice) / mid × 10 000; null when infeasible: a leg is incomplete or yields nothing, or its average price is more than 5,000 bps from mid. A feasible spread is at most 10,000." },
+          "notionalUsd": {
+            "type": "number",
+            "description": "1000, 10000, 100000 or 1000000 (snapshots stored before the 1000000 point have the first three)."
+          },
+          "spreadBps": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "(buyAvgPrice − sellAvgPrice) / mid × 10 000; null when infeasible: a leg is incomplete or yields nothing, or its average price is more than 5,000 bps from mid. A feasible spread is at most 10,000."
+          },
           "feasible": { "type": "boolean" },
           "buyAvgPrice": { "$ref": "#/components/schemas/NullableNumber" },
           "sellAvgPrice": { "$ref": "#/components/schemas/NullableNumber" }
@@ -589,27 +804,56 @@
       },
       "OwnerConcentration": {
         "type": "object",
-        "required": ["count", "top1Share", "top3Share", "hhi"],
+        "required": ["count", "top1Share", "top3Share", "hhi", "coverage"],
         "properties": {
           "count": { "type": "integer" },
-          "top1Share": { "type": "number" },
+          "top1Share": {
+            "type": "number",
+            "description": "Out of the indexed owners' total in-band weight."
+          },
           "top3Share": { "type": "number" },
-          "hhi": { "type": "number" }
+          "hhi": { "type": "number" },
+          "coverage": {
+            "type": ["number", "null"],
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Σ owner weights / the pool's whole in-band weight: how much of the pool the indexed owners account for. A Slipstream gauge's staked positions count as uncovered. Null (unknown) in a snapshot stored before coverage was recorded."
+          }
         }
       },
       "ConcentrationMetrics": {
         "type": "object",
         "required": ["bandPct", "rangeHhi", "activeRangeShare", "owners"],
         "properties": {
-          "bandPct": { "type": "number", "description": "Half-width of the band around mid, percent (5)." },
+          "bandPct": {
+            "type": "number",
+            "description": "Half-width of the band around mid, percent (5)."
+          },
           "rangeHhi": { "type": "number" },
           "activeRangeShare": { "type": "number" },
-          "owners": { "anyOf": [{ "$ref": "#/components/schemas/OwnerConcentration" }, { "type": "null" }], "description": "Null when positions were not indexed." }
+          "owners": {
+            "anyOf": [{ "$ref": "#/components/schemas/OwnerConcentration" }, { "type": "null" }],
+            "description": "Null when positions were not indexed."
+          }
         }
       },
       "PoolSnapshot": {
         "type": "object",
-        "required": ["poolId", "blockNumber", "timestamp", "price", "token0Usd", "token1Usd", "tvlUsd", "activeLiquidity", "depth", "depthUsd", "spreads", "concentration"],
+        "required": [
+          "poolId",
+          "blockNumber",
+          "timestamp",
+          "price",
+          "token0Usd",
+          "token1Usd",
+          "tvlUsd",
+          "activeLiquidity",
+          "depth",
+          "depthUsd",
+          "spreads",
+          "concentration",
+          "priceDeviationBps"
+        ],
         "properties": {
           "poolId": { "type": "string" },
           "blockNumber": { "$ref": "#/components/schemas/DecimalString" },
@@ -617,22 +861,51 @@
           "price": { "type": "number", "description": "token1 per token0, decimal adjusted." },
           "token0Usd": { "$ref": "#/components/schemas/NullableNumber" },
           "token1Usd": { "$ref": "#/components/schemas/NullableNumber" },
-          "tvlUsd": { "$ref": "#/components/schemas/NullableNumber", "description": "Null for Uniswap v4 pools." },
+          "tvlUsd": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "Null for Uniswap v4 pools."
+          },
           "activeLiquidity": { "$ref": "#/components/schemas/DecimalString" },
           "depth": { "type": "array", "items": { "$ref": "#/components/schemas/DepthLevel" } },
-          "depthUsd": { "type": "array", "items": { "$ref": "#/components/schemas/DepthLevelUsd" } },
+          "depthUsd": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DepthLevelUsd" }
+          },
           "spreads": { "type": "array", "items": { "$ref": "#/components/schemas/SpreadPoint" } },
-          "concentration": { "anyOf": [{ "$ref": "#/components/schemas/ConcentrationMetrics" }, { "type": "null" }] }
+          "concentration": {
+            "anyOf": [{ "$ref": "#/components/schemas/ConcentrationMetrics" }, { "type": "null" }]
+          },
+          "priceDeviationBps": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "|price / (token0Usd / token1Usd) − 1| × 10,000; a stale quote from 500. null when a token has no USD price, and in snapshots stored before the field existed."
+          }
         }
       },
       "HealthScore": {
         "type": "object",
-        "required": ["total", "grade", "rated", "unratedReason", "components", "notes"],
+        "required": [
+          "total",
+          "grade",
+          "rated",
+          "unratedReason",
+          "concentrationBasis",
+          "components",
+          "notes"
+        ],
         "properties": {
-          "total": { "type": "number", "minimum": 0, "maximum": 100, "description": "Present for unrated pools too." },
+          "total": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Present for unrated pools too."
+          },
           "grade": { "$ref": "#/components/schemas/NullableGrade" },
-          "rated": { "type": "boolean", "description": "Both ±2 % sides are known and the thinner holds at least $5,000." },
+          "rated": {
+            "type": "boolean",
+            "description": "Both ±2 % sides are known and the thinner holds at least $5,000."
+          },
           "unratedReason": { "$ref": "#/components/schemas/UnratedReason" },
+          "concentrationBasis": { "$ref": "#/components/schemas/ConcentrationBasis" },
           "components": {
             "type": "object",
             "required": ["depth", "spread", "concentration", "persistence"],
@@ -652,34 +925,72 @@
         "properties": {
           "volume24hUsd": { "$ref": "#/components/schemas/NullableNumber" },
           "depth2Usd": { "$ref": "#/components/schemas/NullableNumber" },
-          "turnoverRatio": { "$ref": "#/components/schemas/NullableNumber", "description": "volume24hUsd / depth2Usd." },
-          "gapScore": { "$ref": "#/components/schemas/NullableNumber", "description": "100 × clamp(log10(turnoverRatio) / 2, 0, 1)." }
+          "turnoverRatio": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "volume24hUsd / depth2Usd."
+          },
+          "gapScore": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "100 × clamp(log10(turnoverRatio) / 2, 0, 1)."
+          }
         }
       },
       "PersistenceMetrics": {
         "type": "object",
-        "required": ["windowHours", "samples", "depthUsdMedian", "depthUsdP10", "depthUsdMin", "stability", "uptime"],
+        "required": [
+          "windowHours",
+          "samples",
+          "depthUsdMedian",
+          "depthUsdP10",
+          "depthUsdMin",
+          "stability",
+          "uptime"
+        ],
         "properties": {
           "windowHours": { "type": "integer" },
           "samples": { "type": "integer" },
           "depthUsdMedian": { "$ref": "#/components/schemas/NullableNumber" },
           "depthUsdP10": { "$ref": "#/components/schemas/NullableNumber" },
           "depthUsdMin": { "$ref": "#/components/schemas/NullableNumber" },
-          "stability": { "$ref": "#/components/schemas/NullableNumber", "description": "p10 / median, 0..1; 0 when the median is 0; null with fewer than 3 samples or samples spanning under 25 % of the window." },
-          "uptime": { "$ref": "#/components/schemas/NullableNumber", "description": "Share of samples ≥ half the median, 0..1; 0 when the median is 0; null under the same conditions as stability." }
+          "stability": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "p10 / median, 0..1; 0 when the median is 0; null with fewer than 3 samples or samples spanning under 25 % of the window."
+          },
+          "uptime": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "Share of samples ≥ half the median, 0..1; 0 when the median is 0; null under the same conditions as stability."
+          }
         }
       },
       "PoolDetail": {
         "type": "object",
-        "required": ["pool", "tracked", "latest", "score", "gap", "persistence24h", "persistence7d", "volume24hUsd", "scoredAt"],
+        "required": [
+          "pool",
+          "tracked",
+          "latest",
+          "score",
+          "gap",
+          "persistence24h",
+          "persistence7d",
+          "volume24hUsd",
+          "scoredAt"
+        ],
         "properties": {
           "pool": { "$ref": "#/components/schemas/PoolMeta" },
           "tracked": { "type": "boolean" },
-          "latest": { "anyOf": [{ "$ref": "#/components/schemas/PoolSnapshot" }, { "type": "null" }] },
-          "score": { "anyOf": [{ "$ref": "#/components/schemas/HealthScore" }, { "type": "null" }] },
+          "latest": {
+            "anyOf": [{ "$ref": "#/components/schemas/PoolSnapshot" }, { "type": "null" }]
+          },
+          "score": {
+            "anyOf": [{ "$ref": "#/components/schemas/HealthScore" }, { "type": "null" }]
+          },
           "gap": { "anyOf": [{ "$ref": "#/components/schemas/GapMetrics" }, { "type": "null" }] },
-          "persistence24h": { "anyOf": [{ "$ref": "#/components/schemas/PersistenceMetrics" }, { "type": "null" }] },
-          "persistence7d": { "anyOf": [{ "$ref": "#/components/schemas/PersistenceMetrics" }, { "type": "null" }] },
+          "persistence24h": {
+            "anyOf": [{ "$ref": "#/components/schemas/PersistenceMetrics" }, { "type": "null" }]
+          },
+          "persistence7d": {
+            "anyOf": [{ "$ref": "#/components/schemas/PersistenceMetrics" }, { "type": "null" }]
+          },
           "volume24hUsd": { "$ref": "#/components/schemas/NullableNumber" },
           "scoredAt": { "type": ["integer", "null"] }
         }
@@ -693,7 +1004,10 @@
           "depth2Usd": { "$ref": "#/components/schemas/NullableNumber" },
           "spread10kBps": { "$ref": "#/components/schemas/NullableNumber" },
           "tvlUsd": { "$ref": "#/components/schemas/NullableNumber" },
-          "health": { "type": "number", "description": "Health total recomputed for this snapshot." }
+          "health": {
+            "type": "number",
+            "description": "Health total recomputed for this snapshot."
+          }
         }
       },
       "HistoryResponse": {
@@ -702,7 +1016,10 @@
         "properties": {
           "window": { "type": "string", "enum": ["24h", "7d"] },
           "from": { "$ref": "#/components/schemas/UnixSeconds" },
-          "to": { "$ref": "#/components/schemas/UnixSeconds", "description": "The pool's newest snapshot (the current time when it has none)." },
+          "to": {
+            "$ref": "#/components/schemas/UnixSeconds",
+            "description": "The pool's newest snapshot (the current time when it has none)."
+          },
           "points": { "type": "array", "items": { "$ref": "#/components/schemas/HistoryPoint" } }
         }
       },
@@ -716,30 +1033,72 @@
       },
       "GapsResponse": {
         "type": "object",
-        "required": ["items", "minVolumeUsd"],
+        "required": ["items", "total", "meaningful", "minVolumeUsd"],
         "properties": {
           "items": { "type": "array", "items": { "$ref": "#/components/schemas/GapItem" } },
+          "total": {
+            "type": "integer",
+            "description": "Pools in the feed at this floor, ignoring limit and offset."
+          },
+          "meaningful": {
+            "type": "integer",
+            "description": "Pools in the feed trading 3× their ±2 % depth or more (turnoverRatio ≥ 3), ignoring limit and offset."
+          },
           "minVolumeUsd": { "type": "number", "description": "The volume floor applied." }
         }
       },
       "TokenDetail": {
         "type": "object",
-        "required": ["token", "usd", "via", "priceUpdatedAt", "pools", "total", "poolCount"],
+        "required": [
+          "token",
+          "usd",
+          "via",
+          "priceUpdatedAt",
+          "pools",
+          "total",
+          "poolCount",
+          "depth2UsdTotal",
+          "depthKnownPools"
+        ],
         "properties": {
           "token": { "$ref": "#/components/schemas/TokenInfo" },
-          "usd": { "$ref": "#/components/schemas/NullableNumber", "description": "Derived USD price; null when unreachable from the stable anchors." },
-          "via": { "type": "array", "items": { "type": "string" }, "description": "Pool ids the price was derived through, plus `wrap:weth` for the native ETH ↔ WETH step and any other non-pool source (those are not pool ids: GET /api/pools/{id} returns 404 for them). Empty for an anchor stable or an unpriced token." },
+          "usd": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "Derived USD price; null when unreachable from the stable anchors."
+          },
+          "via": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Pool ids the price was derived through, plus `wrap:weth` for the native ETH ↔ WETH step and any other non-pool source (those are not pool ids: GET /api/pools/{id} returns 404 for them). Empty for an anchor stable or an unpriced token."
+          },
           "priceUpdatedAt": { "type": ["integer", "null"] },
           "pools": { "type": "array", "items": { "$ref": "#/components/schemas/PoolSummary" } },
-          "total": { "type": "integer", "description": "Scored pools containing the token, ignoring limit and offset." },
-          "poolCount": { "type": "integer", "description": "Every discovered pool containing the token." }
+          "total": {
+            "type": "integer",
+            "description": "Scored pools containing the token, ignoring limit and offset."
+          },
+          "poolCount": {
+            "type": "integer",
+            "description": "Every discovered pool containing the token."
+          },
+          "depth2UsdTotal": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "±2 % depth (depth2Usd) summed over every scored pool containing the token with a known depth and no stale quote (staleQuote), ignoring limit and offset; null when none has one."
+          },
+          "depthKnownPools": {
+            "type": "integer",
+            "description": "Scored pools of the token whose depth2Usd is known and whose quote is not stale: the pools depth2UsdTotal sums."
+          }
         }
       },
       "MandateKpis": {
         "type": "object",
         "required": ["minDepthUsd", "bandPct", "maxSpreadBps", "spreadNotionalUsd", "targetUptime"],
         "properties": {
-          "minDepthUsd": { "type": "number", "description": "USD depth required on each side at ±bandPct." },
+          "minDepthUsd": {
+            "type": "number",
+            "description": "USD depth required on each side at ±bandPct."
+          },
           "bandPct": { "type": "number" },
           "maxSpreadBps": { "$ref": "#/components/schemas/NullableNumber" },
           "spreadNotionalUsd": { "type": "number" },
@@ -748,32 +1107,71 @@
       },
       "Mandate": {
         "type": "object",
-        "required": ["id", "name", "poolId", "marketMaker", "addresses", "kpis", "alertWebhookConfigured", "alertAfterSamples", "active", "createdAt", "notes"],
+        "required": [
+          "id",
+          "name",
+          "poolId",
+          "marketMaker",
+          "addresses",
+          "kpis",
+          "alertWebhookConfigured",
+          "alertAfterSamples",
+          "active",
+          "createdAt",
+          "notes"
+        ],
         "properties": {
           "id": { "type": "string" },
-          "name": { "type": "string" },
-          "poolId": { "type": "string" },
-          "marketMaker": { "type": "string" },
-          "addresses": { "type": "array", "items": { "$ref": "#/components/schemas/Address" } },
+          "name": { "type": "string", "maxLength": 120 },
+          "poolId": {
+            "type": "string",
+            "pattern": "^((uniswap-v3|aerodrome-v2|aerodrome-slipstream):0x[0-9a-f]{40}|uniswap-v4:0x[0-9a-f]{64})$",
+            "description": "The mandate's pool, lowercase: <dex>:<pool address>, or uniswap-v4:<poolId>. Registration accepts any case and stores it lowercase."
+          },
+          "marketMaker": { "type": "string", "maxLength": 120 },
+          "addresses": {
+            "type": "array",
+            "maxItems": 50,
+            "items": { "$ref": "#/components/schemas/Address" }
+          },
           "kpis": { "$ref": "#/components/schemas/MandateKpis" },
-          "alertWebhookConfigured": { "type": "boolean", "description": "True when an alert webhook is set. The webhook URL itself is a secret and is never returned by any route." },
+          "alertWebhookConfigured": {
+            "type": "boolean",
+            "description": "True when an alert webhook is set. The webhook URL itself is a secret and is never returned by any route."
+          },
           "alertAfterSamples": { "type": "integer" },
           "active": { "type": "boolean" },
           "createdAt": { "$ref": "#/components/schemas/UnixSeconds" },
-          "notes": { "type": ["string", "null"] }
+          "notes": { "type": ["string", "null"], "maxLength": 2000 }
         }
       },
       "BreachKind": { "type": "string", "enum": ["depthUp", "depthDown", "spread", "noLiquidity"] },
       "MmAttribution": {
         "type": "object",
-        "required": ["method", "holdings", "shareOfPool", "depthUpUsd", "depthDownUsd", "poolDepthUpUsd", "poolDepthDownUsd", "spreadBps", "poolSpreadBps"],
+        "required": [
+          "method",
+          "holdings",
+          "shareOfPool",
+          "depthUpUsd",
+          "depthDownUsd",
+          "poolDepthUpUsd",
+          "poolDepthDownUsd",
+          "spreadBps",
+          "poolSpreadBps"
+        ],
         "properties": {
           "method": { "type": "string", "enum": ["positions", "lp-share", "none"] },
           "holdings": { "type": "integer" },
           "shareOfPool": { "$ref": "#/components/schemas/NullableNumber" },
-          "depthUpUsd": { "$ref": "#/components/schemas/NullableNumber", "description": "The market maker's own depth, USD." },
+          "depthUpUsd": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "The market maker's own depth, USD."
+          },
           "depthDownUsd": { "$ref": "#/components/schemas/NullableNumber" },
-          "poolDepthUpUsd": { "$ref": "#/components/schemas/NullableNumber", "description": "The whole pool's depth at the same band." },
+          "poolDepthUpUsd": {
+            "$ref": "#/components/schemas/NullableNumber",
+            "description": "The whole pool's depth at the same band."
+          },
           "poolDepthDownUsd": { "$ref": "#/components/schemas/NullableNumber" },
           "spreadBps": { "$ref": "#/components/schemas/NullableNumber" },
           "poolSpreadBps": { "$ref": "#/components/schemas/NullableNumber" }
@@ -781,14 +1179,25 @@
       },
       "MmSample": {
         "type": "object",
-        "required": ["mandateId", "poolId", "blockNumber", "timestamp", "attribution", "withinKpi", "breaches"],
+        "required": [
+          "mandateId",
+          "poolId",
+          "blockNumber",
+          "timestamp",
+          "attribution",
+          "withinKpi",
+          "breaches"
+        ],
         "properties": {
           "mandateId": { "type": "string" },
           "poolId": { "type": "string" },
           "blockNumber": { "$ref": "#/components/schemas/DecimalString" },
           "timestamp": { "$ref": "#/components/schemas/UnixSeconds" },
           "attribution": { "$ref": "#/components/schemas/MmAttribution" },
-          "withinKpi": { "type": ["boolean", "null"], "description": "Null when not evaluable (a USD price was missing)." },
+          "withinKpi": {
+            "type": ["boolean", "null"],
+            "description": "Null when not evaluable (a USD price was missing)."
+          },
           "breaches": { "type": "array", "items": { "$ref": "#/components/schemas/BreachKind" } }
         }
       },
@@ -813,7 +1222,9 @@
           "threshold": { "type": "number" }
         }
       },
-      "NullableExcursion": { "anyOf": [{ "$ref": "#/components/schemas/Excursion" }, { "type": "null" }] },
+      "NullableExcursion": {
+        "anyOf": [{ "$ref": "#/components/schemas/Excursion" }, { "type": "null" }]
+      },
       "ScorecardUptime": {
         "type": "object",
         "required": ["h24", "d7", "d30"],
@@ -880,7 +1291,10 @@
         "properties": {
           "window": { "type": "string", "enum": ["24h", "7d", "30d"] },
           "from": { "$ref": "#/components/schemas/UnixSeconds" },
-          "to": { "$ref": "#/components/schemas/UnixSeconds", "description": "The server's clock." },
+          "to": {
+            "$ref": "#/components/schemas/UnixSeconds",
+            "description": "The server's clock."
+          },
           "points": { "type": "array", "items": { "$ref": "#/components/schemas/MmSample" } }
         }
       }

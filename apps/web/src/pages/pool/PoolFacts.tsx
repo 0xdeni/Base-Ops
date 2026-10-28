@@ -17,6 +17,8 @@ import { NotRatedChip } from '../../components/ui/GradeGlyph.js'
 import { Unknown } from '../../components/ui/Unknown.js'
 import { bps, cantAbsorb, score, usd } from '../../lib/format.js'
 import { tvlReason } from '../../lib/poolsTable.js'
+import { unratedDetail } from '../../lib/rating.js'
+import { GAP_FEED } from '../../lib/useGapFeed.js'
 import {
   gapCallout,
   healthFactSuffix,
@@ -25,17 +27,14 @@ import {
   volumeFactLabel,
 } from './poolText.js'
 
-/** The gap feed's page that Home and Token read too, so the count shares their cache. */
-export const GAP_FEED = { limit: 200 } as const
-
 function GapNote({ detail }: { detail: PoolDetail }) {
   const gaps = useGaps(GAP_FEED)
   const turnover = detail.gap?.turnoverRatio ?? null
   if (turnover === null || turnover < MEANINGFUL_GAP_TURNOVER) return null
+  // The count is the API's over the whole feed; the first page shows the pool is in it.
   const items = gaps.data?.items ?? []
-  const meaningful = items.filter((g) => (g.gap.turnoverRatio ?? 0) >= MEANINGFUL_GAP_TURNOVER)
-  const listed = meaningful.some((g) => g.pool.pool.id === detail.pool.id)
-    ? meaningful.length
+  const listed = items.some((g) => g.pool.pool.id === detail.pool.id)
+    ? (gaps.data?.meaningful ?? null)
     : null
   return (
     <>
@@ -52,8 +51,10 @@ export function PoolFacts({ detail }: { detail: PoolDetail }) {
   const { score: health, latest, pool, gap } = detail
   const spread10k = latest ? spreadAt(latest.spreads, 10_000) : null
   // No spread on a priced pool: it "can't absorb" the trade (null, or more than a trade can pay).
+  // A hooked pool has no spread at all: it is not modelled.
+  const hooked = health?.unratedReason === 'hooked'
   const spreadUnabsorbed =
-    latest !== null && health?.unratedReason !== 'unpriced' && spread10k === null
+    latest !== null && health?.unratedReason !== 'unpriced' && !hooked && spread10k === null
   const gapOn = gap?.turnoverRatio != null && gap.turnoverRatio >= MEANINGFUL_GAP_TURNOVER
   const depth2 = latest?.depthUsd.find((d) => d.pct === 2)?.totalUsd
   return (
@@ -77,6 +78,7 @@ export function PoolFacts({ detail }: { detail: PoolDetail }) {
             )
           }
           grade={health?.rated ? health.grade : null}
+          gradeBasis={health?.concentrationBasis}
           label={
             <>
               <Glossary
@@ -94,7 +96,13 @@ export function PoolFacts({ detail }: { detail: PoolDetail }) {
             spreadUnabsorbed ? (
               <span className="fv-words">{cantAbsorb(10_000)}</span>
             ) : spread10k === null ? (
-              <Unknown reason="No spread: a token in this pool has no USD price." />
+              <Unknown
+                reason={
+                  hooked
+                    ? unratedDetail('hooked')
+                    : 'No spread: a token in this pool has no USD price.'
+                }
+              />
             ) : (
               bps(spread10k)
             )

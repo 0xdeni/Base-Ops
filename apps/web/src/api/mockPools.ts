@@ -16,7 +16,13 @@ import type {
   SpreadPoint,
   TokenInfo,
 } from '@depthwatch/core'
-import { computeGap, computeHealthScore } from '@depthwatch/core'
+import {
+  computeGap,
+  computeHealthScore,
+  isStaleQuote,
+  poolOwnerTop1Share,
+  priceDeviationBps,
+} from '@depthwatch/core'
 import poolsJson from '../mock/pools.json'
 import tokensJson from '../mock/tokens.json'
 import type { DepthLevelDto, PoolMetaDto, PoolSnapshotDto, PoolSummary } from './types.js'
@@ -230,7 +236,9 @@ export function buildPool(seed: PoolSeed, now: number): MockPool {
     depth2DownUsd: level2?.downUsd ?? null,
     spread10kBps,
     ownerTop1Share: concentration.owners?.top1Share ?? null,
+    ownerCoverage: concentration.owners?.coverage ?? null,
     rangeHhi: concentration.rangeHhi,
+    poolKind: seed.kind,
     persistence: persistence24h,
   })
   const gap = computeGap(volume24hUsd, depth2Usd)
@@ -247,6 +255,7 @@ export function buildPool(seed: PoolSeed, now: number): MockPool {
     depthUsd: usd,
     spreads,
     concentration,
+    priceDeviationBps: priceDeviationBps(seed.price, tokenUsd(seed.token0), tokenUsd(seed.token1)),
   }
   return {
     seed,
@@ -276,15 +285,19 @@ export function summarize(p: MockPool): PoolSummary {
     depth2UpUsd: level2?.upUsd ?? null,
     depth2DownUsd: level2?.downUsd ?? null,
     spread10kBps: p.spread10kBps,
+    priceDeviationBps: p.snapshot.priceDeviationBps,
+    staleQuote: isStaleQuote(p.snapshot.priceDeviationBps),
     health: {
       total: p.score.total,
       grade: p.score.grade,
       rated: p.score.rated,
       unratedReason: p.score.unratedReason,
+      concentrationBasis: p.score.concentrationBasis,
     },
     gapScore: p.gap.gapScore,
     volume24hUsd: p.volume24hUsd,
-    ownerTop1Share: p.snapshot.concentration?.owners?.top1Share ?? null,
+    // As the API stores it: only a share of owners that describe the pool.
+    ownerTop1Share: poolOwnerTop1Share(p.snapshot.concentration?.owners),
     updatedAt: p.snapshot.timestamp,
   }
 }

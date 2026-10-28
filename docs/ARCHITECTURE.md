@@ -15,7 +15,9 @@ this page explains it.
   rounding as the contracts. Conversion to `number` happens once, at the human-facing edge
   (`rawToHuman`), never in the middle of a computation.
 - **Hermetic tests.** Chain code is exercised through a fixture transport that answers JSON-RPC
-  requests from recorded data. Nothing in `pnpm test` opens a socket.
+  requests from recorded data. `pnpm test` never reaches the network: the only sockets are loopback
+  servers on `127.0.0.1` that a test starts itself (the API, `serve` and `start` servers, a webhook
+  receiver, a fixture JSON-RPC endpoint).
 - **Never extrapolate.** A pool state carries the tick range it is known for. Simulations stop at
   the boundary and report `complete = false` rather than invent liquidity.
 
@@ -81,10 +83,12 @@ Each step reads what the previous one stored, so any step can be rerun on its ow
    `slot0` and `liquidity` for concentrated pools, `getReserves` for Aerodrome v2, `getSlot0` /
    `getLiquidity` from StateView for v4, plus token balances for TVL. Calls are batched through
    Multicall3, at most 500 calls per request.
-3. **prices**. Every overview with a positive price becomes a `PriceEdge` (token0, token1, price,
-   weight ≈ liquidity proxy). `derivePrices` runs a widest-path search from the anchors (USDC = 1,
-   other stables = 1): the route chosen for a token is the one whose weakest pool is strongest, so
-   a USD price comes through the deepest route and a token with no route to a stable gets no price.
+3. **prices**. Every overview with a positive price and depth on both sides of it becomes a
+   `PriceEdge` (token0, token1, price, its ±2 % depth sides); a hooked Uniswap v4 pool is no edge.
+   `derivePrices` runs a widest-path search from the anchors (USDC = 1, other stables = 1),
+   weighing each edge in USD by its thinner side when it reaches it: the route chosen for a token
+   is the one whose weakest pool is strongest, so a USD price comes through the deepest route and
+   a token with no route to a stable gets no price.
    The result is stored in `prices` with the `via` chain of pool ids, plus `wrap:weth` for the
    native ETH ↔ WETH step.
 4. **rank**. Pools are ranked by `tvlUsd` and the top N (`DEPTHWATCH_TOP_POOLS`, default 200) are
@@ -97,11 +101,12 @@ Each step reads what the previous one stored, so any step can be rerun on its ow
    `tickLowerBound` / `tickUpperBound` so the simulator knows where its knowledge ends. Reserve
    pools are complete after `getReserves`.
 6. **metrics**. Pure calls into core: `computeDepth` at 1 / 2 / 5 %, `depthToUsd`,
-   `computeEffectiveSpread` at $1k / $10k / $100k, `computeConcentration` (or
+   `computeEffectiveSpread` at $1k / $10k / $100k / $1M, `computeConcentration` (or
    `computeConcentrationForReserves`), `tvlUsd`. The output is one `PoolSnapshot` per pool.
 7. **snapshots**. Inserted with the block number and block timestamp. Three denormalised columns
    (`depth2_usd`, `spread10k_bps`, `owner_top1_share`) are filled from the JSON so that the
-   dashboard's sorts are plain SQL. A read does not trust `spread10k_bps`: a row stored before the
+   dashboard's sorts are plain SQL; `owner_top1_share` only where the owners cover the pool (core's
+   `poolOwnerTop1Share`, NULL otherwise). A read does not trust `spread10k_bps`: a row stored before the
    price impact cap holds the uncapped number, so the repositories take the $10k spread, and every
    point of `spreads_json`, through core's `feasibleSpreadBps` rule.
 8. **volume** (`depthwatch volume`). `Swap` events for tracked pools over the last 24 h (or
@@ -125,17 +130,21 @@ Each step reads what the previous one stored, so any step can be rerun on its ow
     HTTP implementation and a mock implementation (`VITE_MOCK=1`, or the dev server when the API
     is down; never a production build) backed by JSON in `apps/web/src/mock`. Bigint strings are formatted with BigInt arithmetic in `lib/format.ts`.
 
-`depthwatch positions` is a separate, less frequent step (`run --with-positions` folds it into
-every pass): it indexes LP positions (owner, range, liquidity) for tracked concentrated pools, and
+`depthwatch positions` is a separate, less frequent step (`run` folds it into every pass for the
+concentrated pools of active mandates, `run --with-positions` for every tracked pool): it indexes
+LP positions (owner, range, liquidity) for tracked concentrated pools, and
 for concentrated pools with an active mandate whether or not they are tracked yet, so that the next
-`snapshot` can compute owner concentration and attribute the mandates. Without it
-`concentration.owners` is null and the health score falls back to the structural range HHI.
+`snapshot` can compute owner concentration and attribute the mandates; it also records each
+Slipstream pool's gauge, whose staked positions count as uncovered rather than as one owner.
+Without it `concentration.owners` is null and the health score falls back to the structural range
+HHI, as it does when the indexed owners cover under 90 % of the in-band liquidity (an Aerodrome
+v2 pool scores the neutral 10).
 
 ## Market-maker scorecards
 
 Layer 2 ([SCORECARDS.md](SCORECARDS.md)) adds no pipeline step. A mandate (`mandates` table) names
 one pool, the market maker's addresses and its KPIs; sampling runs inside `snapshot`, alerts are
-delivered right after, and the API computes summaries on request.
+delivered right after, and the API summarises the samples (once per mandate, new sample or minute).
 
 ```
                  ┌────────────┐                     ┌────────────┐
@@ -167,7 +176,9 @@ delivered right after, and the API computes summaries on request.
      `Gauge.balanceOf` when `Voter.gauges(pool)` is set, at the snapshot block →
      `buildMmReserveState`;
    - then `computeMmAttribution` (depth at `bandPct`, spread at `spreadNotionalUsd`, on the
-     market-maker-only state and on the whole pool) → `evaluateKpis` → the sample.
+     market-maker-only state and on the whole pool) → `evaluateKpis` → the sample;
+   - a hooked Uniswap v4 pool is not modelled: each of its mandates is an attribution failure,
+     never a sample.
 3. **Storage.** The samples are inserted in the same transaction as the snapshots and the
    `prices` rebuild, so a snapshot and its samples share one block and either both exist or
    neither does. An attribution failure is logged per mandate and does not fail the snapshot.
@@ -196,8 +207,9 @@ Sampling reuses the snapshot's state read, so a concentrated mandate adds no RPC
 Slipstream positions are gauge-staked: then one `stakedContains` call per gauge-owned position and
 registered address, multicall batched. An Aerodrome v2 mandate adds `totalSupply`, one `Voter.gauges`
 lookup and one or two `balanceOf` per address, in one multicall. The positions themselves come from
-the `positions` table, so `run --with-positions` (or a separate `depthwatch positions` schedule)
-is what keeps concentrated attribution current.
+the `positions` table, which `run` and `start` refresh for mandated pools (`run --with-positions`
+or a separate `depthwatch positions` schedule covers every tracked pool), so that is what keeps
+concentrated attribution current.
 
 ## RPC cost model
 
@@ -230,8 +242,9 @@ resolved once per token through multicall and cached in `tokens`.
 ### Seeded discovery: factory views and archive state
 
 `discover --seed` (`ChainReader.seedPools`, `packages/chain/src/seed/`) sends no `eth_getLogs`.
-It asks each DEX for the pools of every pair of the reference tokens in `addresses.ts`, at one
-block (the head), through Multicall3 (at most 500 calls per request):
+It asks each DEX for the pools of every pair of the reference tokens in `addresses.ts`, plus any
+tokens given with `--seed-token` / `DEPTHWATCH_SEED_TOKENS`, at one block (the head), through
+Multicall3 (at most 500 calls per request):
 - Uniswap v3: `feeAmountTickSpacing` for the candidate tiers (seven are enabled on Base: 100,
   200, 300, 400, 500, 3000, 10000), then `getPool(token0, token1, fee)` per pair and tier.
 - Aerodrome v2: `PoolFactory.getPool(token0, token1, stable)`, stable and volatile.
@@ -244,7 +257,10 @@ With the 14 reference tokens (13 ERC-20s and native ETH) that is 78 ERC-20 pairs
 currency pairs: 546 v3, 156 Aerodrome v2, 364 v4 and one Slipstream call per pair and enabled
 spacing of each factory (1,716 with the 22 spacings the three factories enable today), about ten
 multicalls in all, plus token metadata and fees for the pools found. Every non-zero answer goes
-through the same PoolMeta builder as the creation log would.
+through the same PoolMeta builder as the creation log would. The four DEXes are asked
+independently: one whose factory reads fail is reported (`SeedResult.failed`) and gets no
+`seed:<dex>:lastBlock`, while the others' pools are dated and stored; the command then exits 1
+and the next seed asks that DEX again.
 
 The creation block of each new pool is found exactly by binary search between its factory's
 `startBlock` and the head: a contract pool exists at block N when `eth_getCode` at N is not empty;
@@ -260,21 +276,26 @@ upserted as it completes, so an interrupted seed resumes with the pools it had n
 rate-limited and transient requests back off like `eth_getLogs` (1 s doubling to 30 s, eight
 retries, `Retry-After` wins), each logged as a warning.
 
-Measured on Base on 2026-10-25 against Alchemy's free tier (head 53,056,975): the 2,782 candidates
-gave 580 pools (Uniswap v3 227, Uniswap v4 165, Aerodrome v2 87, Slipstream 101). Dating them took
-13,401 search requests (10,541 `eth_getCode`, 2,860 v4 multicalls) plus 32 other multicalls, in
-9.5 minutes at the default concurrency; the endpoint answered 1,595 requests with HTTP 429, which
-the retries absorbed. At 26 compute units per `eth_call` or `eth_getCode` that is about 350,000
-units, once. A rerun with every pool stored took 2 seconds. Spot checks of five pools (one per
-contract DEX, two v4) against their creation logs, read in 10-block `eth_getLogs` windows, matched
-the searched blocks exactly.
+Measured on Base on 2026-10-25 against Alchemy's free tier (head 53,061,869; the whole run's
+counts are in the README, [Measured on Base](../README.md#measured-on-base-2026-10-25)): the 2,782
+candidates gave 580 pools (Uniswap v3 227, Uniswap v4 165, Aerodrome v2 87, Slipstream 101).
+Dating them took 13,399 search requests, 15,388 HTTP requests in all (11,858 `eth_getCode` and
+3,529 `eth_call`, retries included), in 616 s at the default concurrency; the endpoint answered
+1,968 requests with HTTP 429, which the retries absorbed. At 26 compute units per answered
+`eth_call` or `eth_getCode` that is about 349,000 units, once. A rerun with every pool stored
+took 2 seconds. Spot checks of an earlier seed (head 53,056,975) against the creation logs of
+five pools (one per contract DEX, two v4), read in 10-block `eth_getLogs` windows, matched the
+searched blocks exactly ([base-contracts.md](research/base-contracts.md) §2.7).
 
 ### Overview: multicall batching
 
 Three to four `eth_call`s per pool (`slot0`, `liquidity`, two `balanceOf`; or `getReserves` plus
 `stable`), packed 500 per Multicall3 request. 10,000 pools are roughly 70 multicalls. This is the
 only step that touches every pool, so its cost grows with the number of pools on Base, not with
-how many are tracked.
+how many are tracked. One batched read keeps at most four of its multicalls in flight
+(`maxConcurrentMulticalls`); its further groups wait, so a large read (a first positions scan
+reads every token a position manager touched) queues instead of bursting at a rate-limited
+endpoint.
 
 ### State: tick-bitmap walks
 
@@ -321,8 +342,9 @@ valued as a full rescan would value it.
 Position events on the NonfungiblePositionManager (`IncreaseLiquidity`, `DecreaseLiquidity`,
 `Transfer`) do not carry the pool address, so position indexing reads the events over a block
 range, then `positions(tokenId)` through multicall to learn each position's pool, owner, range and
-liquidity. This is the most expensive reader per block, so it is not part of a default `run` pass:
-opt in per pass with `run --with-positions`, or run `depthwatch positions` on its own schedule.
+liquidity. This is the most expensive reader per block, so a default `run` pass reads it only for
+the concentrated pools of active mandates: opt in for every tracked pool with
+`run --with-positions`, or run `depthwatch positions` on its own schedule.
 Uniswap v4 uses the PositionManager; Aerodrome v2 pools have no positions (LP tokens are fungible)
 and return `[]`.
 
@@ -364,7 +386,9 @@ a provider that accepts wider spans.
   backoff (`internal/backoff.ts`) serves every request: `eth_getLogs` (retried on the same range,
   which is not split), the main endpoint's multicalls and block headers (so a free-tier 429 during
   `readState` costs a wait, not the pool), and the seed's archive probes. A `run` pass logs a
-  failed step and goes on. A gateway's answer is never read as a rejected
+  failed step and goes on (`run --once` then exits 1, naming the step; the loop stops with exit 1
+  after three passes in a row in which every step that reads the chain failed, so a supervisor
+  notices a revoked key). A gateway's answer is never read as a rejected
   range, whatever its text says ("timed out"): viem raises `HttpRequestError` only for a body that
   is not a JSON-RPC error, so it comes from a proxy, not from the node. Both HTTP transports the
   reader builds from URLs have viem's own retries off, so a rate-limited endpoint is not hit again
@@ -381,11 +405,14 @@ a provider that accepts wider spans.
 - **A 10-block plan.** `snapshot` and `score` need no logs. `volume` for 24 h is 45,300 blocks:
   4,531 `eth_getLogs` per event source with tracked pools plus at most seven headers, about 13,600
   requests with all four DEXes (three sources) tracked (on a plan that meters about 75 compute
-  units per `eth_getLogs`, about 1 M units) on a first pass. Later passes start at the hour of the previous head (about
-  100 requests per source for a pass 5 minutes after the last, about 300 an hour after, about
-  1,200 six hours after), but keeping volume current still reads each block at least once per
-  source: at least about 4,320 requests per source a day, about 1 M units a day with three, more than
-  a 30 M-unit month, and a 5-minute loop pays the reread hour on every pass, about ten times that.
+  units per `eth_getLogs`, about 1 M units) on a first pass. The pass measured on 2026-10-25
+  ([README](../README.md#measured-on-base-2026-10-25)) predates the shared filter: four scans,
+  18,131 answered requests and about 1.36 M units, 4,192 more answered HTTP 429. Later passes
+  start at the hour of the previous head (about 100 requests per source for a pass 5 minutes
+  after the last, about 300 an hour after, about 1,200 six hours after), but keeping volume
+  current still reads each block at least once per source: at least about 4,320 requests per
+  source a day, about 1 M units a day with three, more than a 30 M-unit month, and a 5-minute
+  loop pays the reread hour on every pass, about ten times that.
   So a looping `run` does not fit a free plan of that size: run single passes
   (`run --seed --once`) when fresh numbers are needed.
   A first `discover` from the factories' deployment blocks (around 50 M blocks, about 5 M requests
@@ -409,7 +436,7 @@ Every `DEPTHWATCH_SNAPSHOT_INTERVAL` (default 30 min) the scheduler runs one pas
 one after the other, so no two steps ever overlap:
 
 ```
-[seed] → snapshot → [volume] → score → [positions] → [discover]
+[seed] → snapshot → [volume] → score → [positions] → [discover] → [prune]
 ```
 
 - **seed** (`discover --seed`) opens every pass until one has succeeded. On an empty database the
@@ -430,6 +457,9 @@ one after the other, so no two steps ever overlap:
   `DEPTHWATCH_DISCOVER_BUDGET` (default 15 min; `off` leaves discovery to the seed). It resumes at
   its cursors, so a first full discovery spreads over passes; once it reaches the head a pass costs
   one request per factory.
+- **prune** closes the pass once a day (`prune:lastRunAt` a day old or unset): the retention of
+  the [storage model](#storage-model), database only, no budget (a day's snapshots delete in
+  seconds).
 
 A cadence is rounded up to a pass (volume every other pass at the defaults). Budgets are also cut
 to the time left before the next pass, and a step with under 30 s left waits for the next pass. A
@@ -508,21 +538,21 @@ second per IP of Base's public RPC. A first full discovery is on the order of 10
 `node:sqlite` (`DatabaseSync`), one file (`DEPTHWATCH_DB`) or `:memory:`. `openDatabase` applies
 migrations from `packages/db/src/schema.ts`; `MIGRATIONS[i]` brings the schema to version `i + 1`,
 each entry is a batch of SQL run in one transaction and recorded in `schema_version`. Shipped
-migrations are never edited, only appended.
+migrations are never edited, only appended; `packages/db/src/schema.test.ts` pins a sha256 of each.
 
-| Table           | Key                     | Holds                                                                                                                                                                                                                               |
-| --------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tokens`        | `address`               | symbol, name, decimals                                                                                                                                                                                                              |
-| `pools`         | `id`                    | `PoolMeta` columns, `tracked` flag, `first_seen_at`                                                                                                                                                                                 |
-| `snapshots`     | autoincrement `id`      | per pool and block: price, USD prices, TVL, active liquidity, `depth_json`, `depth_usd_json`, `spreads_json`, `concentration_json`, denormalised `depth2_usd`, `spread10k_bps`, `owner_top1_share`; index on `(pool_id, timestamp)` |
-| `volume_hourly` | `(pool_id, hour_start)` | token volumes (TEXT bigints), USD volume, swap count                                                                                                                                                                                |
-| `positions`     | `(pool_id, token_id)`   | owner, tick range, liquidity, last updated block; rows under `<pool id>#catch-up` hold a first windowed scan until it reaches the head                                                                                              |
-| `prices`        | `token`                 | USD price, `via_json` route, `updated_at`                                                                                                                                                                                           |
-| `scores`        | `pool_id`               | `health_json`, `gap_json`, `persistence_24h_json`, `persistence_7d_json`, `volume_24h_usd`, `depth2_usd`, denormalised `health_total`, `gap_score`                                                                                  |
-| `sync_state`    | `key`                   | pipeline cursors, e.g. `discover:uniswap-v3:lastBlock`, `positions:<pool>:lastBlock` (`:catchUpBlock` while a first windowed scan is staged), `start:volume:lastRunAt`                                                              |
-| `mandates`      | `id`                    | name, `pool_id`, `market_maker`, `addresses_json`, `kpis_json`, `alert_webhook_url`, `alert_after_samples`, `active`, `created_at`, `notes`; index on `(pool_id)`                                                                   |
-| `mm_samples`    | autoincrement `id`      | per mandate and block: `pool_id`, `block_number` (TEXT), `timestamp`, `attribution_json` (`MmAttribution`), `within_kpi` (NULL = not evaluable), `breaches_json`; index on `(mandate_id, timestamp)`                                |
-| `mm_alerts`     | autoincrement `id`      | per delivery attempt: `mandate_id`, `timestamp`, `kind` (`breach` / `recovered`), `streak_samples`, `payload_json`, `delivered`, `response_status`, `error`; index on `(mandate_id, timestamp)`                                     |
+| Table           | Key                     | Holds                                                                                                                                                                                                                                                                    |
+| --------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tokens`        | `address`               | symbol, name, decimals                                                                                                                                                                                                                                                   |
+| `pools`         | `id`                    | `PoolMeta` columns, `tracked` flag, `first_seen_at`                                                                                                                                                                                                                      |
+| `snapshots`     | autoincrement `id`      | per pool and block: price, USD prices, TVL, active liquidity, `depth_json`, `depth_usd_json`, `spreads_json`, `concentration_json`, denormalised `depth2_usd`, `spread10k_bps`, `owner_top1_share`; index on `(pool_id, timestamp)`, unique on `(pool_id, block_number)` |
+| `volume_hourly` | `(pool_id, hour_start)` | token volumes (TEXT bigints), USD volume, swap count                                                                                                                                                                                                                     |
+| `positions`     | `(pool_id, token_id)`   | owner, tick range, liquidity, last updated block; rows under `<pool id>#catch-up` hold a first windowed scan until it reaches the head                                                                                                                                   |
+| `prices`        | `token`                 | USD price, `via_json` route, `updated_at`                                                                                                                                                                                                                                |
+| `scores`        | `pool_id`               | `health_json`, `gap_json`, `persistence_24h_json`, `persistence_7d_json`, `volume_24h_usd`, `depth2_usd`, denormalised `health_total`, `gap_score`                                                                                                                       |
+| `sync_state`    | `key`                   | pipeline cursors, e.g. `discover:uniswap-v3:lastBlock`, `positions:<pool>:lastBlock` (`:catchUpBlock` while a first windowed scan is staged), `start:volume:lastRunAt`, `prune:lastRunAt`                                                                                |
+| `mandates`      | `id`                    | name, `pool_id`, `market_maker`, `addresses_json`, `kpis_json`, `alert_webhook_url`, `alert_after_samples`, `active`, `created_at`, `notes`; index on `(pool_id)`                                                                                                        |
+| `mm_samples`    | autoincrement `id`      | per mandate and block: `pool_id`, `block_number` (TEXT), `timestamp`, `attribution_json` (`MmAttribution`), `within_kpi` (NULL = not evaluable), `breaches_json`; indexes on `(mandate_id, timestamp)` and `timestamp`, unique on `(mandate_id, block_number)`           |
+| `mm_alerts`     | autoincrement `id`      | per delivery attempt: `mandate_id`, `timestamp`, `kind` (`breach` / `recovered`), `streak_samples`, `payload_json`, `delivered`, `response_status`, `error`; indexes on `(mandate_id, timestamp)` and `timestamp`                                                        |
 
 Conventions:
 - Bigints are stored as TEXT decimal strings; SQLite REAL would lose precision above 2^53.
@@ -539,9 +569,33 @@ Conventions:
   `volume.sumUsd(poolId, fromTs)`, `scores.upsert`, `scores.topBy(sort, options)`,
   `scores.gaps`, `scores.statsByDex`, …) and never leak rows.
 
-Retention: `snapshots.pruneBefore(ts)`, `volume.pruneBefore(ts)` and `mmSamples.pruneBefore(ts)`
-exist so an operator can keep the file bounded; the 7 d persistence window is the longest series
-the scores need, and the 30 d uptime window the longest the scorecards need.
+Several processes on one file: a deployment runs one writer (`start`, or `run` beside `serve`),
+and `serve`, the `mm` commands or a one-shot step may open the same file meanwhile. `openDatabase`
+sets `busy_timeout` (5 s) before anything else and retries the switch to WAL for as long, since
+SQLite's busy handler does not cover it, so an open waits on another process's lock instead of
+failing. A database at the current version is opened without a write lock; otherwise the
+migrations take `BEGIN IMMEDIATE` before reading `schema_version`, so the first process applies
+them and the others read the version it recorded. A snapshot of a pool, or a sample of a mandate,
+at a block already stored is skipped (`INSERT OR IGNORE` on the unique indexes, schema version 3),
+so a second writer at the same block adds nothing; at a later block it adds a row like any pass,
+one more sample in streaks, uptime and persistence.
+
+Retention: nothing reads past the 7 d persistence and history windows of the snapshots and the
+30 d uptime window of the scorecard samples, but the tables grow for as long as the pipeline runs:
+a snapshot row is about 1.4 KB (`depth_json`, `depth_usd_json` and `spreads_json` make most of
+it), so 200 tracked pools every 5 minutes (`run` at its default interval) add about 80 MB a day,
+about 2.5 GB a month, and every 30 minutes (`start`) a sixth of that. `depthwatch prune` deletes
+snapshots and hourly volume older than `DEPTHWATCH_KEEP_DAYS` (default 30; snapshots keep at least
+8 days), scorecard samples older than 35 days, alerts older than 90 (each mandate's newest
+delivered alert is kept), and the volume cursors of
+pools no longer tracked; a tracked pool's `volume:<pool>:fromTs` moves up to the cutoff so a later
+`volume --hours` never trusts a pruned hour as covered. Snapshots are deleted in batches of 10,000
+rows, each its own short transaction, so the API keeps answering between them under `start`;
+`mm_samples` and `mm_alerts` carry `timestamp` indexes (schema version 4) so their deletes seek
+instead of scanning. The run ends with `PRAGMA wal_checkpoint(TRUNCATE)`, which folds the deletes
+into the main file and empties the WAL; the main file keeps its size (SQLite reuses the freed
+pages, so it stops growing) unless an operator runs `VACUUM`. `run` and `start` prune once a day
+(`prune:lastRunAt`), at the end of the pass.
 
 ## Transports
 
@@ -570,12 +624,19 @@ sizes), which the readers guarantee.
 `createApp(db, { staticDir, adminToken })` returns a Hono app, so API tests run through
 `app.request()` against an in-memory database with no server. Every route is listed in the README;
 DESIGN.md lists the layer-1 ones and [design/scorecards.md](design/scorecards.md) §6 the scorecard
-ones. The scorecard routes (`/api/mm…`) compute each `ScorecardSummary` on request from the
-mandate's samples of the last 30 days through core's `summarizeScorecard`; the badge is an SVG
-with a 5-minute cache header. `POST /api/mm` and `DELETE /api/mm/:id` require
+ones. The scorecard routes (`/api/mm…`) compute each `ScorecardSummary` from the mandate's
+samples of the last 30 days through core's `summarizeScorecard`, keeping the last summary per
+mandate until a new sample, a changed mandate or a new minute; the badge is an SVG with a
+5-minute cache header. Responses are compressed when the client accepts it, carry an `ETag`, and
+`GET /api/*` reads other than `/api/health` a 30-second `Cache-Control` (a pool's history: 60 s;
+`apps/api/src/caching.ts`); `/api/health?maxAge=<seconds>` answers 503 when the newest snapshot
+is older, so a probe can fail on stale data. `POST /api/mm` and `DELETE /api/mm/:id` require
 `Authorization: Bearer <adminToken>` (`DEPTHWATCH_ADMIN_TOKEN`, which `serve` and `demo` pass
-through; environment only, no flag); without a configured token they answer 403, so a public
-deployment that does not set the token is read-only. `DELETE` removes the mandate's samples and
+through; environment only, no flag, at least 32 characters); without a configured token they
+answer 403, so a public deployment that does not set the token is read-only. `POST` reads at most
+64 KiB of body (413 beyond). `createApp`'s `onRequest` hook is the access log: the CLI logs one
+`request` line per request (method, path without the query string, status, milliseconds) and an
+`admin request refused` warning with the reason and the peer address for every 401. `DELETE` removes the mandate's samples and
 alerts in the same transaction. The root also serves the documents for AI agents
 (`/AGENTS.md`, `/llms.txt`, `/openapi.json`, written once in `apps/api/src/agentDocs/`), registered
 ahead of the dashboard's SPA fallback; the web build copies the files into `dist` unchanged and
@@ -627,4 +688,4 @@ dashboard is a Vite + React 19 app with TanStack Query; the dev server proxies `
   one `breached`); webhook delivery against a local HTTP server on `127.0.0.1`.
 - **web:** component and client tests under jsdom against the mock client.
 
-`pnpm test` runs all of it in a few seconds and needs no network.
+`pnpm test` runs all of it in a minute or two and needs no network.

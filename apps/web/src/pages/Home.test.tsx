@@ -10,7 +10,7 @@ import { createMockClient } from '../api/mock.js'
 import type { PoolSummary, PoolsQuery } from '../api/types.js'
 import { FIRST_VIEW_MS, firstViewSteps, isSettled } from '../lib/firstView.js'
 import { NB, poolHref, usd } from '../lib/format.js'
-import { homeAnswer, homeLead, isMeaningfulGap } from './home/copy.js'
+import { homeAnswer, homeLead, homeSay, isMeaningfulGap } from './home/copy.js'
 import { findFacts, NOW, renderHome, withClient } from './home/testing.js'
 
 afterEach(() => {
@@ -29,9 +29,16 @@ describe('Home: the band', () => {
     const client = renderHome()
     const { totals } = await client.stats()
     const h1 = await screen.findByRole('heading', { level: 1 })
-    await waitFor(() => expect(h1.textContent).toBe(homeAnswer(totals.depth2Usd)))
+    await waitFor(() =>
+      expect(h1.textContent).toBe(homeAnswer(totals.depth2Usd, totals.depthKnownPools)),
+    )
     expect(h1.querySelector('.mega')?.textContent).toBe(usd(totals.depth2Usd))
-    expect(h1.querySelector('.say')?.textContent).toBe(`sits within 2${NB}% of the price on Base.`)
+    // The sentence counts the pools the figure sums (no stale quote, a known depth), never
+    // "every pool on Base".
+    expect(h1.querySelector('.say')?.textContent).toBe(homeSay(totals.depthKnownPools))
+    expect(homeSay(totals.depthKnownPools)).toBe(
+      `sits within 2${NB}% of the price across ${totals.depthKnownPools} pools on Base.`,
+    )
     const band = h1.closest('section')
     expect(band?.classList.contains('band')).toBe(true)
     expect(band?.getAttribute('aria-labelledby')).toBe(h1.id)

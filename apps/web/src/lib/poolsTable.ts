@@ -3,15 +3,15 @@
  * TB7): the sort keys and their labels, the optional columns, the order (nulls last in both
  * directions), the `sort` / `dir` / `cols` URL state, and the reason an unknown value gives (D6).
  *
- * The API sorts by health, depth, volume, gap and TVL. Spread at $10K and top LP share are sorted
- * on the page over the rows it loaded; both must be sortable because on phones the row's value is
- * the sort metric (TB7). Formatting only: every value is the API's.
+ * The API sorts by every key, spread at $10K and top LP share included, over all the matching
+ * pools; both must be sortable because on phones the row's value is the sort metric (TB7).
+ * Formatting only: every value and every order is the API's.
  */
-import type { PoolSort, PoolSummary, SortDir } from '../api/types.js'
-import { ago, dated, NB, SNAPSHOT_CLOCK } from './format.js'
+import type { PoolMetaDto, PoolSort, PoolSummary, SortDir } from '../api/types.js'
+import { ago, dated, NB, pairLabel, poolDesc, SNAPSHOT_CLOCK, shortAddress } from './format.js'
 import { sortSummaries } from './sort.js'
 
-export type PoolsSortKey = PoolSort | 'spread' | 'top'
+export type PoolsSortKey = PoolSort
 export type OptionalColumn = 'tvl' | 'gap' | 'top' | 'price' | 'updated'
 
 /** Header and sort-sheet labels, in the sheet's order (§5.10), then the top LP share. */
@@ -68,22 +68,9 @@ export function offeredColumns(
   return OPTIONAL_COLUMNS.filter((c) => c.key !== 'top' || topShare || cols.includes('top'))
 }
 
-const API_SORTS: ReadonlySet<string> = new Set<PoolSort>([
-  'health',
-  'depth',
-  'volume',
-  'gap',
-  'tvl',
-])
-
 /** Lower is better for spread, so its first click sorts ascending; every other metric descends. */
 export function defaultDir(key: PoolsSortKey): SortDir {
   return key === 'spread' ? 'asc' : 'desc'
-}
-
-/** True when the API orders by `key`; otherwise the page orders the rows it loaded. */
-export function isApiSort(key: PoolsSortKey): key is PoolSort {
-  return API_SORTS.has(key)
 }
 
 export interface TableState {
@@ -121,45 +108,17 @@ export function colsParam(cols: readonly OptionalColumn[]): string {
     .join(',')
 }
 
-export function sortValue(p: PoolSummary, key: PoolsSortKey): number | null {
-  switch (key) {
-    case 'health':
-      return p.health.total
-    case 'depth':
-      return p.depth2Usd
-    case 'spread':
-      return p.spread10kBps
-    case 'volume':
-      return p.volume24hUsd
-    case 'gap':
-      return p.gapScore
-    case 'tvl':
-      return p.tvlUsd
-    case 'top':
-      return p.ownerTop1Share
-  }
-}
-
 /**
- * A stable sort with nulls last in both directions (TB4). Sorting by health also puts the unrated
- * pools after the rated ones in both directions, like the API.
+ * A stable sort with nulls last in both directions (TB4), the API's order: sorting by health also
+ * puts the unrated pools after the rated ones in both directions. The rows on screen keep their
+ * order while a new one loads.
  */
 export function sortPools(
   items: readonly PoolSummary[],
   key: PoolsSortKey,
   dir: SortDir,
 ): PoolSummary[] {
-  if (isApiSort(key)) return sortSummaries(items, key, dir)
-  const sign = dir === 'asc' ? 1 : -1
-  return items
-    .map((item, index) => ({ item, index, v: sortValue(item, key) }))
-    .sort((a, b) => {
-      if (a.v === null && b.v === null) return a.index - b.index
-      if (a.v === null) return 1
-      if (b.v === null) return -1
-      return a.v === b.v ? a.index - b.index : (a.v - b.v) * sign
-    })
-    .map((e) => e.item)
+  return sortSummaries(items, key, dir)
 }
 
 /** The shared scale of the row depth glyphs: the largest side of any row (CH8). */
@@ -188,7 +147,7 @@ export const UNKNOWN_REASON = {
   spread: 'No spread: a token in this pool has no USD price.',
   volume: `No 24${NB}h volume is measured for this pool yet.`,
   gap: 'No gap score: the 24 h volume or the depth is unknown.',
-  top: 'Owners are not indexed for this pool kind.',
+  top: 'Owners are not indexed for this pool, or the indexed ones cover too little of it.',
   price: 'No snapshot of this pool yet.',
   updated: 'This pool has not been snapshotted yet.',
 } as const
@@ -198,4 +157,27 @@ export function tvlReason(dex: string): string {
   return dex === 'uniswap-v4'
     ? 'Uniswap v4 pools share one singleton contract, so pool TVL is not reported.'
     : 'TVL is unknown: a token in this pool has no USD price.'
+}
+
+/**
+ * What tells apart pools of one list that would read the same (pair, DEX, fee, stable): the tick
+ * spacing when no other pool of the group has it ("tick spacing 50"), else the short address or
+ * v4 pool id ("0x1234…abcd"). Pools with a name of their own are absent.
+ */
+export function poolTieBreaks(pools: readonly PoolMetaDto[]): Map<string, string> {
+  const groups = new Map<string, PoolMetaDto[]>()
+  for (const p of pools) {
+    const name = `${pairLabel(p.token0, p.token1)}, ${poolDesc(p)}`
+    groups.set(name, [...(groups.get(name) ?? []), p])
+  }
+  const out = new Map<string, string>()
+  for (const group of groups.values()) {
+    if (group.length < 2) continue
+    for (const p of group) {
+      const spacing = p.tickSpacing
+      const unique = spacing !== null && group.filter((q) => q.tickSpacing === spacing).length === 1
+      out.set(p.id, unique ? `tick spacing ${spacing}` : shortAddress(p.address ?? p.poolId))
+    }
+  }
+  return out
 }

@@ -8,9 +8,9 @@
 
 import { healthGrade } from '@depthwatch/core'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMockClient } from '../api/mock.js'
-import type { ApiClient } from '../api/types.js'
+import type { ApiClient, PoolsQuery } from '../api/types.js'
 import { bps, NB, score, usd } from '../lib/format.js'
 import { poolsAnswer } from './lists/poolsText.js'
 import { manyPools, NOW, renderPage, unstubPhone } from './lists/testing.js'
@@ -22,6 +22,7 @@ const SETTLE_MS = 400
 afterEach(() => {
   cleanup()
   unstubPhone()
+  vi.useRealTimers()
 })
 
 const renderAt = (path: string, client?: ApiClient) => renderPage(path, '/pools', <Pools />, client)
@@ -34,9 +35,18 @@ const answerText = () => document.getElementById('pools-answer')?.textContent
 const cellText = (row: HTMLElement, text: string) =>
   [...row.querySelectorAll('td')].some((td) => td.textContent === text)
 
+/**
+ * The search tests run `setTimeout` on a fake clock that also follows real time, so the page's
+ * other timers and Testing Library's polling run as usual; `settle()` moves it past the debounce
+ * at once instead of waiting for it.
+ */
+function fakeClock() {
+  vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
+}
+
 async function settle() {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS))
+    await vi.advanceTimersByTimeAsync(SETTLE_MS)
   })
 }
 
@@ -113,11 +123,25 @@ describe('Pools: the table (TB2–TB4)', () => {
     await waitFor(() => expect(last(h)).toBe('/pools?sort=depth&dir=asc'))
   })
 
-  it('sorts spread on the page, lowest first by default, nulls last', async () => {
-    const h = renderAt('/pools')
+  it('sorts spread on the server, lowest first by default, nulls last', async () => {
+    const mock = createMockClient({ now: NOW })
+    const asked: PoolsQuery[] = []
+    const client: ApiClient = {
+      ...mock,
+      pools: (query) => {
+        if (query) asked.push(query)
+        return mock.pools(query)
+      },
+    }
+    const h = renderAt('/pools', client)
     const t = await table()
     fireEvent.click(within(t).getByRole('button', { name: 'Spread at $10K' }))
     await waitFor(() => expect(last(h)).toBe('/pools?sort=spread'))
+    await waitFor(() =>
+      expect(asked).toContainEqual(
+        expect.objectContaining({ sort: 'spread', dir: 'asc', rated: true, limit: 50, offset: 0 }),
+      ),
+    )
     const all = (await h.client.pools({ limit: 200 })).items
     const lowest = Math.min(...all.map((p) => p.spread10kBps ?? Number.POSITIVE_INFINITY))
     await waitFor(() => expect(cellText(bodyRows(t)[0] as HTMLElement, bps(lowest))).toBe(true))
@@ -135,9 +159,13 @@ describe('Pools: the table (TB2–TB4)', () => {
     fireEvent.click(within(pop).getByRole('checkbox', { name: 'TVL' }))
     await waitFor(() => expect(last(h)).toBe('/pools?cols=tvl%2Ctop'))
     await waitFor(() => expect(within(t).getAllByRole('columnheader')).toHaveLength(7))
-    // A pool kind without indexed owners shows "—" with its reason (D6).
-    const dash = within(t).getAllByRole('button', { name: '—' })[0] as HTMLElement
-    fireEvent.focus(dash)
+    // A pool kind without indexed owners shows "—" named by its reason, not a tab stop (D6).
+    const dash = within(t).getAllByRole('img', { name: /^Unknown: Owners are not indexed/ })[0]
+    expect(dash?.closest('button, a')).toBeNull()
+    expect(within(t).queryAllByRole('button', { name: '—' })).toEqual([])
+    // The column says why once, in its header, on focus or tap.
+    const top = within(t).getByRole('columnheader', { name: 'Top LP' })
+    fireEvent.focus(within(top).getByRole('button', { name: 'Why some values are unknown' }))
     expect((await screen.findByRole('tooltip')).textContent).toContain('Owners are not indexed')
   })
 
@@ -192,9 +220,12 @@ describe('Pools: the table (TB2–TB4)', () => {
 
 describe('Pools: search ↔ URL', () => {
   it('writes the typed query to the URL after the debounce, replacing the entry', async () => {
+    fakeClock()
     const h = renderAt('/pools')
     await table()
     fireEvent.change(searchBox(), { target: { value: 'weth' } })
+    expect(last(h)).toBe('/pools')
+    await settle()
     await waitFor(() => expect(last(h)).toBe('/pools?q=weth'))
     expect(searchBox().getAttribute('placeholder')).toBe('Search by symbol or address')
     act(() => h.navigate?.(-1))
@@ -204,9 +235,11 @@ describe('Pools: search ↔ URL', () => {
   })
 
   it('lets the nav link clear the search instead of re-applying it', async () => {
+    fakeClock()
     const h = renderAt('/pools')
     await table()
     fireEvent.change(searchBox(), { target: { value: 'weth' } })
+    await settle()
     await waitFor(() => expect(last(h)).toBe('/pools?q=weth'))
     fireEvent.click(screen.getByRole('link', { name: 'Nav link' }))
     await waitFor(() => expect(last(h)).toBe('/pools'))
@@ -216,6 +249,7 @@ describe('Pools: search ↔ URL', () => {
   })
 
   it('seeds the input from the URL and follows the URL when it changes underneath', async () => {
+    fakeClock()
     const h = renderAt('/pools?q=usdc')
     await table()
     expect(searchBox().value).toBe('usdc')
@@ -247,6 +281,16 @@ describe('Pools: paging and failures', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show 20 more pools' }))
     await waitFor(() => expect(bodyRows(t)).toHaveLength(120))
     expect(screen.queryByRole('button', { name: /more pools/ })).toBeNull()
+  })
+
+  it('pages a spread or top LP sort like any other, past the 200 healthiest', async () => {
+    const h = renderAt('/pools?sort=top', manyPools(250))
+    const t = await table()
+    expect(bodyRows(t)).toHaveLength(50)
+    expect(screen.queryByText(/Sorted within/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Show 50 more pools' }))
+    await waitFor(() => expect(last(h)).toBe('/pools?sort=top&page=2'))
+    await waitFor(() => expect(bodyRows(t)).toHaveLength(100))
   })
 
   it('keeps the page usable when pools fail to load (ST3)', async () => {

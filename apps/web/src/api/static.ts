@@ -9,7 +9,7 @@
  * holds scored pools only, so a pool the server knows but has not scored (its `/api/pools/:id`
  * and history) and a token outside every scored pool answer 404 here.
  */
-import { GAP_FEED_MIN_VOLUME_USD } from '@depthwatch/core'
+import { GAP_FEED_MIN_VOLUME_USD, isMeaningfulGap } from '@depthwatch/core'
 import { sortValue } from '../lib/sort.js'
 import type { FetchLike } from './client.js'
 import { ApiError } from './errors.js'
@@ -180,7 +180,13 @@ export function createStaticClient(bundle: StaticBundle): ApiClient {
     async gaps(query: GapsQuery = {}) {
       const q = parseGapsQuery(query)
       const minVolumeUsd = q.minVolume ?? GAP_FEED_MIN_VOLUME_USD
-      return copy({ items: page(gapFeed(bundle, minVolumeUsd), q.limit, q.offset), minVolumeUsd })
+      const feed = gapFeed(bundle, minVolumeUsd)
+      return copy({
+        items: page(feed, q.limit, q.offset),
+        total: feed.length,
+        meaningful: feed.filter((item) => isMeaningfulGap(item.gap)).length,
+        minVolumeUsd,
+      })
     },
     async token(address: string, query: TokenQuery = {}) {
       const normalized = parseAddress(address)

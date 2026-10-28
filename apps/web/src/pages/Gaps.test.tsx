@@ -6,10 +6,11 @@
  * table view with every v2 column and its sorts (`view`, `sort`, `dir` in the URL); and the no-gap,
  * empty and error states.
  */
+import { isMeaningfulGap } from '@depthwatch/core'
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createMockClient } from '../api/mock.js'
-import type { ApiClient, GapItem } from '../api/types.js'
+import type { ApiClient, GapItem, GapsQuery } from '../api/types.js'
 import { NB, pairLabel, ratio, usd } from '../lib/format.js'
 import { Gaps } from './Gaps.js'
 import { gapsAnswer, quietLabel, restSentence } from './lists/gapsModel.js'
@@ -22,16 +23,41 @@ const last = (h: { log: string[] }) => h.log.at(-1)
 const gapList = () => screen.findByRole('list', { name: 'Liquidity gaps' })
 const answerText = () => document.querySelector('.ttl .answer')?.textContent
 
-/** The mock's feed with its items replaced. */
+/** The mock's feed with its items replaced, counted as the API counts the whole feed. */
 function withGaps(items: (all: GapItem[]) => GapItem[]): ApiClient {
   const mock = createMockClient({ now: NOW })
   return {
     ...mock,
     async gaps(query) {
       const res = await mock.gaps(query)
-      return { ...res, items: items(res.items) }
+      const feed = items(res.items)
+      const meaningful = feed.filter((g) => isMeaningfulGap(g.gap)).length
+      return { ...res, items: feed, total: feed.length, meaningful }
     },
   }
+}
+
+/** A feed of `n` rows, the first `real` of them meaningful, paged by `limit` / `offset`. */
+async function pagedFeed(n: number, real: number) {
+  const mock = createMockClient({ now: NOW })
+  const all = (await mock.gaps({ limit: 200 })).items
+  const top = all[0] as GapItem
+  const calm = all.find((g) => !isMeaningfulGap(g.gap)) as GapItem
+  const feed = Array.from({ length: n }, (_, i) => {
+    const g = i < real ? top : calm
+    return { ...g, pool: { ...g.pool, pool: { ...g.pool.pool, id: `${g.pool.pool.id}-${i}` } } }
+  })
+  const asked: GapsQuery[] = []
+  const client: ApiClient = {
+    ...mock,
+    async gaps(query = {}) {
+      asked.push(query)
+      const offset = query.offset ?? 0
+      const items = feed.slice(offset, offset + (query.limit ?? 50))
+      return { items, total: n, meaningful: real, minVolumeUsd: 10_000 }
+    },
+  }
+  return { client, asked }
 }
 
 /** `n` meaningful gaps (copies of the top one under distinct ids), then the mock's quiet rows. */
@@ -76,6 +102,17 @@ describe('Gaps: title section and band', () => {
     const block = (await gapList()).closest('.blk')
     expect(block?.classList.contains('blk--over')).toBe(true)
     expect(block?.closest('.overlap')).toBeTruthy()
+  })
+
+  it("counts the API's meaningful gaps and lists every page of a feed longer than one", async () => {
+    const { client, asked } = await pagedFeed(250, 210)
+    const h = renderAt('/gaps?rows=all', client)
+    await waitFor(() => expect(answerText()).toBe(gapsAnswer(210)))
+    const list = await gapList()
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(210))
+    expect(screen.getByRole('button', { name: quietLabel(40) })).toBeTruthy()
+    expect(asked.map((q) => q.offset ?? 0).sort((a, b) => a - b)).toEqual([0, 200])
+    expect(last(h)).toBe('/gaps?rows=all')
   })
 
   it('says so when no pool trades 3× its depth', async () => {

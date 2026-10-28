@@ -10,6 +10,7 @@
 import type {
   BreachKind,
   BreachStreak,
+  ConcentrationBasis,
   ConcentrationMetrics,
   DepthLevel,
   DepthLevelUsd,
@@ -70,13 +71,24 @@ export interface ErrorResponse {
   issues?: ErrorIssue[]
 }
 
-/** `GET /api/health`. `ok` is false (status 503) when the database is unreadable. */
+/**
+ * `GET /api/health`. `ok` is false (status 503) when the database is unreadable or, with
+ * `?maxAge=<seconds>`, when the newest snapshot is older than that or missing.
+ */
 export interface HealthResponse {
   ok: boolean
   poolCount: number
   trackedCount: number
   /** Unix seconds of the newest snapshot; null before the first snapshot. */
   latestSnapshotAt: number | null
+  /**
+   * Unix seconds of the newest score; null before the first one. A pass stores its snapshots
+   * first and its scores last, so the data that read scores (health, gap, 24 h volume) are new
+   * once this moves, not when `latestSnapshotAt` does.
+   */
+  latestScoredAt: number | null
+  /** The server's clock minus `latestSnapshotAt`; null before the first snapshot. */
+  snapshotAgeSeconds: number | null
   /** Block number of the newest snapshot as a decimal string; null before the first snapshot. */
   latestBlock: string | null
   /**
@@ -103,8 +115,10 @@ export interface DexStatsDto {
   scored: number
   /** Scored pools that are rated: both ±2 % sides known, the thinner one at least $5,000. */
   rated: number
-  /** Sum of ±2 % depth (USD) over scored pools. */
+  /** Sum of ±2 % depth (USD) over scored pools, stale quotes (`PoolSummary.staleQuote`) left out. */
   depth2Usd: number
+  /** Scored pools with a known ±2 % depth and no stale quote: the ones `depth2Usd` sums. */
+  depthKnownPools: number
   /** Sum over scored pools with a known volume; null when none has one. */
   volume24hUsd: number | null
   /** Median health total over rated pools only; null when none is rated. */
@@ -118,8 +132,17 @@ export interface StatsResponse {
   totals: Omit<DexStatsDto, 'dex'>
 }
 
-export type PoolSort = 'health' | 'depth' | 'volume' | 'gap' | 'tvl'
-export const POOL_SORTS: readonly PoolSort[] = ['health', 'depth', 'volume', 'gap', 'tvl']
+/** The API's sort keys: `spread` is `spread10kBps`, `top` is `ownerTop1Share`. */
+export type PoolSort = 'health' | 'depth' | 'volume' | 'gap' | 'tvl' | 'spread' | 'top'
+export const POOL_SORTS: readonly PoolSort[] = [
+  'health',
+  'depth',
+  'volume',
+  'gap',
+  'tvl',
+  'spread',
+  'top',
+]
 export type SortDir = 'asc' | 'desc'
 
 /** Query string of `GET /api/pools`. Undefined and empty values are omitted from the request. */
@@ -172,6 +195,12 @@ export interface PoolHealthSummary {
   rated: boolean
   /** Why there is no grade; null when rated. */
   unratedReason: UnratedReason | null
+  /**
+   * What the concentration component stands on (`HealthScore.concentrationBasis`): `owners`,
+   * `ranges` (the range HHI: owners not indexed or covering under 90 %) or `neutral`; null for a
+   * score stored before the basis was recorded.
+   */
+  concentrationBasis: ConcentrationBasis | null
 }
 
 /**
@@ -196,9 +225,21 @@ export interface PoolSummary {
    */
   depth2DownUsd: number | null
   spread10kBps: number | null
+  /**
+   * The newest snapshot's `priceDeviationBps` (docs/METRICS.md, "Stale quotes"); null when a token
+   * has no USD price, the pool has no snapshot or the snapshot predates the measure.
+   */
+  priceDeviationBps: number | null
+  /** Core's `isStaleQuote(priceDeviationBps)`: left out of the stats' depth sums, last on depth. */
+  staleQuote: boolean
   health: PoolHealthSummary
   gapScore: number | null
   volume24hUsd: number | null
+  /**
+   * The largest LP's share of the newest snapshot's in-band liquidity, where its owners describe
+   * the pool (core's `poolOwnerTop1Share`: owners in the band covering at least 90 % of it); null
+   * otherwise (owners not indexed, none in the band, or covering less).
+   */
   ownerTop1Share: number | null
   /** Unix seconds of the latest snapshot; null when the pool was never snapshotted. */
   updatedAt: number | null
@@ -258,6 +299,10 @@ export interface GapItem {
 /** `GET /api/gaps` */
 export interface GapsResponse {
   items: GapItem[]
+  /** Pools in the whole feed at this floor, ignoring limit/offset. */
+  total: number
+  /** Pools in the whole feed trading 3× their ±2 % depth or more, ignoring limit/offset. */
+  meaningful: number
   /** Volume floor applied (USD, default 10 000). */
   minVolumeUsd: number
 }
@@ -281,6 +326,13 @@ export interface TokenDetail {
   total: number
   /** Every discovered pool containing the token, scored or not. */
   poolCount: number
+  /**
+   * `depth2Usd` summed over every scored pool containing the token with a known depth and no stale
+   * quote, ignoring limit/offset; null when none has one.
+   */
+  depth2UsdTotal: number | null
+  /** Scored pools of the token with a known depth and no stale quote: the ones `depth2UsdTotal` sums. */
+  depthKnownPools: number
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -115,7 +115,7 @@ function poolSpecs(now: number, p: SeedPools): PoolSpec[] {
       ownerTop1Share: null,
       volume24hUsd: 900_000,
       healthTotal: 62,
-      notes: ['concentration from tick ranges: owners unknown'],
+      notes: ['concentration neutral: LP owners not indexed'],
       timestamps: recent,
     },
     {
@@ -130,7 +130,7 @@ function poolSpecs(now: number, p: SeedPools): PoolSpec[] {
       ownerTop1Share: null,
       volume24hUsd: 300_000,
       healthTotal: 41,
-      notes: ['concentration from tick ranges: owners unknown'],
+      notes: [],
       timestamps: recent,
     },
     {
@@ -216,7 +216,16 @@ function scoreFor(now: number, spec: PoolSpec, snapshots: PoolSnapshot[]): PoolS
   return {
     poolId: spec.pool.id,
     timestamp: now,
-    health: fixtureHealth(spec.healthTotal, spec.notes, spec.unratedReason ?? null),
+    health: fixtureHealth(
+      spec.healthTotal,
+      spec.notes,
+      spec.unratedReason ?? null,
+      spec.ownerTop1Share !== null
+        ? 'owners'
+        : spec.pool.kind === 'concentrated'
+          ? 'ranges'
+          : 'neutral',
+    ),
     gap: buildGap(spec.volume24hUsd, spec.depth2Usd),
     persistence24h: buildPersistence(24, priced ? in24h : 0, spec.depth2Usd),
     persistence7d: buildPersistence(168, priced ? in7d : 0, spec.depth2Usd),

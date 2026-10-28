@@ -205,7 +205,7 @@ describe('Home: states', () => {
     const calm = feed.items.filter((g) => !isMeaningfulGap(g))
     const top = calm[0]
     if (!top) throw new Error('mock has no calm pool')
-    renderHome(withClient({ gaps: async () => ({ ...feed, items: calm }) }))
+    renderHome(withClient({ gaps: async () => ({ ...feed, items: calm, meaningful: 0 }) }))
     const fig = await screen.findByRole('group', { name: /^Base: / })
     expect(within(fig).queryByRole('link', { name: /^Liquidity gap/ })).toBeNull()
     await screen.findByText('No pool trades 3× its depth today.')
@@ -216,13 +216,21 @@ describe('Home: states', () => {
     expect(factValue(gap)).toBe(ratio(top.gap.turnoverRatio))
   })
 
+  it("counts the API's meaningful gaps over the whole feed, not the page it shows", async () => {
+    const feed = await withClient().gaps({ limit: 200 })
+    renderHome(withClient({ gaps: async () => ({ ...feed, total: 900, meaningful: 640 }) }))
+    expect(
+      await screen.findByText('640 pools trade 3× their depth or more every day.'),
+    ).toBeTruthy()
+  })
+
   it('adds the quiet line under fewer than 3 gap rows', async () => {
     const feed = await withClient().gaps({ limit: 200 })
     const one = [
       ...feed.items.filter(isMeaningfulGap).slice(0, 1),
       ...feed.items.filter((g) => !isMeaningfulGap(g)),
     ]
-    renderHome(withClient({ gaps: async () => ({ ...feed, items: one }) }))
+    renderHome(withClient({ gaps: async () => ({ ...feed, items: one, meaningful: 1 }) }))
     expect(await screen.findByText('1 pool trades 3× its depth or more every day.')).toBeTruthy()
     const gaps = preview('where liquidity is thin')
     expect(within(gaps).getAllByRole('listitem')).toHaveLength(2)
@@ -235,7 +243,7 @@ describe('Home: states', () => {
       withClient({
         stats: async () => ({ ...stats, totals: { ...stats.totals, scored: 0, pools: 3 } }),
         pools: async () => ({ items: [], total: 0 }),
-        gaps: async () => ({ items: [], minVolumeUsd: 10_000 }),
+        gaps: async () => ({ items: [], total: 0, meaningful: 0, minVolumeUsd: 10_000 }),
       }),
     )
     const h1 = await screen.findByRole('heading', { level: 1, name: 'No pools are scored yet.' })

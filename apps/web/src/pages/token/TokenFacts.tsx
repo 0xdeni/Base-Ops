@@ -2,8 +2,8 @@
  * The Token facts row (ia-v3 §4.7, docs/design/visual-v4.md §6.8, §5.6): one ink block stacked
  * over the band's lower edge, three columns from 1024 px. The USD price, the pools discovered
  * (with the scored count when fewer are scored), and where the price comes from: the route's first
- * pool, from the stable anchor, with the rest of the route in the label. An anchor reads "Anchor";
- * an unpriced token "—" with the reason (D6).
+ * pool, from the stable anchor, with the rest of the route in the label. An anchor reads "Anchor",
+ * at $1 by convention; an unpriced token "—" with the reason (D6).
  */
 import { Link } from 'react-router-dom'
 import type { PoolMetaDto, TokenDetail } from '../../api/types.js'
@@ -22,7 +22,7 @@ function RouteFact({ steps, priced }: { steps: RouteStep[]; priced: boolean }) {
         label="priced through"
       />
     )
-  if (!first) return <Fact value="Anchor" label="a stable reference, not routed" />
+  if (!first) return <Fact value="Anchor" label="$1 by convention, not routed" />
   const then = rest.map((s) => `, then ${stepWords(s)}`).join('')
   if (first.pool) {
     return (

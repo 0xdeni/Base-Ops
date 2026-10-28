@@ -10,6 +10,17 @@ import type { GapMetrics } from '../types.js'
 /** Minimum 24 h volume for a pool to appear in the gaps feed. */
 export const GAP_FEED_MIN_VOLUME_USD = 10_000
 
+/**
+ * Turnover from which a feed pool is a meaningful gap: a day's volume at least 3× its ±2 % depth
+ * (a gap score of 23.86). The feed's `meaningful` count and every screen use this threshold.
+ */
+export const MEANINGFUL_GAP_TURNOVER = 3
+
+/** True when the turnover is known and at least MEANINGFUL_GAP_TURNOVER. */
+export function isMeaningfulGap(gap: Pick<GapMetrics, 'turnoverRatio'>): boolean {
+  return gap.turnoverRatio !== null && gap.turnoverRatio >= MEANINGFUL_GAP_TURNOVER
+}
+
 export function computeGap(volume24hUsd: number | null, depth2Usd: number | null): GapMetrics {
   const base: GapMetrics = { volume24hUsd, depth2Usd, turnoverRatio: null, gapScore: null }
   if (

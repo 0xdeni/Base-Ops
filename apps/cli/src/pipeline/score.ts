@@ -16,6 +16,8 @@ import {
   computePersistence,
   computeVolume24hUsd,
   GAP_FEED_MIN_VOLUME_USD,
+  isHookedPool,
+  type PoolMeta,
   type PoolSnapshot,
   scoringVolumeWindow,
   type VolumeWindow,
@@ -47,9 +49,14 @@ export interface ScoreResult {
 
 export const PERSISTENCE_WINDOWS_HOURS = Object.freeze({ day: 24, week: 168 })
 
-/** Score of one pool from its snapshot series (ascending), newest snapshot and 24 h volume. */
+/**
+ * Score of one pool from its snapshot series (ascending), newest snapshot and 24 h volume. `pool`
+ * gives its kind (which concentration basis applies) and its `hooks` (a hooked Uniswap v4 pool is
+ * unrated with reason `hooked`).
+ */
 export function scorePool(
   poolId: string,
+  pool: Pick<PoolMeta, 'kind' | 'hooks'>,
   series: readonly PoolSnapshot[],
   latest: PoolSnapshot,
   volume24hUsd: number | null,
@@ -65,9 +72,13 @@ export function scorePool(
   const health = computeHealthScore({
     ...snapshotDepthSides(latest),
     spread10kBps: summary.spread10kBps,
-    ownerTop1Share: summary.ownerTop1Share,
+    // The owners as stored, so a share that covers too little of the pool still adds its note.
+    ownerTop1Share: latest.concentration?.owners?.top1Share ?? null,
+    ownerCoverage: latest.concentration?.owners?.coverage ?? null,
     rangeHhi: latest.concentration?.rangeHhi ?? null,
+    poolKind: pool.kind,
     persistence: persistence24h,
+    hooked: isHookedPool(pool),
   })
   return {
     poolId,
@@ -123,9 +134,11 @@ export async function scoreStep(ctx: PipelineContext): Promise<ScoreResult> {
 
   const scores: PoolScore[] = []
   const weekAgo = now - PERSISTENCE_WINDOWS_HOURS.week * 3600
+  const pools = db.pools.getMany(ids)
   for (const id of ids) {
     const latest = db.snapshots.latestForPool(id)
-    if (latest === undefined) {
+    const pool = pools.get(id)
+    if (latest === undefined || pool === undefined) {
       result.unsnapshotted++
       continue
     }
@@ -138,7 +151,7 @@ export async function scoreStep(ctx: PipelineContext): Promise<ScoreResult> {
             coveredFromTs(db, id, end.block),
             db.volume.series(id, window.fromTs, window.toTs),
           )
-    const score = scorePool(id, series, latest, volume24hUsd, now)
+    const score = scorePool(id, pool, series, latest, volume24hUsd, now)
     scores.push(score)
     if (score.gap.gapScore !== null && (volume24hUsd ?? 0) >= GAP_FEED_MIN_VOLUME_USD) result.gaps++
   }

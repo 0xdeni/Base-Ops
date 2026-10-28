@@ -5,13 +5,16 @@
  * score of 24), then the score at 800. Rows under 3× are drawn quiet (a `--text-2` fill). Its fill
  * grows with its block in the first view when the rows sit over the band (`data-bar`).
  */
-import { computeGap } from '@depthwatch/core'
+import { computeGap, MEANINGFUL_GAP_TURNOVER } from '@depthwatch/core'
 import { score } from '../../lib/format.js'
 import { vars } from './useChartWidth.js'
 import './glyphs.css'
 
-/** A pool trading 3× its ±2 % depth a day or more has a meaningful gap (TB9), on every screen. */
-export const MEANINGFUL_GAP_TURNOVER = 3
+/**
+ * A pool trading 3× its ±2 % depth a day or more has a meaningful gap (TB9), on every screen: core's
+ * threshold (docs/METRICS.md, "Gap score and the gaps feed"), the one the API counts by.
+ */
+export { MEANINGFUL_GAP_TURNOVER }
 
 /** The threshold's gap score (23.9) from core, so the tick can never disagree with the scores. */
 export const MEANINGFUL_GAP_SCORE = computeGap(MEANINGFUL_GAP_TURNOVER, 1).gapScore ?? 0

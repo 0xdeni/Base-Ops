@@ -4,9 +4,15 @@
  * wide, radius 6. Large in facts: 36 × 56, 20 px, radius 9, a 10 px shape. The fill is never the
  * only cue: the letter and the shape carry the grade. One chip per row (TB5).
  */
-import type { HealthGrade, UnratedReason } from '@depthwatch/core'
+import type { ConcentrationBasis, HealthGrade, UnratedReason } from '@depthwatch/core'
 import { gradeTone } from '../../lib/format.js'
-import { NOT_RATED, unratedDetail } from '../../lib/rating.js'
+import {
+  BASIS_MARK,
+  BASIS_MARK_LABEL,
+  concentrationBasisDetail,
+  NOT_RATED,
+  unratedDetail,
+} from '../../lib/rating.js'
 import { Glossary } from './Glossary.js'
 import { Shape, type ShapeName } from './Icon.js'
 
@@ -60,14 +66,47 @@ export function NotRatedChip({
   )
 }
 
+/**
+ * The grade glyph, followed by the concentration mark when the grade's concentration points do not
+ * rest on LP owners (`concentrationBasis` ranges or neutral): a small star whose reason shows on
+ * hover, focus or tap, a button above any row link like the "Not rated" chip's.
+ */
+export function GradeWithBasis({
+  grade,
+  basis,
+  size = 'row',
+}: {
+  grade: HealthGrade
+  basis: ConcentrationBasis | null | undefined
+  size?: 'row' | 'fact'
+}) {
+  const detail = concentrationBasisDetail(basis ?? null)
+  if (detail === null) return <GradeGlyph grade={grade} size={size} />
+  return (
+    <span className={`grade-basis${size === 'fact' ? ' is-fact' : ''}`}>
+      <GradeGlyph grade={grade} size={size} />
+      <Glossary definition={detail} anchor="health" className="basis-mark">
+        <span aria-hidden="true">{BASIS_MARK}</span>
+        <span className="sr-only">{BASIS_MARK_LABEL}</span>
+      </Glossary>
+    </span>
+  )
+}
+
 /** The grade glyph of a rated pool, or the "Not rated" chip with its reason (one chip per row, TB5). */
 export function RatingGlyph({
   health,
   size = 'row',
 }: {
-  health: { grade: HealthGrade | null; rated: boolean; unratedReason: UnratedReason | null }
+  health: {
+    grade: HealthGrade | null
+    rated: boolean
+    unratedReason: UnratedReason | null
+    concentrationBasis?: ConcentrationBasis | null
+  }
   size?: 'row' | 'fact'
 }) {
-  if (health.rated && health.grade) return <GradeGlyph grade={health.grade} size={size} />
+  if (health.rated && health.grade)
+    return <GradeWithBasis grade={health.grade} basis={health.concentrationBasis} size={size} />
   return <NotRatedChip reason={health.unratedReason} size={size} />
 }

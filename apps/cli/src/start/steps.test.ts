@@ -64,8 +64,11 @@ interface Call {
   pass: number
 }
 
-/** `steps` with every call recorded, with the pass it belongs to. */
-function recording(steps: SchedulerSteps): { steps: SchedulerSteps; calls: Call[] } {
+/** `steps` with every call recorded, with the pass it belongs to; `onPass` runs as a pass starts. */
+function recording(
+  steps: SchedulerSteps,
+  onPass: (pass: number) => void,
+): { steps: SchedulerSteps; calls: Call[] } {
   const calls: Call[] = []
   let pass = 0
   const record = (step: Step, report: Promise<StepReport>) => {
@@ -77,22 +80,33 @@ function recording(steps: SchedulerSteps): { steps: SchedulerSteps; calls: Call[
     steps: {
       needsSeed: steps.needsSeed,
       needsPositions: steps.needsPositions,
+      needsPrune: steps.needsPrune,
       seed: (log: Logger) => record('seed', steps.seed(log)),
       snapshot: (log: Logger) => {
         pass++
+        onPass(pass)
         return record('snapshot', steps.snapshot(log))
       },
       volume: (log: Logger) => record('volume', steps.volume(log)),
       score: (log: Logger) => record('score', steps.score(log)),
       positions: (log: Logger, budget: number) => record('positions', steps.positions(log, budget)),
       discover: (log: Logger, budget: number) => record('discover', steps.discover(log, budget)),
+      prune: (log: Logger) => record('prune', steps.prune(log)),
     },
   }
 }
 
 /** Runs `passes` passes of the real steps at the default schedule; returns the calls made. */
-async function run(w: World, passes: number, clock = fakeClock()): Promise<Call[]> {
-  const rec = recording(pipelineSteps(w.ctx, () => clock.now()))
+async function run(
+  w: World,
+  passes: number,
+  clock = fakeClock(),
+  onPass: (pass: number) => void = () => {},
+): Promise<Call[]> {
+  const rec = recording(
+    pipelineSteps(w.ctx, () => clock.now()),
+    onPass,
+  )
   await runScheduler({
     settings: SCHEDULE_DEFAULTS,
     steps: rec.steps,
@@ -117,8 +131,18 @@ describe('pipelineSteps: a mandate on a pool without positions', () => {
     syncStateStore(w.db).setLastRun('positions', clock.now())
     expect(positionsPublished(w.db, SLIPSTREAM)).toBe(false)
 
-    const calls = await run(w, 2, clock)
+    // The head moves one block a pass, as a live chain's does: a mandate has one sample per block.
+    const head = await w.ctx.chain.getLatestBlock()
+    const calls = await run(w, 2, clock, (pass) => {
+      w.ctx.chain = createDemoChain({
+        latestBlock: head.number + BigInt(pass - 1),
+        latestTimestamp: head.timestamp + 2 * (pass - 1),
+      })
+    })
     expect(passesOf(calls, 'positions')).toEqual([1])
+    // Never pruned: pass 1 closes with prune, pass 2 (the same day) does not.
+    expect(passesOf(calls, 'prune')).toEqual([1])
+    expect(w.db.syncState.get(syncKeys.pruneLastRun())).toBe(String(w.latestTimestamp))
     expect(positionsPublished(w.db, SLIPSTREAM)).toBe(true)
     // Pass 1's snapshot reported the Slipstream mandate as an attribution failure, no sample.
     expect(w.lines.some((l) => /\[snapshot\] done .*samples=1 sampleFailures=1 /.test(l))).toBe(

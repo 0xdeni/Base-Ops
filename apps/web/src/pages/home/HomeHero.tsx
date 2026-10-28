@@ -1,10 +1,11 @@
 /**
  * The Home band (docs/design/visual-v4.md §6.2): full-bleed Base Blue from the app bar down. The
- * eyebrow, then one heading made of the figure ("$49.9M" at `--t-mega`) and its sentence ("sits
- * within 2 % of the price on Base." at `--t-say`) sharing a baseline; under them the lead at left
- * and the actions at right ("Browse pools", the white button on the band, and "How it's measured").
- * Then the focal depth butterfly of Base on the band, with its "Show data" table (CH9). On phones
- * everything stacks in that order and the butterfly's top half stays in the first viewport (PH6).
+ * eyebrow, then one heading made of the figure ("$49.8M" at `--t-mega`) and its sentence ("sits
+ * within 2 % of the price across 327 pools on Base." at `--t-say`, the pools the figure sums) sharing a baseline; under them
+ * the lead at left and the actions at right ("Browse pools", the white button on the band, and
+ * "How it's measured"). Then the focal depth butterfly of Base on the band, with its "Show data"
+ * table (CH9). On phones everything stacks in that order and the butterfly's top half stays in
+ * the first viewport (PH6).
  *
  * The first view (§4.1) rises the figure and the sentence (`data-rise`), the eyebrow and the lead
  * with the actions (`data-in`); the band's ground and the butterfly's bars are the band's own.
@@ -18,7 +19,7 @@ import { Band } from '../../components/ui/Band.js'
 import { ButtonLink } from '../../components/ui/Button.js'
 import { SectionError } from '../../components/ui/States.js'
 import { NB } from '../../lib/format.js'
-import { EMPTY_ANSWER, ERROR_ANSWER, emptyLead, HOME_SAY, homeFigure, homeLead } from './copy.js'
+import { EMPTY_ANSWER, ERROR_ANSWER, emptyLead, homeFigure, homeLead, homeSay } from './copy.js'
 import { ButterflySkeleton, HeroSkeleton } from './HomeSkeleton.js'
 
 export interface HeroFigure {
@@ -63,7 +64,7 @@ function HeroText({ stats, waiting }: { stats: UseQueryResult<StatsResponse>; wa
                 {homeFigure(t.depth2Usd)}
               </span>{' '}
               <span className="say" data-rise="">
-                {HOME_SAY}
+                {homeSay(t.depthKnownPools)}
               </span>
             </>
           )}

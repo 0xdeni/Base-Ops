@@ -81,7 +81,10 @@ describe('static build startup', () => {
     await waitFor(() =>
       expect(
         screen
-          .getAllByRole('link', { name: `${top.pool.token0.symbol} / ${top.pool.token1.symbol}` })
+          .getAllByRole('link', {
+            name: (name) =>
+              name.startsWith(`${top.pool.token0.symbol} / ${top.pool.token1.symbol}, `),
+          })
           .map((link) => link.getAttribute('href')),
       ).toContain(`#/pools/${encodeURIComponent(top.pool.id)}`),
     )
@@ -95,7 +98,7 @@ describe('static build startup', () => {
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: /^\$[\d.]+[KMB] sits within 2 % of the price on Base\.$/,
+        name: /^\$[\d.]+[KMB] sits within 2 % of the price across [\d,]+ pools on Base\.$/,
       }),
     ).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Browse pools' }).getAttribute('href')).toBe('#/pools')
@@ -127,13 +130,8 @@ describe('static build startup', () => {
 
   it('answers unknown ids with the page not-found state', async () => {
     await boot('#/pools/nope', async () => DEMO)
-    // The app's query client retries once (about a second) before showing the 404.
-    const heading = await screen.findByRole(
-      'heading',
-      { name: 'pool not found' },
-      { timeout: 4000 },
-    )
-    expect(heading).toBeTruthy()
+    // A 4xx is final (shouldRetry): the 404 state shows at once.
+    expect(await screen.findByRole('heading', { name: 'pool not found' })).toBeTruthy()
     // The static copy says why a shared link can miss: the bundle only holds what was exported.
     expect(
       screen.getByText(/This static copy only holds the data it was exported with\./),

@@ -102,9 +102,13 @@ export function createHttpClient(opts: HttpClientOptions = {}): ApiClient {
   const base = (opts.baseUrl ?? '/api').replace(/\/$/, '')
   const fetchFn: FetchLike = opts.fetchFn ?? ((input, init) => fetch(input, init))
 
+  // `no-cache`: the browser revalidates every request (a bodiless 304 by ETag when nothing changed)
+  // instead of answering from a copy it holds under the API's `max-age`, so a refetch after a new
+  // snapshot or score never gets the rows from before it.
   async function get<T>(path: string, params?: QueryParams): Promise<T> {
     const res = await fetchFn(`${base}${path}${buildQuery(params)}`, {
       headers: { accept: 'application/json' },
+      cache: 'no-cache',
     })
     if (!res.ok) throw await toApiError(res)
     return (await res.json()) as T
@@ -112,7 +116,7 @@ export function createHttpClient(opts: HttpClientOptions = {}): ApiClient {
 
   /** Like `get` for a text body (the badge SVG); errors are still the API's JSON bodies. */
   async function getText(path: string, accept: string): Promise<string> {
-    const res = await fetchFn(`${base}${path}`, { headers: { accept } })
+    const res = await fetchFn(`${base}${path}`, { headers: { accept }, cache: 'no-cache' })
     if (!res.ok) throw await toApiError(res)
     return await res.text()
   }

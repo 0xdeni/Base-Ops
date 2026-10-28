@@ -19,13 +19,15 @@ import {
   OPTIONAL_COLUMNS,
   type OptionalColumn,
   type PoolsSortKey,
+  poolTieBreaks,
   SORT_LABEL,
   type TableState,
 } from '../../lib/poolsTable.js'
 import { useOverflowX } from '../../lib/useOverflowX.js'
 import { RatingGlyph } from './GradeGlyph.js'
-import { DepthCell, HealthCell, metricCell } from './PoolCells.js'
+import { type CellKey, DepthCell, HealthCell, metricCell, unknownReason } from './PoolCells.js'
 import { PoolCell, SortHeader } from './Table.js'
+import { UnknownNote } from './Unknown.js'
 
 const COLUMN_LABEL: Readonly<Record<OptionalColumn, string>> = {
   tvl: 'TVL',
@@ -84,6 +86,7 @@ export function PoolsTable({
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const tableRef = useRef<HTMLTableElement | null>(null)
   const scrolls = useOverflowX(wrapRef, tableRef)
+  const ties = poolTieBreaks(rows.map((p) => p.pool))
   if (phone) {
     return (
       <>
@@ -97,7 +100,7 @@ export function PoolsTable({
               {divider?.at === i ? <li className="rl-group">{divider.label}</li> : null}
               <li>
                 <div className="rl-row">
-                  <PoolCell pool={p.pool} />
+                  <PoolCell pool={p.pool} tieBreak={ties.get(p.pool.id)} />
                   <span className="metric num">{metricCell(p, sort, now)}</span>
                   <RatingGlyph health={p.health} />
                 </div>
@@ -109,8 +112,18 @@ export function PoolsTable({
     )
   }
   const max = glyphMax(rows)
+  // The column's "—" explained once, in its header (D6); health shows the Not rated chip instead.
+  const note = (key: CellKey) =>
+    key === 'health' ? null : <UnknownNote reasons={rows.map((p) => unknownReason(p, key))} />
   const header = (key: PoolsSortKey, text: string = SORT_LABEL[key]) => (
-    <SortHeader key={key} label={text} active={sort === key} dir={dir} onSort={() => onSort(key)} />
+    <SortHeader
+      key={key}
+      label={text}
+      active={sort === key}
+      dir={dir}
+      onSort={() => onSort(key)}
+      note={note(key)}
+    />
   )
   const optional = OPTIONAL_COLUMNS.map((c) => c.key).filter((c) => cols.includes(c))
   return (
@@ -128,8 +141,9 @@ export function PoolsTable({
               SORTABLE.has(c) ? (
                 header(c as PoolsSortKey, COLUMN_LABEL[c])
               ) : (
-                <th key={c} scope="col">
+                <th key={c} scope="col" aria-label={COLUMN_LABEL[c]}>
                   {COLUMN_LABEL[c]}
+                  {note(c)}
                 </th>
               ),
             )}
@@ -145,7 +159,7 @@ export function PoolsTable({
               ) : null}
               <tr>
                 <td>
-                  <PoolCell pool={p.pool} linkClass="row-link" />
+                  <PoolCell pool={p.pool} linkClass="row-link" tieBreak={ties.get(p.pool.id)} />
                 </td>
                 <td>
                   <HealthCell health={p.health} />

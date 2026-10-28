@@ -5,7 +5,13 @@
  * ladder and `spreads_json` when listed, so a spread stored before the price impact cap reads
  * under today's rule.
  */
-import { feasibleSpreadBps, type PoolSnapshot, type SpreadPoint } from '@depthwatch/core'
+import type { DatabaseSync } from 'node:sqlite'
+import {
+  feasibleSpreadBps,
+  type PoolSnapshot,
+  poolOwnerTop1Share,
+  type SpreadPoint,
+} from '@depthwatch/core'
 
 export interface SnapshotSummaryFields {
   /** `depthUsd[pct = 2].totalUsd` */
@@ -15,7 +21,12 @@ export interface SnapshotSummaryFields {
    * before the price impact cap whose legs are above it (docs/METRICS.md, "Effective spread").
    */
   spread10kBps: number | null
-  /** `concentration.owners.top1Share` */
+  /**
+   * `concentration.owners.top1Share` where the owners describe the pool (core's
+   * `poolOwnerTop1Share`: owners in the band covering at least OWNER_COVERAGE_MIN of it); null
+   * without owners, with none in the band, or with too little coverage, so the Top LP column and
+   * the `top` sort never list a share of a part of the pool.
+   */
   ownerTop1Share: number | null
 }
 
@@ -38,6 +49,20 @@ export interface SnapshotSummary extends SnapshotSummaryFields, SnapshotDepthSid
   updatedAt: number
   price: number
   tvlUsd: number | null
+  /** `PoolSnapshot.priceDeviationBps`: null when unknown (or stored before the column existed). */
+  priceDeviationBps: number | null
+}
+
+/**
+ * A snapshot's summary plus the concentration fields the health score reads: everything core's
+ * `computeHealthScore` takes from one snapshot, so a history series (`GET /api/pools/:id/history`)
+ * is scored from these columns without parsing any snapshot JSON.
+ */
+export interface SnapshotHealthSummary extends SnapshotSummary {
+  /** `concentration.rangeHhi` */
+  rangeHhi: number | null
+  /** `concentration.owners.coverage`; null without owners or for a snapshot stored before it. */
+  ownerCoverage: number | null
 }
 
 export const SUMMARY_DEPTH_PCT = 2
@@ -51,7 +76,7 @@ export function snapshotSummaryFields(snapshot: PoolSnapshot): SnapshotSummaryFi
   return {
     depth2Usd: depth2?.totalUsd ?? null,
     spread10kBps: feasibleSpreadBps(spread10k, snapshot.price),
-    ownerTop1Share: snapshot.concentration?.owners?.top1Share ?? null,
+    ownerTop1Share: poolOwnerTop1Share(snapshot.concentration?.owners),
   }
 }
 
@@ -82,6 +107,22 @@ export function spread10kFromStoredPoint(pointJson: string | null, mid: number):
   return feasibleSpreadBps(JSON.parse(pointJson) as SpreadPoint, mid)
 }
 
+/**
+ * Name of the SQL function `openDatabase` registers on every connection:
+ * `dw_spread10k_bps(point_json, price)` is `spread10kFromStoredPoint` (core's rule), so a query
+ * can list and order by the $10,000 spread exactly as read back here.
+ */
+export const SPREAD10K_SQL_FUNCTION = 'dw_spread10k_bps'
+
+/** Registers the summary's SQL functions on a connection (deterministic: same inputs, same value). */
+export function registerSummaryFunctions(raw: DatabaseSync): void {
+  raw.function(SPREAD10K_SQL_FUNCTION, { deterministic: true }, (point, mid) =>
+    typeof point === 'string' && typeof mid === 'number'
+      ? spread10kFromStoredPoint(point, mid)
+      : null,
+  )
+}
+
 export function snapshotDepthSides(snapshot: PoolSnapshot): SnapshotDepthSides {
   const depth2 = snapshot.depthUsd.find((level) => level.pct === SUMMARY_DEPTH_PCT)
   return { depth2UpUsd: depth2?.upUsd ?? null, depth2DownUsd: depth2?.downUsd ?? null }
@@ -94,7 +135,16 @@ export function snapshotSummary(snapshot: PoolSnapshot): SnapshotSummary {
     updatedAt: snapshot.timestamp,
     price: snapshot.price,
     tvlUsd: snapshot.tvlUsd,
+    priceDeviationBps: snapshot.priceDeviationBps,
     ...snapshotSummaryFields(snapshot),
     ...snapshotDepthSides(snapshot),
+  }
+}
+
+export function snapshotHealthSummary(snapshot: PoolSnapshot): SnapshotHealthSummary {
+  return {
+    ...snapshotSummary(snapshot),
+    rangeHhi: snapshot.concentration?.rangeHhi ?? null,
+    ownerCoverage: snapshot.concentration?.owners?.coverage ?? null,
   }
 }

@@ -2,20 +2,30 @@
  * The words of Home (ia-v3 §4.1, docs/design/visual-v4.md §6.2), kept pure so the sentences can be
  * tested without rendering. Every number is formatted here from stored values; nothing is derived.
  */
+import { isMeaningfulGap as meaningfulTurnover } from '@depthwatch/core'
 import type { GapItem, ScorecardSummaryDto } from '../../api/types.js'
 import { dexShort } from '../../components/charts/butterflyModel.js'
-import { MEANINGFUL_GAP_TURNOVER } from '../../components/charts/TurnoverGlyph.js'
 import { count, NB, pairLabel, ratio, usd } from '../../lib/format.js'
 
 /** The figure of the display answer: "$49.9M". */
 export const homeFigure = (depth2Usd: number): string => usd(depth2Usd)
 
-/** The sentence after the figure, set beside it as one heading. */
-export const HOME_SAY = `sits within 2${NB}% of the price on Base.`
+/**
+ * The sentence after the figure, set beside it as one heading. It names the pools the figure sums
+ * (`stats.totals.depthKnownPools`: scored, with a known depth and no stale quote), so the headline
+ * never reads as every pool on Base nor counts a pool its sum leaves out.
+ */
+export function homeSay(summed: number): string {
+  const pools = summed === 1 ? '1 pool' : `${count(summed)} pools`
+  return `sits within 2${NB}% of the price across ${pools} on Base.`
+}
 
-/** The display answer as one sentence (P3): "$49.9M sits within 2 % of the price on Base." */
-export function homeAnswer(depth2Usd: number): string {
-  return `${homeFigure(depth2Usd)} ${HOME_SAY}`
+/**
+ * The display answer as one sentence (P3): "$49.8M sits within 2 % of the price across 327 pools
+ * on Base."
+ */
+export function homeAnswer(depth2Usd: number, summed: number): string {
+  return `${homeFigure(depth2Usd)} ${homeSay(summed)}`
 }
 
 /** The answer before the first score exists. */
@@ -26,7 +36,7 @@ export const ERROR_ANSWER = 'Liquidity on Base'
 
 /**
  * The one-sentence lead under the answer (P8): what Depthwatch measures and which pools it grades.
- * It carries no number, so the first viewport keeps its four (§6.1); the counts are in the facts.
+ * It carries no number, so the first viewport keeps its five (§6.1); the counts are in the facts.
  */
 export function homeLead(scored: number, rated: number): string {
   if (scored === 1) {
@@ -37,7 +47,7 @@ export function homeLead(scored: number, rated: number): string {
   if (rated === 0) grading = 'but none is deep enough to grade yet'
   else if (rated === scored) grading = 'and grades each one A to F'
   else grading = 'and grades the ones deep enough to rate'
-  return `Depthwatch measures what it costs to move each Uniswap and Aerodrome pool on Base, ${grading}.`
+  return `Depthwatch measures what it costs to move each Uniswap and Aerodrome pool it scores on Base, ${grading}.`
 }
 
 /** The lead while nothing is scored: what was found, and when scores appear. */
@@ -48,8 +58,7 @@ export function emptyLead(discovered: number): string {
 
 /** A pool trading 3× its ±2 % depth a day or more (the same threshold on every screen, TB9). */
 export function isMeaningfulGap(item: GapItem): boolean {
-  const t = item.gap.turnoverRatio
-  return t !== null && t >= MEANINGFUL_GAP_TURNOVER
+  return meaningfulTurnover(item.gap)
 }
 
 /** The 24 h volume fact's label, with its comparison when the turnover is known. */

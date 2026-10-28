@@ -139,7 +139,13 @@ describe('GET /api/mm/:id', () => {
     expect(body.mandate).toEqual(toPublicMandate(mandate))
     expect(body.status).toBe('ok')
     expect(body.pool?.pool.id).toBe(seed.pools.wethAeroSlip.id)
-    expect(body.pool?.health).toEqual({ total: 70, grade: 'B', rated: true, unratedReason: null })
+    expect(body.pool?.health).toEqual({
+      total: 70,
+      grade: 'B',
+      rated: true,
+      unratedReason: null,
+      concentrationBasis: 'owners',
+    })
     expect(body.pool?.depth2Usd).toBe(400_000)
     expect(body.latest?.blockNumber).toBe('20000000')
     expect(body.latest?.timestamp).toBe(seed.now)
@@ -218,7 +224,9 @@ describe('GET /api/mm/:id/samples', () => {
     const from = seed.now - 30 * DAY
     const stamps = [from - 1, from, from + 1, seed.now - 1, seed.now, seed.now + 1]
     db.mmSamples.insertMany(
-      stamps.map((timestamp) => fixtureMmSample({ mandateId: mandate.id, timestamp })),
+      stamps.map((timestamp) =>
+        fixtureMmSample({ mandateId: mandate.id, timestamp, blockNumber: BigInt(timestamp) }),
+      ),
     )
     const body = await samples(mandate.id, '?window=30d')
     expect(body.points.map((p) => p.timestamp)).toEqual([from, from + 1, seed.now - 1, seed.now])
@@ -308,6 +316,38 @@ describe('GET /api/mm/:id/badge.svg', () => {
     const greySvg = await (await app.request('/api/mm/empty-one/badge.svg')).text()
     expect(greySvg).toContain('>no-data · 7d n/a</text>')
     expect(greySvg).toContain(`fill="${BADGE_COLOURS['no-data']}"`)
+  })
+
+  it('answers a matching If-None-Match with 304 and serves one summary per mandate', async () => {
+    const path = `/api/mm/${seed.mandates.slipstreamOk.id}/badge.svg`
+    const first = await app.request(path)
+    const tag = first.headers.get('etag')
+    expect(tag).toMatch(/^"/)
+    const again = await app.request(path, { headers: { 'if-none-match': tag ?? '' } })
+    expect(again.status).toBe(304)
+    expect(await again.text()).toBe('')
+    expect(again.headers.get('etag')).toBe(tag)
+    // The list, the detail and the badge read the same summary; a new sample changes all three.
+    const list = (await (await app.request('/api/mm')).json()) as ScorecardsResponse
+    const ok = list.items.find((i) => i.mandate.id === seed.mandates.slipstreamOk.id)
+    expect(ok?.status).toBe('ok')
+    db.mmSamples.insert(
+      fixtureMmSample({
+        mandateId: seed.mandates.slipstreamOk.id,
+        poolId: seed.pools.wethAeroSlip.id,
+        timestamp: seed.now,
+        withinKpi: false,
+        breaches: ['spread'],
+      }),
+    )
+    const changed = await app.request(path, { headers: { 'if-none-match': tag ?? '' } })
+    expect(changed.status).toBe(200)
+    expect(await changed.text()).toContain('>breached · 7d')
+    const detail = (await (
+      await app.request(`/api/mm/${seed.mandates.slipstreamOk.id}`)
+    ).json()) as ScorecardDetail
+    expect(detail.status).toBe('breached')
+    expect(detail.latest?.breaches).toEqual(['spread'])
   })
 
   it('404s (JSON) for unknown mandates and is readable cross-origin', async () => {

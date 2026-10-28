@@ -1,10 +1,11 @@
 /**
  * Mandate registration parsing (docs/design/scorecards.md §1): turns the registration JSON (the
  * `Mandate` shape minus the optional `active` / `createdAt`) into a `Mandate`, applying the
- * defaults and reporting every problem at once through `MandateValidationError`.
+ * defaults and reporting every problem at once through `MandateValidationError`, and merges a
+ * re-registration with the stored mandate (`mergeRegistration`).
  */
 
-import type { Address } from '../types.js'
+import { type Address, DEXES, type Dex } from '../types.js'
 import {
   DEFAULT_ALERT_AFTER_SAMPLES,
   DEFAULT_MANDATE_KPIS,
@@ -13,22 +14,41 @@ import {
   type MandateKpis,
   type PublicMandate,
 } from './types.js'
+import { WEBHOOK_URL_PROBLEM, webhookUrlProblem } from './webhookUrl.js'
 
 /** The registration JSON: `Mandate` with every defaulted field optional. */
 export interface MandateRegistration {
   id: string
+  /** At most `MANDATE_LIMITS.name` characters. */
   name: string
+  /**
+   * `<dex>:0x<40 hex>` (the pool address) or `uniswap-v4:0x<64 hex>` (the v4 pool id); any case is
+   * accepted, stored lowercase like every pool id.
+   */
   poolId: string
+  /** At most `MANDATE_LIMITS.marketMaker` characters. */
   marketMaker: string
-  /** Any case is accepted; stored lowercase. */
+  /** Any case is accepted; stored lowercase. At most `MANDATE_LIMITS.addresses` entries. */
   addresses: string[]
   kpis: { minDepthUsd: number } & Partial<Omit<MandateKpis, 'minDepthUsd'>>
   alertWebhookUrl?: string | null
   alertAfterSamples?: number
   active?: boolean
   createdAt?: number
+  /** At most `MANDATE_LIMITS.notes` characters. */
   notes?: string | null
 }
+
+/**
+ * Upper bounds of a registration (docs/SCORECARDS.md "Mandate"): every pass reads the holdings
+ * of every address, and the strings are stored and served as they are.
+ */
+export const MANDATE_LIMITS = Object.freeze({
+  addresses: 50,
+  name: 120,
+  marketMaker: 120,
+  notes: 2_000,
+})
 
 export class MandateValidationError extends Error {
   readonly problems: readonly string[]
@@ -42,6 +62,14 @@ export class MandateValidationError extends Error {
 
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
 
+/** Hex digits after `0x` in a pool id: a pool address, or the bytes32 id of a Uniswap v4 pool. */
+const POOL_KEY_HEX_DIGITS: Readonly<Record<Dex, number>> = Object.freeze({
+  'uniswap-v3': 40,
+  'uniswap-v4': 64,
+  'aerodrome-v2': 40,
+  'aerodrome-slipstream': 40,
+})
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -50,17 +78,48 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
-/** A trimmed non-empty string, or null (with a problem recorded). */
-function requiredString(value: unknown, field: string, problems: string[]): string | null {
+/** A trimmed non-empty string of at most `max` characters, or null (with a problem recorded). */
+function requiredString(
+  value: unknown,
+  field: string,
+  max: number,
+  problems: string[],
+): string | null {
   const trimmed = typeof value === 'string' ? value.trim() : ''
-  if (trimmed.length > 0) return trimmed
-  problems.push(`${field} must be a non-empty string`)
+  if (trimmed.length === 0) problems.push(`${field} must be a non-empty string`)
+  else if (trimmed.length > max) problems.push(`${field} must be at most ${max} characters`)
+  else return trimmed
+  return null
+}
+
+function isDex(value: string): value is Dex {
+  return (DEXES as readonly string[]).includes(value)
+}
+
+/**
+ * A pool id as the observatory stores it: `<dex>:0x<40 hex>`, or `uniswap-v4:0x<64 hex>`, in
+ * lowercase whatever case it was given in, so it matches `pools.id` and the mandate is sampled.
+ */
+function parsePoolId(value: unknown, problems: string[]): string | null {
+  const id = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  const colon = id.indexOf(':')
+  const dex = id.slice(0, colon)
+  const key = id.slice(colon + 1)
+  if (colon > 0 && isDex(dex) && new RegExp(`^0x[0-9a-f]{${POOL_KEY_HEX_DIGITS[dex]}}$`).test(key))
+    return id
+  problems.push(
+    `poolId must be <dex>:<0x pool address>, or uniswap-v4:<0x pool id of 64 hex digits>, with <dex> one of ${DEXES.join(', ')}`,
+  )
   return null
 }
 
 function parseAddresses(value: unknown, problems: string[]): Address[] {
   if (!Array.isArray(value) || value.length === 0) {
     problems.push('addresses must be a non-empty array of 0x addresses')
+    return []
+  }
+  if (value.length > MANDATE_LIMITS.addresses) {
+    problems.push(`addresses must list at most ${MANDATE_LIMITS.addresses} addresses`)
     return []
   }
   const out: Address[] = []
@@ -107,17 +166,12 @@ function parseKpis(value: unknown, problems: string[]): MandateKpis {
   return kpis
 }
 
+/** An http(s) URL at a public host without user info (`webhookUrlProblem`), or null. */
 function parseWebhookUrl(value: unknown, problems: string[]): string | null {
   if (value === undefined || value === null) return null
-  if (typeof value === 'string') {
-    try {
-      const url = new URL(value)
-      if (url.protocol === 'http:' || url.protocol === 'https:') return value
-    } catch {
-      // reported below
-    }
-  }
-  problems.push('alertWebhookUrl must be null or an http(s) URL')
+  const problem = typeof value === 'string' ? webhookUrlProblem(value) : WEBHOOK_URL_PROBLEM
+  if (problem === null) return value as string
+  problems.push(problem)
   return null
 }
 
@@ -130,25 +184,36 @@ function parseAlertAfterSamples(value: unknown, problems: string[]): number {
 
 function parseNotes(value: unknown, problems: string[]): string | null {
   if (value === undefined || value === null) return null
-  if (typeof value === 'string') return value.trim().length > 0 ? value.trim() : null
-  problems.push('notes must be null or a string')
+  if (typeof value !== 'string') {
+    problems.push('notes must be null or a string')
+    return null
+  }
+  const trimmed = value.trim()
+  if (trimmed.length <= MANDATE_LIMITS.notes) return trimmed.length > 0 ? trimmed : null
+  problems.push(`notes must be at most ${MANDATE_LIMITS.notes} characters`)
   return null
 }
 
 /**
  * Validates a registration (JSON-parsed, unknown shape) into a `Mandate`, applying the defaults
  * (`DEFAULT_MANDATE_KPIS`, `alertAfterSamples` 3, `active` true, `createdAt` = `now`, nulls).
- * Addresses are lowercased and de-duplicated. Throws `MandateValidationError` listing every
- * problem found. Unknown properties are ignored.
+ * The pool id and the addresses are lowercased, the addresses de-duplicated, and the sizes held
+ * to `MANDATE_LIMITS`. Throws `MandateValidationError` listing every problem found. Unknown
+ * properties are ignored.
  */
 export function parseMandate(input: unknown, now: number): Mandate {
   if (!isRecord(input)) throw new MandateValidationError(['mandate must be a JSON object'])
   const problems: string[] = []
   const id = typeof input.id === 'string' && MANDATE_ID_PATTERN.test(input.id) ? input.id : null
   if (id === null) problems.push(`id must match ${MANDATE_ID_PATTERN}`)
-  const name = requiredString(input.name, 'name', problems)
-  const poolId = requiredString(input.poolId, 'poolId', problems)
-  const marketMaker = requiredString(input.marketMaker, 'marketMaker', problems)
+  const name = requiredString(input.name, 'name', MANDATE_LIMITS.name, problems)
+  const poolId = parsePoolId(input.poolId, problems)
+  const marketMaker = requiredString(
+    input.marketMaker,
+    'marketMaker',
+    MANDATE_LIMITS.marketMaker,
+    problems,
+  )
   const addresses = parseAddresses(input.addresses, problems)
   const kpis = parseKpis(input.kpis, problems)
   const alertWebhookUrl = parseWebhookUrl(input.alertWebhookUrl, problems)
@@ -185,6 +250,25 @@ export function parseMandate(input: unknown, now: number): Mandate {
     active,
     createdAt,
     notes,
+  }
+}
+
+/**
+ * What a registration stores when its id may exist already: re-registering corrects the mandate
+ * in place, so `existing`'s `active` flag and `createdAt` survive unless `input` (the registration
+ * `parsed` came from) sets them. A deactivated mandate therefore stays deactivated when its file is
+ * registered again; `"active": true` resumes it. Without `existing`, `parsed` as it is.
+ */
+export function mergeRegistration(
+  parsed: Mandate,
+  existing: Mandate | undefined,
+  input: unknown,
+): Mandate {
+  if (existing === undefined || !isRecord(input)) return parsed
+  return {
+    ...parsed,
+    active: input.active === undefined ? existing.active : parsed.active,
+    createdAt: input.createdAt === undefined ? existing.createdAt : parsed.createdAt,
   }
 }
 

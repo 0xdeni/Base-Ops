@@ -4,7 +4,26 @@
  * helper ends with the signal's reason, so a step never goes on to store what it has.
  */
 import { describe, expect, it } from 'vitest'
-import { mapConcurrent, settleConcurrent, throwIfStopped } from './context.js'
+import {
+  assertSomethingStored,
+  mapConcurrent,
+  settleConcurrent,
+  throwIfStopped,
+} from './context.js'
+
+describe('assertSomethingStored', () => {
+  it('is an error only when every item failed and nothing was stored', () => {
+    const failed = [
+      { item: 'uniswap-v3:0xab', error: 'HTTP 401' },
+      { item: 'uniswap-v3:0xcd', error: 'HTTP 401' },
+    ]
+    expect(() => assertSomethingStored('snapshot', failed, 0)).toThrow(
+      'snapshot: every item failed (2), nothing stored; uniswap-v3:0xab: HTTP 401',
+    )
+    expect(() => assertSomethingStored('snapshot', failed, 1)).not.toThrow()
+    expect(() => assertSomethingStored('snapshot', [], 0)).not.toThrow()
+  })
+})
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 

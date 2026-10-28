@@ -23,11 +23,12 @@ import { loadConfig } from '../config.js'
 import { createLogger } from '../log.js'
 import {
   ALERT_USER_AGENT,
-  alertedForStreak,
+  type AlertHistory,
   buildAlertPayload,
   decideAlert,
   deliverAlerts,
   deliverWebhook,
+  MAX_ALERT_ATTEMPTS,
   type WebhookFetch,
 } from './alerts.js'
 import { createPipelineContext, type PipelineContext } from './context.js'
@@ -71,8 +72,12 @@ function startReceiver(): Promise<{
   })
 }
 
+/** A sample at block `timestamp` unless given one: a mandate has one sample per block. */
+const at = (overrides: Partial<MmSample>): MmSample =>
+  fixtureMmSample({ blockNumber: BigInt(overrides.timestamp ?? T0), ...overrides })
+
 function breached(overrides: Partial<MmSample> = {}): MmSample {
-  return fixtureMmSample({
+  return at({
     withinKpi: false,
     breaches: ['depthDown'],
     attribution: fixtureAttribution({ depthDownUsd: 12_000 }),
@@ -81,11 +86,11 @@ function breached(overrides: Partial<MmSample> = {}): MmSample {
 }
 
 function within(overrides: Partial<MmSample> = {}): MmSample {
-  return fixtureMmSample({ withinKpi: true, breaches: [], ...overrides })
+  return at({ withinKpi: true, breaches: [], ...overrides })
 }
 
 describe('decideAlert', () => {
-  const mandate = fixtureMandate({ alertAfterSamples: 3, alertWebhookUrl: 'http://h/x' })
+  const mandate = fixtureMandate({ alertAfterSamples: 3, alertWebhookUrl: 'https://h.example/x' })
   const series = (flags: Array<boolean | null>): MmSample[] =>
     flags.map((flag, i) =>
       flag === null
@@ -94,73 +99,94 @@ describe('decideAlert', () => {
           ? within({ timestamp: T0 + i })
           : breached({ timestamp: T0 + i }),
     )
+  const history = (overrides: Partial<AlertHistory> = {}): AlertHistory => ({
+    lastDelivered: undefined,
+    withinKpiAt: undefined,
+    breachAttempts: 0,
+    recoveredAttempts: 0,
+    ...overrides,
+  })
+  const deliveredBreach = (timestamp: number) =>
+    fixtureMmAlert({ kind: 'breach', timestamp, delivered: true })
+  const deliveredRecovery = (timestamp: number) =>
+    fixtureMmAlert({ kind: 'recovered', timestamp, delivered: true })
 
   it('needs alertAfterSamples consecutive breached samples', () => {
-    expect(decideAlert(mandate, [], undefined)).toBeNull()
-    expect(decideAlert(mandate, series([false, false]), undefined)).toBeNull()
-    expect(decideAlert(mandate, series([true, false, false]), undefined)).toBeNull()
-    const decision = decideAlert(mandate, series([true, false, false, false]), undefined)
+    expect(decideAlert(mandate, [], history())).toBeNull()
+    expect(decideAlert(mandate, series([false, false]), history())).toBeNull()
+    const after = history({ withinKpiAt: T0 })
+    expect(decideAlert(mandate, series([true, false, false]), after)).toBeNull()
+    const decision = decideAlert(mandate, series([true, false, false, false]), after)
     expect(decision?.kind).toBe('breach')
     expect(decision?.streak).toEqual({ breached: true, samples: 3, since: T0 + 1 })
     expect(decision?.latest.timestamp).toBe(T0 + 3)
   })
 
-  it('does not repeat a breach already alerted for the same streak', () => {
-    const samples = series([true, false, false, false])
-    const alerted = fixtureMmAlert({ kind: 'breach', timestamp: T0 + 3 })
-    expect(decideAlert(mandate, samples, alerted)).toBeNull()
-    // The window slides: a streak longer than the window is the alerted one.
-    const long = series([false, false, false, false])
-    const old = fixtureMmAlert({ kind: 'breach', timestamp: T0 - 100 })
-    expect(decideAlert(mandate, long, old)).toBeNull()
-    expect(alertedForStreak(old, { breached: true, samples: 4, since: T0 }, long, 3)).toBe(true)
-    // A breach alert from before this streak started (no recovery recorded) is not this streak's.
-    expect(decideAlert(mandate, samples, old)?.kind).toBe('breach')
-    expect(decideAlert(mandate, samples, fixtureMmAlert({ kind: 'recovered' }))?.kind).toBe(
+  it('does not repeat a breach delivered for the same streak, however long it gets', () => {
+    const delivered = history({
+      withinKpiAt: T0,
+      lastDelivered: deliveredBreach(T0 + 3),
+      breachAttempts: 1,
+    })
+    expect(decideAlert(mandate, series([true, false, false, false]), delivered)).toBeNull()
+    // The window slides past the streak's start: the breach still follows the within-KPI sample.
+    expect(decideAlert(mandate, series([false, false, false, false]), delivered)).toBeNull()
+    expect(decideAlert(mandate, series([false, null, false, false]), delivered)).toBeNull()
+    // Without any within-KPI sample ever, every delivered breach is this streak's.
+    const everBreached = history({ lastDelivered: deliveredBreach(T0 - 100), breachAttempts: 1 })
+    expect(decideAlert(mandate, series([false, false, false, false]), everBreached)).toBeNull()
+  })
+
+  it('alerts a new streak although an older breach was delivered', () => {
+    // A breach delivered before the last within-KPI sample belongs to an earlier streak.
+    const older = history({ withinKpiAt: T0, lastDelivered: deliveredBreach(T0 - 100) })
+    expect(decideAlert(mandate, series([true, false, false, false]), older)?.kind).toBe('breach')
+    expect(decideAlert(mandate, series([false, false, false, false]), older)?.kind).toBe('breach')
+    const recovered = history({ withinKpiAt: T0, lastDelivered: deliveredRecovery(T0) })
+    expect(decideAlert(mandate, series([true, false, false, false]), recovered)?.kind).toBe(
       'breach',
     )
   })
 
-  it('recovers after one within-KPI sample following a breach alert, and only then', () => {
-    const alerted = fixtureMmAlert({ kind: 'breach', timestamp: T0 + 2 })
-    const decision = decideAlert(mandate, series([false, false, false, true]), alerted)
+  it('tries an undelivered breach again, at most MAX_ALERT_ATTEMPTS times per streak', () => {
+    const samples = series([false, false, false, false])
+    expect(decideAlert(mandate, samples, history({ breachAttempts: 1 }))?.kind).toBe('breach')
+    const last = history({ breachAttempts: MAX_ALERT_ATTEMPTS - 1 })
+    expect(decideAlert(mandate, samples, last)?.kind).toBe('breach')
+    expect(
+      decideAlert(mandate, samples, history({ breachAttempts: MAX_ALERT_ATTEMPTS })),
+    ).toBeNull()
+  })
+
+  it('recovers after one within-KPI sample following a delivered breach, and only then', () => {
+    const delivered = history({ lastDelivered: deliveredBreach(T0 + 2), breachAttempts: 1 })
+    const samples = series([false, false, false, true])
+    const decision = decideAlert(mandate, samples, { ...delivered, withinKpiAt: T0 + 3 })
     expect(decision?.kind).toBe('recovered')
     expect(decision?.streak).toEqual({ breached: false, samples: 1, since: T0 + 3 })
-    expect(decideAlert(mandate, series([false, false, false, true]), undefined)).toBeNull()
-    expect(decideAlert(mandate, series([false, false, false, null]), alerted)).toBeNull()
-    const recovered = fixtureMmAlert({ kind: 'recovered', timestamp: T0 + 3 })
+    // An undelivered breach: nothing to recover from.
+    const undelivered = history({ withinKpiAt: T0 + 3, breachAttempts: 2 })
+    expect(decideAlert(mandate, samples, undelivered)).toBeNull()
+    // Not evaluable is not within KPI.
+    expect(decideAlert(mandate, series([false, false, false, null]), delivered)).toBeNull()
+    // Already recovered.
+    const recovered = history({ withinKpiAt: T0 + 3, lastDelivered: deliveredRecovery(T0 + 2) })
     expect(decideAlert(mandate, series([false, false, true, true]), recovered)).toBeNull()
   })
 
-  it('ignores unevaluable samples when walking the streak', () => {
-    expect(decideAlert(mandate, series([false, null, false, false]), undefined)?.kind).toBe(
-      'breach',
-    )
+  it('tries an undelivered recovery again, at most MAX_ALERT_ATTEMPTS times per breach', () => {
+    const samples = series([false, false, true, true])
+    const base = history({ withinKpiAt: T0 + 3, lastDelivered: deliveredBreach(T0 + 1) })
+    expect(decideAlert(mandate, samples, { ...base, recoveredAttempts: 1 })?.kind).toBe('recovered')
+    expect(
+      decideAlert(mandate, samples, { ...base, recoveredAttempts: MAX_ALERT_ATTEMPTS }),
+    ).toBeNull()
   })
 
-  it('does not repeat a breach when an unevaluable sample takes a slot of the window', () => {
-    const at = (flag: boolean | null, i: number): MmSample =>
-      flag === null
-        ? fixtureMmSample({ withinKpi: null, breaches: [], timestamp: T0 + i })
-        : flag
-          ? within({ timestamp: T0 + i })
-          : breached({ timestamp: T0 + i })
-    // Alerted at T0 + 2 (F0 F1 F2); the streak goes on through an unevaluable sample.
-    const alerted = fixtureMmAlert({ kind: 'breach', timestamp: T0 + 2 })
-    const window = [at(false, 3), at(false, 4), at(null, 5), at(false, 6)]
-    expect(decideAlert(mandate, window, alerted)).toBeNull()
-    expect(
-      alertedForStreak(alerted, { breached: true, samples: 3, since: T0 + 3 }, window, 3),
-    ).toBe(true)
-    const single = fixtureMandate({ alertAfterSamples: 1, alertWebhookUrl: 'http://h/x' })
-    const alertedAtStart = fixtureMmAlert({ kind: 'breach', timestamp: T0 })
-    expect(decideAlert(single, [at(null, 1), at(false, 2)], alertedAtStart)).toBeNull()
-    // A within-KPI sample in the window still pins the streak's start: an older alert is not its.
-    expect(
-      decideAlert(mandate, [at(true, 3), at(false, 4), at(false, 5), at(false, 6)], alerted)?.kind,
-    ).toBe('breach')
-    // A window that is not full holds every sample: the streak's start is known.
-    expect(decideAlert(single, [at(false, 2)], alertedAtStart)?.kind).toBe('breach')
+  it('ignores unevaluable samples when walking the streak', () => {
+    expect(decideAlert(mandate, series([false, null, false, false]), history())?.kind).toBe(
+      'breach',
+    )
   })
 })
 
@@ -315,8 +341,7 @@ describe('deliverAlerts against a local webhook', () => {
       db.mmSamples.insert({ ...sample, mandateId: gappy.id })
       await deliverAlerts(ctx, [gappy], { fetch: recording })
     }
-    const unevaluable = (i: number) =>
-      fixtureMmSample({ withinKpi: null, breaches: [], timestamp: T0 + i })
+    const unevaluable = (i: number) => at({ withinKpi: null, breaches: [], timestamp: T0 + i })
     for (const i of [0, 1, 2]) await step(breached({ timestamp: T0 + i }))
     expect(posted).toEqual(['breach'])
     await step(breached({ timestamp: T0 + 3 }))
@@ -353,8 +378,11 @@ describe('deliverAlerts against a local webhook', () => {
     expect(lines.some((l) => l.includes('alert not delivered') && l.includes('status=503'))).toBe(
       true,
     )
-    // Not retried: the attempt stands as this streak's alert.
-    expect((await deliverAlerts(ctx, [mandate])).attempts).toBe(0)
+    // Undelivered: the next sample of the streak tries again.
+    addSample(breached({ timestamp: T0 + 600 }))
+    expect(await deliverAlerts(ctx, [mandate])).toMatchObject({ attempts: 1, delivered: 0 })
+    expect(receiver.received).toHaveLength(2)
+    expect(db.mmAlerts.listFor(mandate.id, 10).map((a) => a.delivered)).toEqual([false, false])
   })
 
   it('records a connection failure with its error and never throws', async () => {

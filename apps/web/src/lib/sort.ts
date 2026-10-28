@@ -13,15 +13,18 @@ export function sortValue(item: PoolSummary, sort: PoolSort): number | null {
       return item.gapScore
     case 'tvl':
       return item.tvlUsd
-    default:
-      return null
+    case 'spread':
+      return item.spread10kBps
+    case 'top':
+      return item.ownerTop1Share
   }
 }
 
 /**
  * Stable sort of summaries (used by the mock client, the static client and client-side tables),
- * ordered like the API: nulls last in both directions, and when sorting by health the unrated
- * pools come after every rated one in both directions, each group by its total.
+ * ordered like the API: nulls last in both directions; when sorting by health the unrated pools
+ * come after every rated one, and when sorting by depth the stale quotes after the others, in both
+ * directions, each group by its value.
  */
 export function sortSummaries(
   items: readonly PoolSummary[],
@@ -29,11 +32,12 @@ export function sortSummaries(
   dir: SortDir,
 ): PoolSummary[] {
   const sign = dir === 'asc' ? 1 : -1
-  const unrated = (item: PoolSummary) => (sort === 'health' && !item.health.rated ? 1 : 0)
+  const last = (item: PoolSummary) =>
+    (sort === 'health' && !item.health.rated) || (sort === 'depth' && item.staleQuote) ? 1 : 0
   return items
-    .map((item, index) => ({ item, index, value: sortValue(item, sort), unrated: unrated(item) }))
+    .map((item, index) => ({ item, index, value: sortValue(item, sort), last: last(item) }))
     .sort((a, b) => {
-      if (a.unrated !== b.unrated) return a.unrated - b.unrated
+      if (a.last !== b.last) return a.last - b.last
       if (a.value === null && b.value === null) return a.index - b.index
       if (a.value === null) return 1
       if (b.value === null) return -1

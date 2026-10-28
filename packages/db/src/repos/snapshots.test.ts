@@ -1,10 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type Database, openDatabase } from '../database.js'
-import { FIXTURE_BIG, fixtureSnapshot } from '../fixtures.js'
-import { snapshotDepthSides, snapshotSummary, snapshotSummaryFields } from '../summary.js'
+import { FIXTURE_BIG, fixtureSnapshot, type SnapshotFixtureOverrides } from '../fixtures.js'
+import {
+  snapshotDepthSides,
+  snapshotHealthSummary,
+  snapshotSummary,
+  snapshotSummaryFields,
+} from '../summary.js'
 
 const A = 'uniswap-v3:0x000000000000000000000000000000000000000a'
 const B = 'aerodrome-v2:0x000000000000000000000000000000000000000b'
+
+/** A snapshot at block `timestamp` unless given one: a pool has one snapshot per block. */
+const snap = (overrides: SnapshotFixtureOverrides & { timestamp: number }) =>
+  fixtureSnapshot({ blockNumber: BigInt(overrides.timestamp), ...overrides })
 
 describe('SnapshotsRepo', () => {
   let db: Database
@@ -59,6 +68,7 @@ describe('SnapshotsRepo', () => {
       ownerTop1Share: null,
       depth2UpUsd: null,
       depth2DownUsd: null,
+      priceDeviationBps: null,
     })
   })
 
@@ -80,6 +90,7 @@ describe('SnapshotsRepo', () => {
       ownerTop1Share: 0.33,
       depth2UpUsd: 2160.5,
       depth2DownUsd: 2160.5,
+      priceDeviationBps: 0,
     })
     const bare = fixtureSnapshot({ depthUsd: [], spreads: [], concentration: null })
     expect(snapshotSummaryFields(bare)).toEqual({
@@ -199,10 +210,60 @@ describe('SnapshotsRepo', () => {
     expect(summaries.get('uniswap-v3:0xc')?.spread10kBps).toBeNull()
     // a point within the cap is returned as stored, to the last digit
     expect(db.snapshots.latestForPool(B)?.spreads).toEqual(wide.spreads)
+    // the summary series reads the stored point through the cap as well, never the column
+    expect(db.snapshots.seriesSummaryForPool(A, 0, 100).map((s) => s.spread10kBps)).toEqual([null])
+    expect(db.snapshots.seriesSummaryForPool(B, 0, 100).map((s) => s.spread10kBps)).toEqual([
+      6_902.55,
+    ])
+  })
+
+  it('serves a summary series equal to the summaries of the full rows, without parsing them', () => {
+    const priced = snap({ poolId: A, timestamp: 10 })
+    const unpriced = snap({
+      poolId: A,
+      timestamp: 20,
+      concentration: null,
+      depth2Usd: null,
+      spread10kBps: null,
+      token0Usd: null,
+      token1Usd: null,
+      tvlUsd: null,
+    })
+    const oneSided = snap({
+      poolId: A,
+      timestamp: 30,
+      depthUsd: [{ pct: 2, upUsd: 1234.5, downUsd: null, totalUsd: 1234.5 }],
+      concentration: { ...fixtureSnapshot().concentration, rangeHhi: null } as never,
+    })
+    db.snapshots.insertMany([
+      snap({ poolId: B, timestamp: 15 }),
+      oneSided,
+      priced,
+      unpriced,
+      snap({ poolId: A, timestamp: 40 }),
+    ])
+    const series = db.snapshots.seriesSummaryForPool(A, 10, 30)
+    expect(series).toEqual(db.snapshots.seriesForPool(A, 10, 30).map(snapshotHealthSummary))
+    expect(series.map((s) => s.updatedAt)).toEqual([10, 20, 30])
+    expect(series[0]).toEqual({ ...snapshotSummary(priced), rangeHhi: 0.25, ownerCoverage: 0.95 })
+    expect(series[1]).toMatchObject({
+      depth2Usd: null,
+      depth2UpUsd: null,
+      depth2DownUsd: null,
+      spread10kBps: null,
+      ownerTop1Share: null,
+      rangeHhi: null,
+      ownerCoverage: null,
+      tvlUsd: null,
+    })
+    expect(series[2]).toMatchObject({ depth2UpUsd: 1234.5, depth2DownUsd: null, rangeHhi: null })
+    expect(series.every((s) => s.poolId === A && typeof s.blockNumber === 'bigint')).toBe(true)
+    expect(db.snapshots.seriesSummaryForPool(A, 11, 19)).toEqual([])
+    expect(db.snapshots.seriesSummaryForPool('missing', 0, 100)).toEqual([])
   })
 
   it('lists the ±2 % sides exactly as stored: a null side stays null, never 0', () => {
-    const oneSided = fixtureSnapshot({
+    const oneSided = snap({
       poolId: A,
       timestamp: 100,
       depthUsd: [
@@ -211,9 +272,9 @@ describe('SnapshotsRepo', () => {
         { pct: 5, upUsd: 50, downUsd: null, totalUsd: 50 },
       ],
     })
-    const noLevel = fixtureSnapshot({ poolId: B, timestamp: 100, depthUsd: [] })
+    const noLevel = snap({ poolId: B, timestamp: 100, depthUsd: [] })
     // An older row of A with both sides priced must not leak into A's newest summary.
-    db.snapshots.insertMany([fixtureSnapshot({ poolId: A, timestamp: 50 }), oneSided, noLevel])
+    db.snapshots.insertMany([snap({ poolId: A, timestamp: 50 }), oneSided, noLevel])
 
     const summaries = db.snapshots.latestSummaryForPools([A, B])
     expect(summaries.get(A)).toEqual(snapshotSummary(oneSided))
@@ -229,11 +290,11 @@ describe('SnapshotsRepo', () => {
   it('returns the latest snapshot per pool by timestamp, not insertion order', () => {
     expect(
       db.snapshots.insertMany([
-        fixtureSnapshot({ poolId: A, timestamp: 300, price: 3 }),
-        fixtureSnapshot({ poolId: A, timestamp: 100, price: 1 }),
-        fixtureSnapshot({ poolId: B, timestamp: 50, price: 5 }),
-        fixtureSnapshot({ poolId: A, timestamp: 200, price: 2 }),
-        fixtureSnapshot({ poolId: B, timestamp: 60, price: 6 }),
+        snap({ poolId: A, timestamp: 300, price: 3 }),
+        snap({ poolId: A, timestamp: 100, price: 1 }),
+        snap({ poolId: B, timestamp: 50, price: 5 }),
+        snap({ poolId: A, timestamp: 200, price: 2 }),
+        snap({ poolId: B, timestamp: 60, price: 6 }),
       ]),
     ).toBe(5)
     expect(db.snapshots.insertMany([])).toBe(0)
@@ -253,13 +314,34 @@ describe('SnapshotsRepo', () => {
     expect(summaries.get(B)?.updatedAt).toBe(60)
 
     expect(db.snapshots.latestTimestamp()).toBe(300)
+    expect(db.snapshots.latestTimestampForPool(A)).toBe(300)
+    expect(db.snapshots.latestTimestampForPool(B)).toBe(60)
+    expect(db.snapshots.latestTimestampForPool('missing')).toBeNull()
     expect(db.snapshots.countForPool(A)).toBe(3)
     expect(db.snapshots.countForPool(B)).toBe(2)
   })
 
+  it('keeps one snapshot per pool and block: a copy is skipped, another pool shares the block', () => {
+    expect(db.snapshots.insert(snap({ poolId: A, timestamp: 7, price: 1 }))).toEqual(
+      expect.any(Number),
+    )
+    expect(db.snapshots.insert(snap({ poolId: A, timestamp: 8, blockNumber: 7n }))).toBeNull()
+    expect(db.snapshots.insert(snap({ poolId: B, timestamp: 7 }))).toEqual(expect.any(Number))
+    expect(
+      db.snapshots.insertMany([
+        snap({ poolId: A, timestamp: 7, price: 2 }),
+        snap({ poolId: A, timestamp: 9, price: 3 }),
+      ]),
+    ).toBe(1)
+    expect(db.snapshots.seriesForPool(A, 0).map((s) => [s.blockNumber, s.price])).toEqual([
+      [7n, 1],
+      [9n, 3],
+    ])
+  })
+
   it('breaks timestamp ties by insertion order', () => {
-    db.snapshots.insert(fixtureSnapshot({ poolId: A, timestamp: 100, price: 1, blockNumber: 1n }))
-    db.snapshots.insert(fixtureSnapshot({ poolId: A, timestamp: 100, price: 2, blockNumber: 2n }))
+    db.snapshots.insert(snap({ poolId: A, timestamp: 100, price: 1, blockNumber: 1n }))
+    db.snapshots.insert(snap({ poolId: A, timestamp: 100, price: 2, blockNumber: 2n }))
     expect(db.snapshots.latestForPool(A)?.price).toBe(2)
     expect(db.snapshots.latestForPools([A]).get(A)?.price).toBe(2)
     expect(db.snapshots.latestBlock()).toBe(2n)
@@ -267,11 +349,11 @@ describe('SnapshotsRepo', () => {
 
   it('returns ascending, bounded series per pool', () => {
     db.snapshots.insertMany([
-      fixtureSnapshot({ poolId: A, timestamp: 40 }),
-      fixtureSnapshot({ poolId: A, timestamp: 10 }),
-      fixtureSnapshot({ poolId: B, timestamp: 25 }),
-      fixtureSnapshot({ poolId: A, timestamp: 30 }),
-      fixtureSnapshot({ poolId: A, timestamp: 20 }),
+      snap({ poolId: A, timestamp: 40 }),
+      snap({ poolId: A, timestamp: 10 }),
+      snap({ poolId: B, timestamp: 25 }),
+      snap({ poolId: A, timestamp: 30 }),
+      snap({ poolId: A, timestamp: 20 }),
     ])
     const ts = (list: { timestamp: number }[]) => list.map((s) => s.timestamp)
     expect(ts(db.snapshots.seriesForPool(A, 0))).toEqual([10, 20, 30, 40])
@@ -287,9 +369,9 @@ describe('SnapshotsRepo', () => {
     expect(db.snapshots.latestTimestamp()).toBeNull()
     expect(db.snapshots.latestBlock()).toBeNull()
     db.snapshots.insertMany([
-      fixtureSnapshot({ poolId: A, timestamp: 10, blockNumber: 10n }),
-      fixtureSnapshot({ poolId: A, timestamp: 20, blockNumber: FIXTURE_BIG }),
-      fixtureSnapshot({ poolId: B, timestamp: 30, blockNumber: 30n }),
+      snap({ poolId: A, timestamp: 10, blockNumber: 10n }),
+      snap({ poolId: A, timestamp: 20, blockNumber: FIXTURE_BIG }),
+      snap({ poolId: B, timestamp: 30, blockNumber: 30n }),
     ])
     expect(db.snapshots.latestBlock()).toBe(30n)
     expect(db.snapshots.pruneBefore(20)).toBe(1)
@@ -298,5 +380,15 @@ describe('SnapshotsRepo', () => {
     expect(db.snapshots.seriesForPool(A, 0).map((s) => s.timestamp)).toEqual([20])
     expect(db.snapshots.pruneBefore(100)).toBe(2)
     expect(db.snapshots.latestTimestamp()).toBeNull()
+    // With a limit, the oldest rows go first and the count says when a batch loop is done.
+    db.snapshots.insertMany([
+      fixtureSnapshot({ poolId: A, timestamp: 10, blockNumber: 10n }),
+      fixtureSnapshot({ poolId: B, timestamp: 20, blockNumber: 20n }),
+      fixtureSnapshot({ poolId: A, timestamp: 30, blockNumber: 30n }),
+    ])
+    expect(db.snapshots.pruneBefore(100, 2)).toBe(2)
+    expect(db.snapshots.seriesForPool(A, 0).map((s) => s.timestamp)).toEqual([30])
+    expect(db.snapshots.pruneBefore(100, 2)).toBe(1)
+    expect(db.snapshots.count()).toBe(0)
   })
 })

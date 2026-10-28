@@ -5,7 +5,9 @@
  * each side into the deepest pools as solid segments, out from the spine in row order, then one
  * hatched segment for every other pool. The bracket under it states the deepest pool's share of
  * all depth. A side is null when its token has no USD price; it draws as nothing and reads "—",
- * never as 0.
+ * never as 0. A stale quote (`PoolSummary.staleQuote`, docs/METRICS.md "Stale quotes") keeps its
+ * row, but its depth is measured at a price nobody trades, so it stays out of the totals, the
+ * segments, the shares and the scale, as it does in the API's depth sums.
  */
 import type { PoolSummary } from '../../api/types.js'
 import { dexLabel, fee, NB, pairLabel, shareOf, usd } from '../../lib/format.js'
@@ -62,8 +64,12 @@ export interface ButterflyRow {
   /** Fractions of the shared scale. */
   sellW: number
   buyW: number
-  /** This pool's share of the scope's two-sided depth. */
-  share: number
+  /** This pool's share of the scope's two-sided depth; null for a stale quote (left out of it). */
+  share: number | null
+  /** The pool quotes a stale price: drawn, but outside every total. */
+  stale: boolean
+  /** `PoolSummary.priceDeviationBps`, which says how far off a stale quote is. */
+  deviationBps: number | null
 }
 
 /** One segment of a total side: offset from the spine and width, as scale fractions. */
@@ -95,7 +101,7 @@ export interface ButterflyModel {
     sellW: number
     buyW: number
   } | null
-  /** The number of pools in scope. */
+  /** The pools the totals cover: every pool in scope but the stale quotes. */
   poolCount: number
 }
 
@@ -110,20 +116,22 @@ export function butterflyModel(
   rows: readonly PoolSummary[],
   all: readonly PoolSummary[],
 ): ButterflyModel {
+  const counted = all.filter((p) => !p.staleQuote)
   const total = {
-    sell: sum(all.map((p) => p.depth2DownUsd)),
-    buy: sum(all.map((p) => p.depth2UpUsd)),
+    sell: sum(counted.map((p) => p.depth2DownUsd)),
+    buy: sum(counted.map((p) => p.depth2UpUsd)),
   }
   const max = Math.max(total.sell, total.buy)
-  const frac = (v: number | null) => (max > 0 && v !== null ? Math.max(0, v) / max : 0)
+  // A stale row can hold more than every counted pool together: it stops at the scale's end.
+  const frac = (v: number | null) => (max > 0 && v !== null ? Math.min(1, Math.max(0, v) / max) : 0)
   const both = total.sell + total.buy
   const shareOfAll = (p: PoolSummary) => (both > 0 ? depthOf(p) / both : 0)
 
-  const deep = byDepth(all)
+  const deep = byDepth(counted)
     .filter((p) => depthOf(p) > 0)
     .slice(0, TOTAL_SEGMENTS)
   const deepIds = new Set(deep.map((p) => p.pool.id))
-  const others = all.filter((p) => !deepIds.has(p.pool.id))
+  const others = counted.filter((p) => !deepIds.has(p.pool.id))
   const rest = {
     count: others.length,
     sell: sum(others.map((p) => p.depth2DownUsd)),
@@ -150,7 +158,9 @@ export function butterflyModel(
       buy: p.depth2UpUsd,
       sellW: frac(p.depth2DownUsd),
       buyW: frac(p.depth2UpUsd),
-      share: shareOfAll(p),
+      share: p.staleQuote ? null : shareOfAll(p),
+      stale: p.staleQuote,
+      deviationBps: p.priceDeviationBps,
     })),
     total,
     max,
@@ -158,7 +168,7 @@ export function butterflyModel(
     segments: { sell: side('depth2DownUsd', rest.sell), buy: side('depth2UpUsd', rest.buy) },
     rest,
     bracket:
-      top && all.length > 1
+      top && counted.length > 1
         ? {
             id: top.pool.id,
             pair: pairLabel(top.pool.token0, top.pool.token1),
@@ -169,7 +179,7 @@ export function butterflyModel(
             buyW: frac(top.depth2UpUsd),
           }
         : null,
-    poolCount: all.length,
+    poolCount: counted.length,
   }
 }
 
@@ -218,12 +228,19 @@ export function butterflyLabel(model: ButterflyModel, scope: string): string {
   return `${head}${conc} By pool: ${pools}.`
 }
 
+/** "5 % of Base", or for a stale quote "left out of Base’s total: stale price". */
+export function shareWords(row: ButterflyRow, scope: string): string {
+  return row.share === null
+    ? `left out of ${scope}’s total: stale price`
+    : `${shareOf(row.share)} of ${scope}`
+}
+
 /** A row link's accessible name: both sides and the share of the scope. */
 export function rowLinkLabel(row: ButterflyRow, scope: string): string {
-  return `${row.pair}, ${row.venue}: ${usd(row.sell)} on the sell side and ${usd(row.buy)} on the buy side within 2${NB}%, ${shareOf(row.share)} of ${scope}`
+  return `${row.pair}, ${row.venue}: ${usd(row.sell)} on the sell side and ${usd(row.buy)} on the buy side within 2${NB}%, ${shareWords(row, scope)}`
 }
 
 /** The readout line while a row is lensed: "WETH / cbBTC, Uniswap v3 0.3 %: 5 % of Base". */
 export function readoutText(row: ButterflyRow, scope: string): { who: string; share: string } {
-  return { who: `${row.pair}, ${row.venue}`, share: `${shareOf(row.share)} of ${scope}` }
+  return { who: `${row.pair}, ${row.venue}`, share: shareWords(row, scope) }
 }

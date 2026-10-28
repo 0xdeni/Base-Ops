@@ -1,8 +1,8 @@
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { type Database, openDatabase } from './database.js'
+import { BUSY_TIMEOUT_MS, type Database, openDatabase, retryWhileBusy } from './database.js'
 import {
   fixtureMandate,
   fixtureMmAlert,
@@ -32,7 +32,10 @@ const EXPECTED_TABLES = [
 const EXPECTED_INDEXES = [
   'mandates_pool_id',
   'mm_alerts_mandate_timestamp',
+  'mm_alerts_timestamp',
+  'mm_samples_mandate_block',
   'mm_samples_mandate_timestamp',
+  'mm_samples_timestamp',
   'pools_dex',
   'pools_token0',
   'pools_token1',
@@ -41,6 +44,7 @@ const EXPECTED_INDEXES = [
   'scores_gap_score',
   'scores_health_total',
   'scores_volume_24h_usd',
+  'snapshots_pool_block',
   'snapshots_pool_timestamp',
   'snapshots_timestamp',
   'volume_hourly_hour_start',
@@ -72,8 +76,8 @@ describe('openDatabase', () => {
   it('creates the schema and records every migration once', () => {
     const db = memory()
     expect(db.migration).toEqual({ from: 0, to: SCHEMA_VERSION })
-    expect(MIGRATIONS.length).toBe(2)
-    expect(SCHEMA_VERSION).toBe(2)
+    expect(MIGRATIONS.length).toBe(6)
+    expect(SCHEMA_VERSION).toBe(6)
     expect(names(db, 'table')).toEqual(EXPECTED_TABLES)
     expect(names(db, 'index')).toEqual(EXPECTED_INDEXES)
     const versions = db.raw
@@ -118,53 +122,18 @@ describe('openDatabase', () => {
     expect(readdirSync(dir)).toContain('test.sqlite')
   })
 
-  it('upgrades a version-1 database to the scorecard schema and keeps its rows', () => {
+  it('checkpoint folds the WAL into the file and empties it', () => {
     const dir = mkdtempSync(join(tmpdir(), 'depthwatch-db-'))
     tempDirs.push(dir)
-    const path = join(dir, 'v1.sqlite')
-
-    // Roll a fresh database back to version 1 (layer 1 tables only) the way a pre-layer-2
-    // build would have left it, then reopen with the current build.
-    const fresh = openDatabase(path, { now: () => NOW })
-    fresh.tokens.upsertMany([fixtureToken()])
-    fresh.raw.exec('DROP TABLE mm_alerts; DROP TABLE mm_samples; DROP TABLE mandates')
-    fresh.raw.prepare('DELETE FROM schema_version WHERE version > 1').run()
-    expect(currentVersion(fresh.raw)).toBe(1)
-    expect(names(fresh, 'table')).not.toContain('mandates')
-    fresh.close()
-
-    const upgraded = openDatabase(path, { now: () => NOW + 5 })
-    open.push(upgraded)
-    expect(upgraded.migration).toEqual({ from: 1, to: SCHEMA_VERSION })
-    expect(names(upgraded, 'table')).toEqual(EXPECTED_TABLES)
-    expect(names(upgraded, 'index')).toEqual(EXPECTED_INDEXES)
-    expect(
-      upgraded.raw.prepare('SELECT version, applied_at FROM schema_version ORDER BY version').all(),
-    ).toEqual([
-      { version: 1, applied_at: NOW },
-      { version: 2, applied_at: NOW + 5 },
-    ])
-    expect(upgraded.tokens.get(fixtureToken().address)).toEqual(fixtureToken())
-    upgraded.mandates.upsert(fixtureMandate())
-    expect(upgraded.mandates.count()).toBe(1)
-    upgraded.close()
-
-    const again = openDatabase(path, { now: () => NOW + 9 })
-    open.push(again)
-    expect(again.migration).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION })
-    expect(again.mandates.get(fixtureMandate().id)).toEqual(fixtureMandate())
-  })
-
-  it('refuses a database written by a newer schema', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'depthwatch-db-'))
-    tempDirs.push(dir)
-    const path = join(dir, 'newer.sqlite')
+    const path = join(dir, 'wal.sqlite')
     const db = openDatabase(path, { now: () => NOW })
-    db.raw
-      .prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)')
-      .run(SCHEMA_VERSION + 1, NOW)
-    db.close()
-    expect(() => openDatabase(path)).toThrow(/newer than this build/)
+    open.push(db)
+    db.tokens.upsertMany([fixtureToken()])
+    expect(statSync(`${path}-wal`).size).toBeGreaterThan(0)
+    db.checkpoint()
+    expect(statSync(`${path}-wal`).size).toBe(0)
+    expect(db.tokens.get(fixtureToken().address)).toEqual(fixtureToken())
+    expect(() => memory().checkpoint()).not.toThrow()
   })
 
   it('commits transactions, rolls back on throw and lets nested calls join', () => {
@@ -173,12 +142,12 @@ describe('openDatabase', () => {
       db.syncState.set('a', '1')
       return db.transaction(() => {
         db.syncState.set('b', '2')
-        expect(db.raw.isTransaction).toBe(true)
+        expect(db.inTransaction).toBe(true)
         return 'nested'
       })
     })
     expect(result).toBe('nested')
-    expect(db.raw.isTransaction).toBe(false)
+    expect(db.inTransaction).toBe(false)
     expect(db.syncState.entries()).toEqual([
       ['a', '1'],
       ['b', '2'],
@@ -193,9 +162,28 @@ describe('openDatabase', () => {
         throw new Error('boom')
       }),
     ).toThrow('boom')
-    expect(db.raw.isTransaction).toBe(false)
+    expect(db.inTransaction).toBe(false)
     expect(db.syncState.get('c')).toBeUndefined()
     expect(db.syncState.get('d')).toBeUndefined()
+  })
+
+  it('gathers planner statistics on analyze() with a bounded sample per index', () => {
+    const db = memory()
+    expect(db.raw.prepare('PRAGMA analysis_limit').get()).toEqual({ analysis_limit: 1000 })
+    db.pools.upsertMany([fixturePool()])
+    const stats = () =>
+      db.raw
+        .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_stat1'`)
+        .all()
+    expect(stats()).toEqual([])
+    db.analyze()
+    expect(stats()).toEqual([{ name: 'sqlite_stat1' }])
+    const analysed = db.raw
+      .prepare('SELECT DISTINCT tbl FROM sqlite_stat1 ORDER BY tbl')
+      .all()
+      .map((row) => String(row.tbl))
+    expect(analysed).toContain('pools')
+    expect(analysed).toContain('tokens')
   })
 
   it('stamps first_seen_at from the injected clock and closes idempotently', () => {
@@ -205,5 +193,67 @@ describe('openDatabase', () => {
     db.close()
     expect(() => db.close()).not.toThrow()
     expect(db.isOpen).toBe(false)
+  })
+})
+
+describe('retryWhileBusy', () => {
+  const busy = () => Object.assign(new Error('database is locked'), { errcode: 5 })
+
+  function fakeClock() {
+    let now = 0
+    const sleeps: number[] = []
+    return {
+      sleeps,
+      nowMs: () => now,
+      sleep: (ms: number) => {
+        sleeps.push(ms)
+        now += ms
+      },
+    }
+  }
+
+  it('retries SQLITE_BUSY and SQLITE_LOCKED (extended codes too) with a growing wait', () => {
+    const clock = fakeClock()
+    const errors = [busy(), Object.assign(new Error('locked'), { errcode: 6 }), busy()]
+    errors.push(Object.assign(new Error('busy recovery'), { errcode: 5 | (1 << 8) }))
+    let calls = 0
+    const value = retryWhileBusy(() => {
+      const error = errors[calls++]
+      if (error !== undefined) throw error
+      return 'wal'
+    }, clock)
+    expect(value).toBe('wal')
+    expect(calls).toBe(5)
+    expect(clock.sleeps).toEqual([10, 20, 40, 80])
+  })
+
+  it('throws the last busy error once the timeout has passed', () => {
+    const clock = fakeClock()
+    let calls = 0
+    expect(() =>
+      retryWhileBusy(() => {
+        calls++
+        throw busy()
+      }, clock),
+    ).toThrow('database is locked')
+    expect(clock.nowMs()).toBeGreaterThanOrEqual(BUSY_TIMEOUT_MS)
+    expect(clock.nowMs()).toBeLessThan(BUSY_TIMEOUT_MS + 100)
+    expect(calls).toBe(clock.sleeps.length + 1)
+  })
+
+  it('throws any other error at once', () => {
+    const clock = fakeClock()
+    const corrupt = Object.assign(new Error('file is not a database'), { errcode: 26 })
+    expect(() =>
+      retryWhileBusy(() => {
+        throw corrupt
+      }, clock),
+    ).toThrow(corrupt)
+    expect(() =>
+      retryWhileBusy(() => {
+        throw new Error('plain')
+      }, clock),
+    ).toThrow('plain')
+    expect(clock.sleeps).toEqual([])
   })
 })

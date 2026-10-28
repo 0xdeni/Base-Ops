@@ -4,11 +4,13 @@
  * Files are served by `@hono/node-server`'s serveStatic (streams, content types from the
  * extension, `..` segments rejected). A GET that matches no file and no `/api` route gets
  * `index.html`, unless it looks like a file request (`/assets/missing.js`) from a client that does
- * not accept HTML, which is a plain 404 so broken asset links do not come back as HTML.
+ * not accept HTML, which is a plain 404 so broken asset links do not come back as HTML. Files and
+ * the fallback are compressed, tagged and given their `Cache-Control` by `caching.ts`.
  */
 import { statSync } from 'node:fs'
 import { serveStatic } from '@hono/node-server/serve-static'
 import type { Context, Hono } from 'hono'
+import { compressAndTag, staticCacheHeaders } from './caching.js'
 
 export function isApiPath(path: string): boolean {
   return path === '/api' || path.startsWith('/api/')
@@ -38,6 +40,8 @@ export function mountStatic(app: Hono, staticDir: string): void {
   const files = serveStatic({ root: staticDir })
   const index = serveStatic({ root: staticDir, path: 'index.html' })
 
+  // Only requests no API or document route answered get here, so this layer is the dashboard's.
+  app.use('*', ...compressAndTag(), staticCacheHeaders())
   app.use('*', async (c: Context, next) => {
     if (isApiPath(c.req.path) || !isReadMethod(c.req.method)) return next()
     return files(c, next)

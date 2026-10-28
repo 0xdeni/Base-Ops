@@ -3,14 +3,13 @@
  * direction, optional columns and whether every pool is listed live in the URL (`sort`, `dir`,
  * `cols`, `rows=all`; defaults are omitted, the URL is replaced, not pushed). The
  * keys, columns and order are the shared pools table's (lib/poolsTable.ts); this page sorts by
- * depth by default. Keys the API sorts by are sent to it; spread and top LP share sort the loaded
- * page, nulls last in both directions (TB4).
+ * depth by default. Every key goes to the API, which orders all of the token's pools, nulls last
+ * in both directions (TB4).
  */
-import type { PoolSort, TokenQuery } from '../../api/types.js'
+import type { TokenQuery } from '../../api/types.js'
 import {
   colsParam,
   defaultDir,
-  isApiSort,
   type PoolsSortKey,
   readTableState as readShared,
   type TableState,
@@ -35,17 +34,15 @@ export function writeTableState(params: URLSearchParams, state: TableState): URL
   return next
 }
 
-/** The API's own sort for `key`, or its default when only the page can sort by it. */
-export function apiSort(key: PoolsSortKey): PoolSort {
-  return isApiSort(key) ? key : 'depth'
-}
-
-/** The API pages a token's pools; one page of its maximum covers any token in practice. */
+/**
+ * The API's largest page: the first pools of the token in the table's order. The answer and the
+ * takeaway read the token's totals from the API, so they hold for every pool beyond it too.
+ */
 export const TOKEN_POOL_LIMIT = 200
 
 /** The `GET /api/tokens/:address` query of the Token page for its URL state. */
 export function tokenQuery(state: TableState): TokenQuery {
-  return { sort: apiSort(state.sort), dir: state.dir, limit: TOKEN_POOL_LIMIT }
+  return { sort: state.sort, dir: state.dir, limit: TOKEN_POOL_LIMIT }
 }
 
 /** The sheet lists this many pools until "Show all" (`rows=all`), so the page stays in budget. */

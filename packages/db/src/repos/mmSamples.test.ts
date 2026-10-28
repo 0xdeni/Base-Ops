@@ -1,3 +1,4 @@
+import type { MmSample } from '@depthwatch/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type Database, openDatabase } from '../database.js'
 import { FIXTURE_BIG, FIXTURE_MM_BLOCK, fixtureAttribution, fixtureMmSample } from '../fixtures.js'
@@ -7,6 +8,10 @@ const M2 = 'acme-aero-usdc'
 const POOL = 'uniswap-v3:0x000000000000000000000000000000000000000a'
 
 const ts = (list: { timestamp: number }[]) => list.map((s) => s.timestamp)
+
+/** A sample at block `timestamp` unless given one: a mandate has one sample per block. */
+const sample = (overrides: Partial<MmSample> & { timestamp: number }): MmSample =>
+  fixtureMmSample({ blockNumber: BigInt(overrides.timestamp), ...overrides })
 
 describe('MmSamplesRepo', () => {
   let db: Database
@@ -46,14 +51,14 @@ describe('MmSamplesRepo', () => {
 
   it('keeps block numbers beyond 2^64 and the three withinKpi states', () => {
     db.mmSamples.insertMany([
-      fixtureMmSample({ mandateId: M1, timestamp: 1, blockNumber: FIXTURE_BIG, withinKpi: true }),
-      fixtureMmSample({
+      sample({ mandateId: M1, timestamp: 1, blockNumber: FIXTURE_BIG, withinKpi: true }),
+      sample({
         mandateId: M1,
         timestamp: 2,
         withinKpi: null,
         attribution: fixtureAttribution({ depthUpUsd: null, depthDownUsd: null }),
       }),
-      fixtureMmSample({
+      sample({
         mandateId: M1,
         timestamp: 3,
         withinKpi: false,
@@ -72,11 +77,11 @@ describe('MmSamplesRepo', () => {
   it('returns ascending, bounded series per mandate', () => {
     expect(
       db.mmSamples.insertMany([
-        fixtureMmSample({ mandateId: M1, timestamp: 40 }),
-        fixtureMmSample({ mandateId: M1, timestamp: 10 }),
-        fixtureMmSample({ mandateId: M2, timestamp: 25 }),
-        fixtureMmSample({ mandateId: M1, timestamp: 30 }),
-        fixtureMmSample({ mandateId: M1, timestamp: 20 }),
+        sample({ mandateId: M1, timestamp: 40 }),
+        sample({ mandateId: M1, timestamp: 10 }),
+        sample({ mandateId: M2, timestamp: 25 }),
+        sample({ mandateId: M1, timestamp: 30 }),
+        sample({ mandateId: M1, timestamp: 20 }),
       ]),
     ).toBe(5)
     expect(db.mmSamples.insertMany([])).toBe(0)
@@ -94,21 +99,36 @@ describe('MmSamplesRepo', () => {
   })
 
   it('breaks timestamp ties by insertion order in series and latest', () => {
-    db.mmSamples.insert(fixtureMmSample({ mandateId: M1, timestamp: 100, blockNumber: 1n }))
-    db.mmSamples.insert(fixtureMmSample({ mandateId: M1, timestamp: 100, blockNumber: 2n }))
-    db.mmSamples.insert(fixtureMmSample({ mandateId: M1, timestamp: 50, blockNumber: 3n }))
+    db.mmSamples.insert(sample({ mandateId: M1, timestamp: 100, blockNumber: 1n }))
+    db.mmSamples.insert(sample({ mandateId: M1, timestamp: 100, blockNumber: 2n }))
+    db.mmSamples.insert(sample({ mandateId: M1, timestamp: 50, blockNumber: 3n }))
     expect(db.mmSamples.seriesFor(M1, 0).map((s) => s.blockNumber)).toEqual([3n, 1n, 2n])
     expect(db.mmSamples.latestFor(M1)?.blockNumber).toBe(2n)
     expect(db.mmSamples.latestForMany([M1]).get(M1)?.blockNumber).toBe(2n)
   })
 
+  it('reports the newest sample id per mandate as an index lookup', () => {
+    expect(db.mmSamples.latestIdFor(M1)).toBeNull()
+    const first = db.mmSamples.insert(sample({ mandateId: M1, timestamp: 300 }))
+    expect(db.mmSamples.latestIdFor(M1)).toBe(first)
+    // an older sample inserted later does not become the newest
+    db.mmSamples.insert(sample({ mandateId: M1, timestamp: 100 }))
+    expect(db.mmSamples.latestIdFor(M1)).toBe(first)
+    // a tie on the timestamp goes to the later insertion
+    const tie = db.mmSamples.insert(sample({ mandateId: M1, timestamp: 300, blockNumber: 301n }))
+    expect(db.mmSamples.latestIdFor(M1)).toBe(tie)
+    expect(db.mmSamples.latestIdFor(M2)).toBeNull()
+    db.mmSamples.deleteFor(M1)
+    expect(db.mmSamples.latestIdFor(M1)).toBeNull()
+  })
+
   it('returns the latest sample per mandate by timestamp, not insertion order', () => {
     db.mmSamples.insertMany([
-      fixtureMmSample({ mandateId: M1, timestamp: 300, withinKpi: false, breaches: ['depthUp'] }),
-      fixtureMmSample({ mandateId: M1, timestamp: 100 }),
-      fixtureMmSample({ mandateId: M2, timestamp: 50 }),
-      fixtureMmSample({ mandateId: M1, timestamp: 200 }),
-      fixtureMmSample({ mandateId: M2, timestamp: 60, withinKpi: null }),
+      sample({ mandateId: M1, timestamp: 300, withinKpi: false, breaches: ['depthUp'] }),
+      sample({ mandateId: M1, timestamp: 100 }),
+      sample({ mandateId: M2, timestamp: 50 }),
+      sample({ mandateId: M1, timestamp: 200 }),
+      sample({ mandateId: M2, timestamp: 60, withinKpi: null }),
     ])
     expect(db.mmSamples.latestFor(M1)?.timestamp).toBe(300)
     expect(db.mmSamples.latestFor(M1)?.breaches).toEqual(['depthUp'])
@@ -127,11 +147,11 @@ describe('MmSamplesRepo', () => {
 
   it('returns the newest N samples oldest first with recentFor', () => {
     db.mmSamples.insertMany([
-      fixtureMmSample({ mandateId: M1, timestamp: 40 }),
-      fixtureMmSample({ mandateId: M1, timestamp: 10 }),
-      fixtureMmSample({ mandateId: M2, timestamp: 35 }),
-      fixtureMmSample({ mandateId: M1, timestamp: 30 }),
-      fixtureMmSample({ mandateId: M1, timestamp: 20 }),
+      sample({ mandateId: M1, timestamp: 40 }),
+      sample({ mandateId: M1, timestamp: 10 }),
+      sample({ mandateId: M2, timestamp: 35 }),
+      sample({ mandateId: M1, timestamp: 30 }),
+      sample({ mandateId: M1, timestamp: 20 }),
     ])
     expect(ts(db.mmSamples.recentFor(M1, 2))).toEqual([30, 40])
     expect(ts(db.mmSamples.recentFor(M1, 10))).toEqual([10, 20, 30, 40])
@@ -142,12 +162,32 @@ describe('MmSamplesRepo', () => {
     expect(() => db.mmSamples.recentFor(M1, 1.5)).toThrow(RangeError)
   })
 
+  it('finds the timestamp of the newest sample within KPI', () => {
+    expect(db.mmSamples.lastWithinKpiAt(M1)).toBeUndefined()
+    db.mmSamples.insertMany([
+      sample({ mandateId: M1, timestamp: 1, withinKpi: true }),
+      sample({ mandateId: M1, timestamp: 2, withinKpi: false }),
+      sample({ mandateId: M1, timestamp: 3, withinKpi: true }),
+      sample({
+        mandateId: M1,
+        timestamp: 4,
+        withinKpi: null,
+        attribution: fixtureAttribution({ depthUpUsd: null, depthDownUsd: null }),
+      }),
+      sample({ mandateId: M1, timestamp: 5, withinKpi: false }),
+      sample({ mandateId: M2, timestamp: 9, withinKpi: true }),
+    ])
+    expect(db.mmSamples.lastWithinKpiAt(M1)).toBe(3)
+    expect(db.mmSamples.lastWithinKpiAt(M2)).toBe(9)
+    expect(db.mmSamples.lastWithinKpiAt('missing')).toBeUndefined()
+  })
+
   it('prunes by timestamp across mandates and deletes per mandate', () => {
     db.mmSamples.insertMany([
-      fixtureMmSample({ mandateId: M1, timestamp: 10 }),
-      fixtureMmSample({ mandateId: M1, timestamp: 20 }),
-      fixtureMmSample({ mandateId: M2, timestamp: 15 }),
-      fixtureMmSample({ mandateId: M2, timestamp: 30 }),
+      sample({ mandateId: M1, timestamp: 10 }),
+      sample({ mandateId: M1, timestamp: 20 }),
+      sample({ mandateId: M2, timestamp: 15 }),
+      sample({ mandateId: M2, timestamp: 30 }),
     ])
     expect(db.mmSamples.pruneBefore(20)).toBe(2)
     expect(db.mmSamples.pruneBefore(20)).toBe(0)
@@ -161,16 +201,33 @@ describe('MmSamplesRepo', () => {
     expect(db.mmSamples.count()).toBe(0)
   })
 
+  it('keeps one sample per mandate and block: a copy is skipped, another mandate shares it', () => {
+    expect(db.mmSamples.insert(sample({ mandateId: M1, timestamp: 7 }))).toEqual(expect.any(Number))
+    expect(db.mmSamples.insert(sample({ mandateId: M1, timestamp: 8, blockNumber: 7n }))).toBeNull()
+    expect(db.mmSamples.insert(sample({ mandateId: M2, timestamp: 7 }))).toEqual(expect.any(Number))
+    expect(
+      db.mmSamples.insertMany([
+        sample({ mandateId: M1, timestamp: 7, withinKpi: false }),
+        sample({ mandateId: M1, timestamp: 9 }),
+      ]),
+    ).toBe(1)
+    expect(db.mmSamples.seriesFor(M1, 0).map((s) => [s.blockNumber, s.timestamp])).toEqual([
+      [7n, 7],
+      [9n, 9],
+    ])
+    expect(db.mmSamples.latestFor(M1)?.withinKpi).toBe(true)
+  })
+
   it('joins the snapshot transaction and rolls back with it', () => {
     expect(() =>
       db.transaction(() => {
-        db.mmSamples.insert(fixtureMmSample({ mandateId: M1, timestamp: 1 }))
+        db.mmSamples.insert(sample({ mandateId: M1, timestamp: 1 }))
         throw new Error('boom')
       }),
     ).toThrow('boom')
     expect(db.mmSamples.count()).toBe(0)
     db.transaction(() => {
-      db.mmSamples.insertMany([fixtureMmSample({ mandateId: M1, timestamp: 1 })])
+      db.mmSamples.insertMany([sample({ mandateId: M1, timestamp: 1 })])
     })
     expect(db.mmSamples.count()).toBe(1)
   })

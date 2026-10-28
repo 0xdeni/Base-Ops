@@ -14,6 +14,7 @@ import type { Root } from 'react-dom/client'
 import { App } from './App.js'
 import { type ResolvedClient, resolveClient } from './api/client.js'
 import { BOOT_SHELL_MS, createPendingClient } from './api/pending.js'
+import { RootErrorBoundary } from './components/ErrorBoundary.js'
 import { ServiceDownState } from './components/ui/States.js'
 
 export async function startLive(
@@ -31,7 +32,9 @@ export async function startLive(
         client.catch(() => undefined)
         root.render(
           <StrictMode>
-            <App client={createPendingClient(client)} mock={false} connecting />
+            <RootErrorBoundary>
+              <App client={createPendingClient(client)} mock={false} connecting />
+            </RootErrorBoundary>
           </StrictMode>,
         )
       }, shellAfter)
@@ -52,7 +55,9 @@ export async function startLive(
   // `depthwatch demo` answers `/api/health` with `source: 'demo'`: demo line, demo clock.
   root.render(
     <StrictMode>
-      <App client={client} mock={mock} demo={demo} dataNow={dataNow ?? undefined} />
+      <RootErrorBoundary>
+        <App client={client} mock={mock} demo={demo} dataNow={dataNow ?? undefined} />
+      </RootErrorBoundary>
     </StrictMode>,
   )
 }

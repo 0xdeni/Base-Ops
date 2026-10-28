@@ -6,7 +6,9 @@
 import type { MmSampleDto, PoolSnapshotDto, PoolSummary, SampleWindow } from '../../api/types.js'
 import { abs, amount, day, NB, shareOf, usd } from '../../lib/format.js'
 import { breachSides, dailySummary, sampleKeys } from '../../lib/scorecard.js'
+import { staleQuoteDetail } from '../../lib/staleQuote.js'
 import { TableScroll } from '../ui/TableScroll.js'
+import { Unknown } from '../ui/Unknown.js'
 import { butterflyModel, pickButterflyRows } from './butterflyModel.js'
 import { asymmetryNote } from './curveModel.js'
 
@@ -27,10 +29,13 @@ export function ButterflyTable({
 }) {
   const rows = rowsProp ?? pickButterflyRows(pools, gapPoolId)
   const m = butterflyModel(rows, pools)
-  const other = pools.length - rows.length
+  // A stale row is listed but outside the totals, so "every other pool" is what the totals hold
+  // beyond the counted rows.
+  const counted = m.rows.filter((r) => !r.stale)
+  const other = m.poolCount - counted.length
   const both = m.total.sell + m.total.buy
-  const otherSell = m.total.sell - m.rows.reduce((s, r) => s + (r.sell ?? 0), 0)
-  const otherBuy = m.total.buy - m.rows.reduce((s, r) => s + (r.buy ?? 0), 0)
+  const otherSell = m.total.sell - counted.reduce((s, r) => s + (r.sell ?? 0), 0)
+  const otherBuy = m.total.buy - counted.reduce((s, r) => s + (r.buy ?? 0), 0)
   return (
     <TableScroll>
       <table className="tbl dense">
@@ -57,7 +62,13 @@ export function ButterflyTable({
               </td>
               <td className="r num">{usd(r.sell)}</td>
               <td className="r num">{usd(r.buy)}</td>
-              <td className="r num">{shareOf(r.share)}</td>
+              <td className="r num">
+                {r.share === null ? (
+                  <Unknown reason={staleQuoteDetail(r.deviationBps)} />
+                ) : (
+                  shareOf(r.share)
+                )}
+              </td>
             </tr>
           ))}
           {other > 0 ? (

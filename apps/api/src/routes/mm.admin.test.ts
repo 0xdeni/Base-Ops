@@ -2,16 +2,20 @@ import type { PublicMandate } from '@depthwatch/core'
 import { type Database, fixtureMmAlert } from '@depthwatch/db'
 import type { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { RequestLogEntry } from '../accessLog.js'
 import { createApp } from '../app.js'
 import type {
   DeleteMandateResponse,
   ErrorResponse,
   ScorecardDetail,
   ScorecardSummaryDto,
+  ScorecardsResponse,
 } from '../dto.js'
 import { createSeededDatabase, type Seed } from '../testing/seed.js'
 
 const TOKEN = 'test-admin-token'
+/** What `@hono/node-server` hands the app as its environment: the request's socket. */
+const PEER = { incoming: { socket: { remoteAddress: '203.0.113.7' } } }
 
 function registration(
   seed: Seed,
@@ -95,6 +99,60 @@ describe('admin auth matrix', () => {
     }
     expect(db.mandates.count()).toBe(2)
     expect(db.mandates.get('acme-weth-usdc')).toBeUndefined()
+  })
+
+  it('reports every 401 to the access log with the reason and the peer address', async () => {
+    const entries: RequestLogEntry[] = []
+    const app = createApp(db, {
+      now: () => seed.now,
+      adminToken: TOKEN,
+      onRequest: (entry) => entries.push(entry),
+    })
+    const json = { 'content-type': 'application/json' }
+    const body = JSON.stringify(registration(seed))
+    const target = `/api/mm/${seed.mandates.aeroBreached.id}`
+    await app.request('/api/mm', { method: 'POST', headers: json, body }, PEER)
+    await app.request('/api/mm', {
+      method: 'POST',
+      headers: { ...json, authorization: 'Basic x' },
+      body,
+    })
+    await app.request(
+      target,
+      { method: 'DELETE', headers: { authorization: 'Bearer guess' } },
+      PEER,
+    )
+    await app.request(
+      '/api/mm',
+      {
+        method: 'POST',
+        headers: { ...json, authorization: `Bearer ${TOKEN}` },
+        body,
+      },
+      PEER,
+    )
+    expect(entries.map(({ ms: _ms, ...rest }) => rest)).toEqual([
+      {
+        method: 'POST',
+        path: '/api/mm',
+        status: 401,
+        authFailure: 'missing token',
+        client: '203.0.113.7',
+      },
+      // Without a socket (another runtime) the reason is still reported.
+      { method: 'POST', path: '/api/mm', status: 401, authFailure: 'missing token' },
+      {
+        method: 'DELETE',
+        path: target,
+        status: 401,
+        authFailure: 'wrong token',
+        client: '203.0.113.7',
+      },
+      // An accepted request is an ordinary entry: no reason, no peer address.
+      { method: 'POST', path: '/api/mm', status: 201 },
+    ])
+    expect(JSON.stringify(entries)).not.toContain('guess')
+    expect(JSON.stringify(entries)).not.toContain(TOKEN)
   })
 
   it('accepts the right token: 201 on POST, 200 on DELETE', async () => {
@@ -191,6 +249,12 @@ describe('POST /api/mm', () => {
     expect(body.uptime.d7.samples).toBe(25)
     expect(db.mmSamples.countFor(existing.id)).toBe(25)
     expect(db.mandates.count()).toBe(2)
+    // The reads serve the re-registered mandate at once, not a summary of the old one.
+    const detail = (await (await app.request(`/api/mm/${existing.id}`)).json()) as ScorecardDetail
+    expect(detail.mandate.kpis.minDepthUsd).toBe(5_000)
+    expect(detail.mandate.notes).toBe('relaxed')
+    const list = (await (await app.request('/api/mm')).json()) as ScorecardsResponse
+    expect(list.items.find((i) => i.mandate.id === existing.id)?.mandate.notes).toBe('relaxed')
   })
 
   it('honours an explicit createdAt and active', async () => {

@@ -90,6 +90,7 @@ function TokenView({
         <TokenPools
           pools={pools}
           symbol={token.symbol}
+          totals={detail}
           state={state}
           allRows={allRows}
           busy={busy}
@@ -139,8 +140,12 @@ export function Token() {
     content = (
       <NotFoundState
         title="token not found"
-        message="Depthwatch has not seen this token in any pool it tracks, or the link is wrong."
+        message="Depthwatch has not seen this token in any pool it tracks, or the link is wrong. It covers the tokens of the pools it lists under Pools; whoever runs this site can add a token to its seed."
         id={normalized}
+        links={{
+          primary: { to: '/pools', label: 'Browse pools' },
+          secondary: { to: '/methodology', label: 'How it is measured' },
+        }}
       />
     )
   } else if (token.isError) {

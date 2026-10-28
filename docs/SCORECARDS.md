@@ -22,29 +22,35 @@ the metric definitions the scorecard builds on are in [METRICS.md](METRICS.md). 
 A mandate is keyed to exactly one pool; several mandates may point at the same pool (two market
 makers in one pool, or one agreement renegotiated under a new id).
 
-| Field                    | Meaning                                                                                                                         | Default |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `id`                     | Slug, `^[a-z0-9][a-z0-9-]{2,39}$`; the scorecard URL and the badge URL are built from it                                        | —       |
-| `name`                   | Display name of the agreement                                                                                                   | —       |
-| `poolId`                 | A pool id as the observatory uses it: `uniswap-v3:0x…`, `uniswap-v4:0x<poolId>`, `aerodrome-v2:0x…`, `aerodrome-slipstream:0x…` | —       |
-| `marketMaker`            | Display name of the market maker                                                                                                | —       |
-| `addresses`              | The market maker's on-chain identities, lowercase, at least one (see [Attribution](#attribution))                               | —       |
-| `kpis.minDepthUsd`       | USD depth the market maker must provide on **each** side (price up and price down) at `±bandPct`                                | —       |
-| `kpis.bandPct`           | Half-width of the band in percent                                                                                               | `2`     |
-| `kpis.maxSpreadBps`      | Maximum effective spread, in bps, measured on the market maker's liquidity alone; `null` = no spread KPI                        | `null`  |
-| `kpis.spreadNotionalUsd` | Round-trip notional at which the spread KPI is measured                                                                         | `10000` |
-| `kpis.targetUptime`      | Agreed uptime share, 0..1. Informational: shown next to the measured uptime, never evaluated                                    | `0.95`  |
-| `alertWebhookUrl`        | `http(s)` URL that receives breach and recovery alerts; `null` = no alerts. A secret: stored, never served (see below)          | `null`  |
-| `alertAfterSamples`      | Consecutive breached samples before a breach alert is sent                                                                      | `3`     |
-| `active`                 | Inactive mandates are kept, listed and served, but no longer sampled                                                            | `true`  |
-| `createdAt`              | Unix seconds                                                                                                                    | now     |
-| `notes`                  | Free text                                                                                                                       | `null`  |
+| Field                    | Meaning                                                                                                                                                                                                                                                   | Default |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `id`                     | Slug, `^[a-z0-9][a-z0-9-]{2,39}$`; the scorecard URL and the badge URL are built from it                                                                                                                                                                  | —       |
+| `name`                   | Display name of the agreement, at most 120 characters                                                                                                                                                                                                     | —       |
+| `poolId`                 | A pool id as the observatory uses it: `<dex>:0x<pool address>` for `uniswap-v3`, `aerodrome-v2` and `aerodrome-slipstream`, `uniswap-v4:0x<poolId>` (64 hex digits) for Uniswap v4; any case is accepted, stored lowercase                                | —       |
+| `marketMaker`            | Display name of the market maker, at most 120 characters                                                                                                                                                                                                  | —       |
+| `addresses`              | The market maker's on-chain identities, lowercase, at least one and at most 50 (see [Attribution](#attribution))                                                                                                                                          | —       |
+| `kpis.minDepthUsd`       | USD depth the market maker must provide on **each** side (price up and price down) at `±bandPct`                                                                                                                                                          | —       |
+| `kpis.bandPct`           | Half-width of the band in percent                                                                                                                                                                                                                         | `2`     |
+| `kpis.maxSpreadBps`      | Maximum effective spread, in bps, measured on the market maker's liquidity alone; `null` = no spread KPI                                                                                                                                                  | `null`  |
+| `kpis.spreadNotionalUsd` | Round-trip notional at which the spread KPI is measured                                                                                                                                                                                                   | `10000` |
+| `kpis.targetUptime`      | Agreed uptime share, 0..1. Informational: shown next to the measured uptime, never evaluated                                                                                                                                                              | `0.95`  |
+| `alertWebhookUrl`        | `http(s)` URL at a public host that receives breach and recovery alerts (no user info, no `localhost`, loopback, private, link-local or carrier-grade NAT address; see [Alerts](#alerts)); `null` = no alerts. A secret: stored, never served (see below) | `null`  |
+| `alertAfterSamples`      | Consecutive breached samples before a breach alert is sent                                                                                                                                                                                                | `3`     |
+| `active`                 | Inactive mandates are kept, listed and served, but no longer sampled. A re-registration that leaves it out keeps the stored value                                                                                                                         | `true`  |
+| `createdAt`              | Unix seconds. A re-registration that leaves it out keeps the stored value                                                                                                                                                                                 | now     |
+| `notes`                  | Free text, at most 2,000 characters                                                                                                                                                                                                                       | `null`  |
 
 Validation (`parseMandate` in core) reports every problem at once: the id pattern; non-empty
-`name`, `marketMaker` and `poolId`; at least one valid address (any case is accepted, stored
-lowercase, duplicates dropped); `minDepthUsd > 0`; `0 < bandPct < 100`; `maxSpreadBps` null or
-`> 0`; `spreadNotionalUsd > 0`; `0 < targetUptime ≤ 1`; `alertWebhookUrl` null or an `http(s)`
-URL; `alertAfterSamples` an integer `≥ 1`. Unknown properties are ignored.
+`name` and `marketMaker` of at most 120 characters each; a `poolId` of one of the four DEXes with
+a 40-hex-digit pool address (64 hex digits for a Uniswap v4 pool id), in any case and stored
+lowercase, so it matches the observatory's pool ids; one to 50 valid addresses (any case is
+accepted, stored lowercase, duplicates dropped); `minDepthUsd > 0`; `0 < bandPct < 100`;
+`maxSpreadBps` null or `> 0`; `spreadNotionalUsd > 0`; `0 < targetUptime ≤ 1`; `alertWebhookUrl`
+null or an `http(s)` URL without user info at a public host (not `localhost` or a loopback,
+private, link-local, carrier-grade NAT or unique-local IP literal; see [Alerts](#alerts));
+`alertAfterSamples` an integer `≥ 1`; `notes` null or at most 2,000 characters. The limits are
+core's `MANDATE_LIMITS`: every pass reads the holdings of every address, so a mandate stays small.
+Unknown properties are ignored.
 
 The webhook URL is a bearer secret: whoever holds it can post through it (a Slack or Discord
 style URL carries its token in the path). It is kept in the database and read only by alert
@@ -93,10 +99,16 @@ LP share. `holdings` counts the positions or LP holdings that were attributed.
 A concentrated pool whose positions have never been indexed (no `positions` run has reached it)
 cannot be attributed at all: its mandates are reported as attribution failures and get no sample
 until a run publishes the positions, so a registration never records a false breach. `depthwatch
-positions`, `run --with-positions` and `depthwatch start` (which runs positions in the pass that
-finds such a mandate) index the pools of active mandates whether or not they are tracked yet.
-Once a pool is indexed and holds no positions at all, the method is `none`: nothing can be
-attributed and the sample is a breach (rule 1 below).
+positions` indexes the pools of active mandates whether or not they are tracked yet; `depthwatch
+run` indexes them before the snapshot of every pass (`--with-positions` extends that to every
+tracked pool) and `depthwatch start` in the pass that finds such a mandate, so a registration
+waits one pass at most. Once a pool is indexed and holds no positions at all, the method is
+`none`: nothing can be attributed and the sample is a breach (rule 1 below).
+
+A Uniswap v4 pool with a hook is not modelled (METRICS.md, "Rated and unrated pools": the hook
+runs its own swap code, so the swap walk would guess its depth and spread). Its mandates are
+attribution failures (`hooked pool: not modelled`) at every pass and get no sample, so they record
+no uptime, no breach and no alert, whatever the pool's positions.
 
 ### Measurement
 
@@ -167,13 +179,20 @@ On the wire its `mandate` is the public view (`alertWebhookConfigured` instead o
 ### Alerts
 
 After the samples of a snapshot are stored, for each mandate that has a webhook:
-- The streak is computed over the mandate's last `alertAfterSamples + 1` samples.
-- **Breach:** the streak is breached, `streak.samples ≥ alertAfterSamples`, and the latest
-  recorded alert is not already a `breach` for a streak starting at the same `since`. One alert per
-  streak, however long it lasts.
-- **Recovered:** the latest recorded alert is a `breach` and the mandate is now within KPI.
+- The streak is computed over the mandate's last `alertAfterSamples + 1` samples. A breached
+  streak starts after the mandate's newest within-KPI sample; an alert belongs to the streak when
+  it was recorded after that sample.
+- **Breach:** the streak is breached, `streak.samples ≥ alertAfterSamples`, no `breach` of this
+  streak has been delivered and fewer than `MAX_ALERT_ATTEMPTS` (5) breach attempts have been
+  recorded for it. One delivered alert per streak, however long it lasts; an undelivered one is
+  attempted again at the following samples of the streak, up to the cap.
+- **Recovered:** the latest delivered alert is a `breach`, the mandate is now within KPI and fewer
+  than `MAX_ALERT_ATTEMPTS` recovery attempts have been recorded since that breach. A recovery is
+  never sent for a breach the recipient did not receive, and always owed for one it did: the
+  retention prune keeps each mandate's newest delivered alert, however old.
 
-The alert is a `POST` of a JSON body to `alertWebhookUrl` with a 5 s timeout:
+The alert is a `POST` of a JSON body to `alertWebhookUrl` with a 5 s timeout; redirects are not
+followed (a 3xx answer is a failed delivery) and the response body is discarded:
 
 ```json
 {
@@ -208,15 +227,20 @@ length of the current streak; `scorecardUrl` is the scorecard page of this deplo
 
 Every attempt is recorded in `mm_alerts` (`delivered`, the HTTP `responseStatus`, the `error`
 message of a failed request) whether or not the webhook answered. Delivery never throws into the
-pipeline: a failed attempt is recorded and not retried; the next event (a recovery, or a new
-streak) produces the next attempt.
+pipeline: a failed attempt is recorded and tried again at the next sample that still calls for the
+same event, at most `MAX_ALERT_ATTEMPTS` times per event (a breach per streak, a recovery per
+delivered breach); after that, the next event (a recovery, or a new streak) produces the next
+attempt. Delivery is a request from the indexer's own network, so the webhook must name a public
+host: a URL with user info, or with `localhost` or a loopback, private, link-local, carrier-grade
+NAT or unique-local IP literal as its host, is rejected at registration.
 
 ## Registration
 
 ### The registration JSON
 
-The registration JSON is the mandate without `active` and `createdAt` (both optional; they default
-to `true` and the registration time). Omitted KPI fields take their defaults.
+The registration JSON is the mandate without `active` and `createdAt` (both optional; a new
+mandate takes `true` and the registration time, a re-registration keeps the stored values).
+Omitted KPI fields take their defaults.
 
 ```json
 {
@@ -246,8 +270,10 @@ minimal registration is `id`, `name`, `poolId`, `marketMaker`, `addresses` and
 `kpis.minDepthUsd`.
 
 Registering an id that already exists replaces the mandate (an upsert); its samples and alerts are
-kept, so KPIs can be corrected without losing history, and so is its `createdAt` unless the JSON
-sets one (the CLI and the API apply the same rule). Note that the stored samples were evaluated
+kept, so KPIs can be corrected without losing history, and so are its `active` flag and its
+`createdAt` unless the JSON sets them (core's `mergeRegistration`, which the CLI and the API both
+apply): registering a deactivated mandate again from the same file keeps it deactivated, and
+`"active": true` resumes sampling. Note that the stored samples were evaluated
 against the KPIs in force at the time, while excursions and the dashboard's threshold lines and
 targets use the current ones. The dashboard's pass / fail marks, like the status, follow the
 latest sample's stored evaluation, so after a KPI change a mark can disagree with the target shown
@@ -268,24 +294,30 @@ code 1); on success it prints the scorecard URL, built from `DEPTHWATCH_PUBLIC_U
 `--public-url`), else from `http://<host>:<port>` of `serve`. From the next `snapshot` on, the
 pool is tracked whether or not it ranks in the top N. A pool the database does not know yet
 (`depthwatch discover` has not seen it) is accepted with a warning; the snapshot skips the mandate
-until the pool is discovered and the scorecard reads `no-data` meanwhile. `sample` reads the latest
+until the pool is discovered and the scorecard reads `no-data` meanwhile. A `poolId` that is not a
+well-formed pool id is rejected like any other problem. `sample` reads the latest
 block, the pool state and the stored positions, and inserts one sample per active mandate of each
-mandated pool without writing a snapshot row and without waiting for the next pipeline pass; it
-needs `DEPTHWATCH_RPC_URL`. Exit codes follow the rest of the CLI: 0 ok, 1 error, 2 usage.
+mandated pool (a mandate already sampled at that block keeps the sample it has) without writing a snapshot row and without waiting for the next pipeline pass; it
+needs `DEPTHWATCH_RPC_URL`. Exit codes follow the rest of the CLI: 0 ok, 1 error, 2 usage; a
+`sample` whose every mandate failed stored nothing and exits 1, while a partial failure is a
+warning per mandate and exit 0.
 
 ### With the API
 
 `POST /api/mm` takes the same JSON (an existing id is replaced, its samples and alerts kept, and
-its `createdAt` survives unless the body sets one) and `DELETE /api/mm/:id` removes a mandate
+its `active` flag and `createdAt` survive unless the body sets them) and `DELETE /api/mm/:id` removes a mandate
 together with its stored samples and alerts (its scorecard stops being served; the response is
 `{ id, deleted: true, samplesDeleted, alertsDeleted }`, 404 for an unknown id). Neither checks
 that the pool has been discovered; like the CLI, a mandate on an unknown pool reads `no-data`
 until `discover` finds the pool. Both require `Authorization: Bearer <DEPTHWATCH_ADMIN_TOKEN>`,
 the environment variable `serve` and `demo` hand to the API. Without a configured token the
 server answers `403 { "error": "registration disabled" }`; a missing or wrong token answers
-`401`; a registration that fails validation answers `400` with the problems; success answers
-`201` with the scorecard summary, whose mandate shows `alertWebhookConfigured` and never the
-webhook URL.
+`401`; a body over 64 KiB answers `413 { "error": "request body too large" }`; a registration
+that fails validation answers `400` with the problems; success answers `201` with the scorecard
+summary, whose mandate shows `alertWebhookConfigured` and never the webhook URL. The server logs
+every request it answers (method, path without the query string, status, milliseconds) and a
+warning for each `401`, naming whether the token was missing or wrong and the peer address; the
+token itself is never logged.
 
 ```sh
 curl -X POST "$DEPTHWATCH_URL/api/mm" \
@@ -312,9 +344,12 @@ dashboard's `VITE_MOCK=1` mode mirrors the same two.
 | `POST /api/mm`                                       | Register (see [With the API](#with-the-api))                                                                                                      |
 | `DELETE /api/mm/:id`                                 | Remove a mandate; same authorization as `POST`                                                                                                    |
 
-Summaries are computed on request from the samples of the last 30 days, so `uptime.d30` is the
-full history the API keeps in view; older samples remain in the database until an operator prunes
-them. Bigints (`blockNumber`) are decimal strings. A sample on the wire:
+Summaries are computed from the samples of the last 30 days, so `uptime.d30` is the full history
+the API keeps in view; samples older than 35 days and alerts older than 90 are deleted by
+`depthwatch prune`, which `run` and `start` run once a day; each mandate's newest delivered alert
+is kept whatever its age, so the alert rules below hold for a streak of any length. The server keeps the last summary per
+mandate and serves it again until a new sample is stored, the mandate changes or a minute has
+passed. Bigints (`blockNumber`) are decimal strings. A sample on the wire:
 
 ```json
 {
@@ -402,10 +437,10 @@ against the state read in steps 1 and 2.
   from any contract that calls `mint`. Only positions held through the NFPM (and the v4
   PositionManager) are indexed; liquidity minted directly on the pool is invisible to attribution
   and counts for the whole pool only.
-- **The position index lags the state.** Positions are indexed by `depthwatch positions` (or
-  `run --with-positions`), so a position changed between the last positions run and the snapshot
-  block is attributed with its indexed liquidity, while the pool state is read at the snapshot
-  block. A mandated concentrated pool whose positions are not indexed yet is not sampled (an
+- **The position index lags the state.** Positions are indexed by `depthwatch positions` (`run`
+  and `start` run it for mandated pools, see [Attribution](#attribution)), so a position changed
+  between the last positions run and the snapshot block is attributed with its indexed liquidity,
+  while the pool state is read at the snapshot block. A mandated concentrated pool whose positions are not indexed yet is not sampled (an
   attribution failure); once indexed, a pool without any position samples as `method: 'none'`,
   a breach by rule 1. Aerodrome v2 holdings are read at the snapshot block and have no lag.
 - **Band width.** The snapshot reads ticks for at least ±10 % around the price. A `bandPct` beyond
