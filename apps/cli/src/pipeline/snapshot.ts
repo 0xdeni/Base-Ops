@@ -180,6 +180,7 @@ export function buildSnapshot(
     tvlUsd: poolTvlUsd(view, prices),
     activeLiquidity: state.kind === 'concentrated' ? state.liquidity : 0n,
     priceDeviationBps: priceDeviationBps(price, token0Usd, token1Usd),
+    feePips: state.feePips,
   }
   // The swap walk does not run a hook's code: no number is guessed for a hooked pool.
   if (isHookedPool(pool))

@@ -68,6 +68,8 @@ const DISCOVERED: Readonly<Record<Dex, number>> = {
   'uniswap-v4': 627,
   'aerodrome-v2': 2311,
   'aerodrome-slipstream': 418,
+  'aero-v2': 0,
+  'aero-slipstream': 0,
 }
 
 /** The median health total over the rated pools only; null when none is rated. */

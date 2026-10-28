@@ -157,6 +157,8 @@ export function buildSnapshot(spec: SnapshotSpec): PoolSnapshot {
     token1Usd: spec.token1Usd,
     tvlUsd: spec.tvlUsd,
     activeLiquidity: spec.activeLiquidity ?? 0n,
+    // What the store returns until it keeps the fee (schema version 6 has no column for it).
+    feePips: null,
     depth: buildDepth(spec),
     depthUsd: buildDepthUsd(spec),
     spreads: buildSpreads(spec.price, spec.spread10kBps, spec.maxFeasibleUsd),

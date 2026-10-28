@@ -116,6 +116,8 @@ export function rowToSnapshot(row: Row): PoolSnapshot {
       colJsonOrNull<ConcentrationMetrics>(row, 'concentration_json'),
     ),
     priceDeviationBps: colNumberOrNull(row, 'price_deviation_bps'),
+    // Schema version 6 has no fee column: the fee a snapshot used is not stored, so it reads null.
+    feePips: null,
   }
 }
 

@@ -159,6 +159,7 @@ export function fixtureSnapshot(overrides: SnapshotFixtureOverrides = {}): PoolS
     depthUsd: fixtureDepthUsd(depth2Usd),
     spreads: fixtureSpreads(spread10kBps),
     concentration: fixtureConcentration(ownerTop1Share),
+    feePips: null,
     ...rest,
   }
   // Core's measure of the fixture's own price and USD prices unless the overrides name one.

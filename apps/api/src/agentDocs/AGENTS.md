@@ -59,8 +59,9 @@ indexed; `GET /api/stats` counts the pools found, tracked and scored.
 - **Pool id**: `<dex>:<pool address>`, for example
   `uniswap-v3:0x77ebf3fa47dacd6c5ab06f521057260dea765327`. Uniswap v4 pools have no address of
   their own: `uniswap-v4:<poolId>` (0x + 64 hex). `dex` is one of `uniswap-v3`, `uniswap-v4`,
-  `aerodrome-v2`, `aerodrome-slipstream`. Ids are lowercase and matched exactly, so copy them
-  from a response. The colon may be sent as is or percent-encoded (`%3A`).
+  `aerodrome-v2`, `aerodrome-slipstream`, `aero-v2`, `aero-slipstream`. Ids are lowercase and
+  matched exactly, so copy them from a response. The colon may be sent as is or percent-encoded
+  (`%3A`).
 - **Addresses** are lowercase `0x` + 40 hex. `GET /api/tokens/:address` accepts any case and
   lowercases it. Native ETH in Uniswap v4 pools is `0x0000000000000000000000000000000000000000`
   with symbol `ETH`.
@@ -184,12 +185,13 @@ for an hour (`depthwatch start` snapshots every 30 minutes by default).
 ### `GET /api/stats`
 
 Totals per DEX and overall. `byDex` has one row per DEX in the fixed order `uniswap-v3`,
-`uniswap-v4`, `aerodrome-v2`, `aerodrome-slipstream` (zeros for a DEX without pools): `dex`,
-`pools` (discovered), `tracked`, `scored`, `rated` (scored pools that are rated), `depth2Usd`
-(sum of ±2 % depth over scored pools, stale quotes left out), `depthKnownPools` (the scored
-pools that sum covers: a known depth and no stale quote), `volume24hUsd` (sum over scored pools with a known volume; `null` when none has one), `medianHealth`
-(median health total over rated pools only, `null` when none is rated). `totals` has the same
-fields without `dex`, its `medianHealth` taken over all rated pools.
+`uniswap-v4`, `aerodrome-v2`, `aerodrome-slipstream`, `aero-v2`, `aero-slipstream` (zeros for a DEX
+without pools): `dex`, `pools` (discovered), `tracked`, `scored`, `rated` (scored pools that are
+rated), `depth2Usd` (sum of ±2 % depth over scored pools, stale quotes left out), `depthKnownPools`
+(the scored pools that sum covers: a known depth and no stale quote), `volume24hUsd` (sum over
+scored pools with a known volume; `null` when none has one), `medianHealth` (median health total
+over rated pools only, `null` when none is rated). `totals` has the same fields without `dex`, its
+`medianHealth` taken over all rated pools.
 
 ### `GET /api/pools`
 

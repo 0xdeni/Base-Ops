@@ -243,6 +243,8 @@ describe('ScoresRepo', () => {
       'uniswap-v4',
       'aerodrome-v2',
       'aerodrome-slipstream',
+      'aero-v2',
+      'aero-slipstream',
     ])
     expect(stats[0]).toEqual({
       dex: 'uniswap-v3',

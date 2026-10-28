@@ -1,7 +1,8 @@
 # Depthwatch design (the contract between packages)
 
 Depthwatch is an open liquidity observatory for **Base mainnet only**. It indexes Uniswap v3,
-Uniswap v4 and Aerodrome (v2 AMM + Slipstream concentrated) pools: every pool of those factories
+Uniswap v4, Aerodrome (v2 AMM + Slipstream concentrated) and Aero (v2 AMM + Slipstream
+concentrated; Aerodrome and Velodrome merged into Aero on 2026-10-21) pools: every pool of those factories
 with log discovery (`discover`), or the pools between the reference tokens (and any
 `--seed-token`) with `discover --seed`. It publishes per pool:
 - **Depth at ±1 / 2 / 5 %**: how much capital it takes to move the price by that much, each side.
@@ -45,11 +46,25 @@ Rules for contributors (human or agent):
 `packages/core/src/types.ts` is the single source of truth.
 Key conventions it encodes:
 - `PoolMeta.id` = `${dex}:${poolAddressLowercase}` or `uniswap-v4:${poolId}`.
+- `Dex` is `uniswap-v3 | uniswap-v4 | aerodrome-v2 | aerodrome-slipstream | aero-v2 | aero-slipstream`;
+  `DEXES` lists them in that order (stats rows, the API's `dex` enum, swap-scan grouping). Aero's
+  factories are not Aerodrome's, so its pools get ids of their own (`aero-v2:<pool>`,
+  `aero-slipstream:<pool>`) and discovery and seed cursors of their own; both platforms are indexed.
 - `price` = token1 per token0, decimal-adjusted. From `sqrtPriceX96`:
   `priceRaw = (sqrtPriceX96 / 2^96)^2` (token1 raw per token0 raw) and `price = priceRaw * 10^(dec0 − dec1)`.
-- Fees in pips (1e-6). Aerodrome v2 `getFee()` returns bps → ×100. `feePips` is the LP fee (shown for the pool);
+- Fees in pips (1e-6). Aerodrome v2 `getFee()` and Aero v2 `getBaseFee()` return bps → ×100. `feePips` is the LP fee (shown for the pool);
   a Uniswap v4 `ConcentratedState` also carries `protocolFeePips: { zeroForOne, oneForZero }` from slot0, and its swaps
   pay `swapFeePips` = protocolFee + lpFee − ⌊protocolFee·lpFee / 1e6⌋ per direction (docs/METRICS.md, Conventions).
+- `PoolMeta.feePips` is the fee as last read (at discovery, then by every snapshot); `PoolSnapshot.feePips` is the
+  fee that snapshot's depth and spread used (`null` in rows stored before schema version 7). `hasDynamicFee(pool)`
+  (core `dex.ts`) is true for `aerodrome-slipstream` and `aero-slipstream`, whose `fee()` can change every block.
+- `PoolMeta.stable` marks Aerodrome v2 and Aero v2 stable pools. `PoolMeta.hooks` is a Uniswap v4 pool's hooks address,
+  or an Aero Slipstream pool's swap hook when it is not its deployment's reviewed `swapHook` or charges each block's
+  first transaction an initial fee (`initialFeeEnabled`); otherwise null. A non-zero `hooks` is hooked (`isHookedPool`).
+- A symbol is not an identity (Aerodrome's and Aero's AERO both answer "AERO"); the address is. `tokenLabel(token,
+  shared)` (core `tokenLabel.ts`) names a token for display: its symbol when no other address in the index `shared`
+  (`buildSharedSymbols`) holds that symbol, else `SYMBOL (name)` when no other address holds symbol and name, else
+  `SYMBOL (0x3f5b…a4ee)`. The token itself need not be in the index, so a token outside it is still told apart.
 - `Mandate.alertWebhookUrl` is private: every public surface (API, export, dashboard) uses `PublicMandate`
   (`toPublicMandate`), which has `alertWebhookConfigured: boolean` instead.
 - `DepthLevel.up` is the token1 needed to push the price up by pct (buy pressure on token0);
@@ -57,7 +72,7 @@ Key conventions it encodes:
 - `PriceEdge` carries either a pool's ±2 % depth sides (`upToken1`, `downToken0`: human token1 and token0 amounts),
   weighed in USD by `derivePrices` when it reaches the edge, or a fixed `weight` (the ETH ↔ WETH wrap edge).
 - `UnratedReason` is `'hooked' | 'unpriced' | 'one-sided' | 'thin'`; `HealthInputs.hooked` (optional, default false) marks
-  a Uniswap v4 pool with a hook, whose `PoolSnapshot` holds no depth levels, spread points or concentration.
+  a hooked pool (`isHookedPool`), whose `PoolSnapshot` holds no depth levels, spread points or concentration.
 - `PoolSnapshot.priceDeviationBps` is the stale-quote measure (docs/METRICS.md, Stale quotes): `null` when a token has
   no USD price, and in snapshots stored before the field existed.
 
@@ -88,7 +103,7 @@ computeConcentrationForReserves(state: ConstantProductState | StableSwapState): 
 computePersistence(samples: Array<{ timestamp: number; depthUsd: number | null }>, windowHours: number, now: number): PersistenceMetrics
 computeHealthScore(inputs: HealthInputs): HealthScore   // inputs: depth2UpUsd, depth2DownUsd, spread10kBps, ownerTop1Share, ownerCoverage, rangeHhi, poolKind, persistence, hooked?; HealthScore.concentrationBasis: 'owners' | 'ranges' | 'neutral' (null only when read from a score stored before it)
 rateDepth(upUsd: number | null, downUsd: number | null, opts?: { hooked?: boolean }): { rated: boolean; unratedReason: UnratedReason | null }
-isHookedPool(pool: Pick<PoolMeta, 'hooks'>): boolean // a non-zero hooks address (Uniswap v4)
+isHookedPool(pool: Pick<PoolMeta, 'hooks'>): boolean // a non-zero hooks address (Uniswap v4 hook; Aero Slipstream off its reviewed swap hook)
 ownersCoverPool(owners: OwnerConcentration | null | undefined): boolean // count > 0 and coverage ≥ OWNER_COVERAGE_MIN (0.9)
 poolOwnerTop1Share(owners: OwnerConcentration | null | undefined): number | null // top1Share when ownersCoverPool, else null
 priceDeviationBps(price: number, token0Usd: number | null, token1Usd: number | null): number | null // |price / (token0Usd / token1Usd) − 1| × 1e4
@@ -112,6 +127,11 @@ derivePrices(edges: PriceEdge[], anchors: Record<Address, number>): Map<Address,
 decodeV4ProtocolFee(packed: number): ProtocolFeePips // low 12 bits zeroForOne, high 12 bits oneForZero
 v4SwapFeePips(protocolFeePips: number, lpFeePips: number): number
 swapFeePips(state: ConcentratedState, direction: SwapDirection): number // what the swap walk charges
+
+// DEX facts and token labels (dex.ts, tokenLabel.ts)
+hasDynamicFee(pool: { dex: string }): boolean // dex in DYNAMIC_FEE_DEXES: 'aerodrome-slipstream', 'aero-slipstream'
+buildSharedSymbols(tokens: Pick<TokenInfo, 'address' | 'symbol' | 'name'>[]): SharedSymbols // symbolKey / symbolNameKey → addresses
+tokenLabel(token: Pick<TokenInfo, 'address' | 'symbol' | 'name'>, shared: SharedSymbols): string
 
 // test helpers (exported from core for other packages' tests)
 buildConcentratedState(opts: { positions: Array<{tickLower, tickUpper, liquidity}>; tick; feePips; tickSpacing; blockNumber?; timestamp? }): ConcentratedState
@@ -137,12 +157,12 @@ buildConcentratedState(opts: { positions: Array<{tickLower, tickUpper, liquidity
   liquidity). Depth's `reached` is this `complete` (docs/METRICS.md, Depth).
 - Ticks beyond `tickLowerBound`/`tickUpperBound` are unknown: never extrapolate.
 
-### Constant product (Aerodrome v2 volatile)
+### Constant product (Aerodrome v2 and Aero v2 volatile)
 
 `amountOut = reserveOut · amountInAfterFee / (reserveIn + amountInAfterFee)`.
 Depth to price target: solve for amountIn that moves the marginal price `reserve1/reserve0` to the target (closed form).
 
-### Stable swap (Aerodrome v2 stable)
+### Stable swap (Aerodrome v2 and Aero v2 stable)
 
 Invariant `k = x³y + xy³` on 1e18-normalised reserves; `getAmountOut` solves y numerically with Newton
 iterations exactly like the contract's `_get_y` (converging to 1 wei of normalised units). Depth to a price
@@ -153,12 +173,14 @@ as in a drained pool) the simulators return `complete = false` with zero amounts
 
 ### Metric definitions (mirrored in docs/METRICS.md)
 
+- **Fee**: depth and spread use the LP fee the state carries, read at the snapshot's block (`PoolSnapshot.feePips`; a
+  Slipstream pool's is a per-block reading, docs/METRICS.md Conventions); MEV taxes and per-caller discounts are not modelled.
 - **Depth at ±p %**: up = `simulateSwapToPrice(state, mid·(1+p/100), decimals)` with input token1; down = `simulateSwapToPrice(state, mid·(1−p/100), decimals)` with input token0. USD = amountIn × token USD price.
 - **Effective spread at N USD**: buy token0 with N USD of token1 (`exactIn oneForZero`), sell N USD of token0 (`exactIn zeroForOne`); `buyAvg = amount1In/amount0Out`, `sellAvg = amount1Out/amount0In` (human prices); `spreadBps = (buyAvg − sellAvg)/mid × 1e4`. Infeasible (null) if either leg is incomplete, either leg yields nothing (`amount0Out = 0` or `amount1Out = 0`), a USD price is missing, or either leg's average price is more than `SPREAD_MAX_LEG_IMPACT_BPS = 5 000` bps (50 %) from mid (`buyAvg/mid − 1`, `1 − sellAvg/mid`): constant-product and stable legs never run out of liquidity, so completeness alone let a dust pool publish 1e24 bps. A feasible spread is at most 10 000 bps.
 - **Range HHI**: inside the band [mid·(1−5 %), mid·(1+5 %)] split liquidity into tick ranges between consecutive initialised ticks; weight each range by `L_range × (√Pupper − √Plower)` (≈ token1 value of the range) clipped to the band; `rangeHhi = Σ share²`; `activeRangeShare` = share of the range containing the current tick.
 - **Owner concentration**: for each position overlapping the band, weight = `liquidity × clipped (√Pupper − √Plower)`; aggregate by owner; `top1Share`, `top3Share`, `hhi`, `count` (owners with weight > 0); `coverage = min(1, Σ owner weights / poolBandWeight)` (0 when the band holds nothing; `null` when read from a snapshot stored before it). Positions of a custodian (a Slipstream pool's CLGauge, recorded by `positions`) belong to no owner and count as uncovered. The owners describe the pool only with `count > 0` and `coverage ≥ OWNER_COVERAGE_MIN` (`ownersCoverPool`); `poolOwnerTop1Share(owners)` is `top1Share` then and `null` otherwise, and is what a snapshot stores and lists as `ownerTop1Share` (schema version 6 cleared the stored values that break the rule).
 - **Persistence (window W hours)**: samples = snapshots in the window with non-null depth2Usd; `stability = clamp(p10/median, 0, 1)`; `uptime = share of samples ≥ 0.5·median`. Both null when samples < 3 or the oldest and newest sample are less than `PERSISTENCE_MIN_COVERAGE = 25 %` of the window apart (6 h of 24 h, 42 h of 7 d); with ≥ 3 samples and a median of 0 both are 0 (a dead pool).
-- **Rating**: a pool is _rated_ when both ±2 % sides (`depthUsd[pct = 2].upUsd`, `.downUsd`) are known and the thinner one is at least `HEALTH_RATING_MIN_SIDE_USD = 5 000`; otherwise `grade = null` and `unratedReason` is `hooked` (a Uniswap v4 pool with a hook: no depth, spread or concentration is computed), `unpriced` (a side unknown), `one-sided` (the deeper side holds the floor, the thinner does not) or `thin`, tested in that order. The total and components of an unrated pool are still published.
+- **Rating**: a pool is _rated_ when both ±2 % sides (`depthUsd[pct = 2].upUsd`, `.downUsd`) are known and the thinner one is at least `HEALTH_RATING_MIN_SIDE_USD = 5 000`; otherwise `grade = null` and `unratedReason` is `hooked` (a hooked pool, `isHookedPool`: no depth, spread or concentration is computed), `unpriced` (a side unknown), `one-sided` (the deeper side holds the floor, the thinner does not) or `thin`, tested in that order. The total and components of an unrated pool are still published.
 - **Stale quote**: `priceDeviationBps = |price / (token0Usd / token1Usd) − 1| × 1e4` (null when a token has no USD price); stale when ≥ `STALE_QUOTE_MIN_DEVIATION_BPS = 500`. A stale pool's numbers are published as measured, but its depth is left out of the stats' depth sums and a depth sort puts it last.
 - **Health score** (0–100):
   - depth (max 35): `35 · clamp((log10(2 · min(up, down)) − 3) / 3, 0, 1)` → balanced-equivalent $1k = 0, $1M = 35; a one-sided pool scores 0. An unknown side → 0.
@@ -193,14 +215,14 @@ export interface ChainReader {
   readTokens(addresses: Address[]): Promise<TokenInfo[]>
   readOverview(pools: PoolMeta[], blockNumber?: bigint): Promise<PoolOverview[]> // multicall-batched (≤ 500 calls per multicall)
   readState(pool: PoolMeta, opts: { bandPct: number; blockNumber?: bigint }): Promise<PoolState> // tick walk via tickBitmap words ± enough to cover bandPct·2 (at least ±10 %), ticks() per initialised tick, all multicall-batched
-  readPositions(pool: PoolMeta, opts: { fromBlock: bigint; toBlock: bigint }): Promise<Position[]> // v3/Slipstream: NFPM IncreaseLiquidity/DecreaseLiquidity/Transfer + positions(); v4: PositionManager; aerodrome-v2: []
-  readCustodians(pool: PoolMeta, blockNumber?: bigint): Promise<Address[]> // contracts holding positions for depositors: Slipstream CLPool.gauge() (lowercase; [] without a gauge); other DEXes [] with no request
+  readPositions(pool: PoolMeta, opts: { fromBlock: bigint; toBlock: bigint }): Promise<Position[]> // v3/Slipstream: NFPM IncreaseLiquidity/DecreaseLiquidity/Transfer + positions() (Aero Slipstream: its NFPM's 6-field IncreaseLiquidity); v4: PositionManager; aerodrome-v2, aero-v2: []
+  readCustodians(pool: PoolMeta, blockNumber?: bigint): Promise<Address[]> // contracts holding positions for depositors: Slipstream (Aerodrome and Aero) CLPool.gauge() (lowercase; [] without a gauge); other DEXes [] with no request
   readSwaps(
     pools: PoolMeta[],
     fromBlock: bigint,
     toBlock: bigint,
     opts?: { onProgress(p: SwapScanProgress) },
-  ): Promise<SwapEvent[]> // one log scan per Swap event source (Uniswap v3 + Slipstream share one filter: same event, swapScanOf); timestamps interpolated between anchor headers every timestampSpan blocks (default 10 000), independent of logChunkSize; onProgress after each chunk / backoff: { scans, blocksDone, blocksTotal, chunks, rateLimited, transient }
+  ): Promise<SwapEvent[]> // one log scan per Swap event source (Uniswap v3 + both Slipstreams share one filter, Aerodrome v2 + Aero v2 another: same event, swapScanOf); timestamps interpolated between anchor headers every timestampSpan blocks (default 10 000), independent of logChunkSize; onProgress after each chunk / backoff: { scans, blocksDone, blocksTotal, chunks, rateLimited, transient }
 }
 export function createChainReader(opts: {
   rpcUrl?: string // every read but eth_getLogs (default https://mainnet.base.org)
@@ -237,7 +259,10 @@ Protocol specifics (addresses live in `src/addresses.ts`, overridable via `creat
 - Uniswap v3: factory `PoolCreated`, pool `slot0/liquidity/tickBitmap/ticks/fee/tickSpacing`, `Swap`. Position owners via NonfungiblePositionManager.
 - Uniswap v4: PoolManager `Initialize` (poolId, currency0, currency1, fee, tickSpacing, hooks, sqrtPriceX96, tick); state via StateView (`getSlot0`, `getLiquidity`, `getTickBitmap`, `getTickInfo`); `Swap` on PoolManager carries `id`; currency0 == 0x0 is native ETH (TokenInfo symbol `ETH`, 18 decimals).
 - Aerodrome v2: PoolFactory `PoolCreated(token0, token1, stable, pool, length)`; `getReserves`, `stable()`, fee from `PoolFactory.getFee(pool, stable)` (bps); `Swap` event.
-- Aerodrome Slipstream: CLFactory `PoolCreated(token0, token1, tickSpacing, pool)`; same tick interface as v3 but `ticks()` returns a different struct (ABI in docs/research/base-contracts.md); fee via `fee()`.
+- Aerodrome Slipstream: CLFactory `PoolCreated(token0, token1, tickSpacing, pool)`; same tick interface as v3 but `ticks()` returns a different struct (ABI in docs/research/base-contracts.md); fee via `fee()`, which the deployment's DynamicSwapFeeModule can change every block.
+- Aero v2 (`aero-v2`, `ChainAddresses.aeroV2`): a volatile and a stable PoolFactory. `PoolCreated(token0, token1, pool, length)` has no `stable` flag: one log filter covers both factories and the emitting factory gives the kind; seeding asks `getPool(token0, token1)` of both. `getReserves` and Aerodrome v2's `Swap` (its swaps join that scan); `metadata()` (6 outputs) and `stable()` (reverts) are never read. Fee: `getBaseFee(pool, 0x0, 0, 0, 0, 0)` (bps) on the pool's factory, in the same multicall as its `feeModule()`, which must be `aeroV2.volatileFeeModule` / `stableFeeModule`. LP holdings: the wallet balance plus the gauge from `FactoryRegistry.targetToGauge(pool)` (`balanceOf(owner)`); the LeafVoter has no pool views.
+- Aero Slipstream (`aero-slipstream`, `ChainAddresses.aeroSlipstream`, `AeroSlipstreamDeployment` = a Slipstream deployment plus its reviewed `swapHook`): Slipstream's `PoolCreated`, `slot0`, `ticks()`, `positions()` and `Swap` (its swaps join the Uniswap v3 scan); the NFPM's `IncreaseLiquidity` has 6 fields (`aeroNFPMAbi`); `fee()` is the swap hook's fee for the block. Discovery and seeding read `getPoolSwapHook(pool)` and the hook's `dynamicFeeConfig(pool)` and set `hooks` (above); custodians are `CLPool.gauge()`, staked owners resolved with `CLGauge.stakedContains`.
+- A state read that finds an Aero pool's configuration changed throws `PoolConfigChangedError` and fails that pool's snapshot: `fee module changed` (an Aero v2 factory's `feeModule()` is not the pinned one) or, for Aero Slipstream, `swap hook changed` / `initial fee enabled` (`isPool`, `getPoolSwapHook` and `dynamicFeeConfig` ride in the state multicall; `hooks ?? swapHook` must answer, and `initialFeeEnabled` must be false when `hooks` is null). `discover --seed` reads the hooks again.
 
 ## Storage (packages/db)
 
@@ -245,10 +270,11 @@ Protocol specifics (addresses live in `src/addresses.ts`, overridable via `creat
 (only when the file is not in WAL yet, retried for up to 5 s while another process holds the lock: SQLite's busy handler does not
 cover the switch) and `synchronous = NORMAL`, then runs migrations. A database at the current version is opened without a write
 lock; otherwise `BEGIN IMMEDIATE` comes before `schema_version` is read, so of several processes opening one file at once the first
-applies each pending migration and the others read the version it recorded. Schema version 6. Tables:
+applies each pending migration and the others read the version it recorded. Schema version 7; a file of a newer version
+than the build is refused before any step runs. Tables:
 - `tokens(address PK, symbol, name, decimals)`
 - `pools(id PK, dex, kind, address, pool_id, token0, token1, fee_pips, tick_spacing, stable, hooks, created_at_block, tracked INTEGER, first_seen_at)`
-- `snapshots(id PK AUTOINCREMENT, pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd, active_liquidity TEXT, depth_json, depth_usd_json, spreads_json, concentration_json, price_deviation_bps)` + index `(pool_id, timestamp)` + unique index `(pool_id, block_number)`; `price_deviation_bps` (schema version 5) is `PoolSnapshot.priceDeviationBps`, NULL in rows stored before it; `owner_top1_share` is core's `poolOwnerTop1Share` of the stored owners (schema version 6 set it to NULL in the rows stored before where those owners do not describe the pool)
+- `snapshots(id PK AUTOINCREMENT, pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd, active_liquidity TEXT, depth_json, depth_usd_json, spreads_json, concentration_json, price_deviation_bps, fee_pips)` + index `(pool_id, timestamp)` + unique index `(pool_id, block_number)`; `price_deviation_bps` (schema version 5) is `PoolSnapshot.priceDeviationBps`, NULL in rows stored before it; `fee_pips` (schema version 7) is `PoolSnapshot.feePips`, NULL in rows stored before it; `owner_top1_share` is core's `poolOwnerTop1Share` of the stored owners (schema version 6 set it to NULL in the rows stored before where those owners do not describe the pool)
 - `volume_hourly(pool_id, hour_start, volume_token0 TEXT, volume_token1 TEXT, volume_usd, swap_count, PK(pool_id, hour_start))`
 - `positions(pool_id, token_id TEXT, owner, tick_lower, tick_upper, liquidity TEXT, updated_block, PK(pool_id, token_id))`; rows under `<pool id>#catch-up` hold a windowed first scan that has not reached the head (never read as a pool's positions)
 - `prices(token PK, usd, via_json, updated_at)`
@@ -301,7 +327,7 @@ responses against it. The list names each route's type and query parameters; the
   and `source` (`demo` or `live`); 503 with
   `ok: false` and `error` when the database cannot be read (zero counts) or, with `maxAge` (a positive integer of
   seconds), when `snapshotAgeSeconds` is `null` or above it (`error: stale: …`, counts filled); 400 for an invalid `maxAge`
-- `GET /api/stats` → `StatsResponse`: totals by dex and overall: pools, tracked, scored, rated, depth2Usd sum (stale
+- `GET /api/stats` → `StatsResponse`: totals by dex (one row per `DEXES` id, in that order) and overall: pools, tracked, scored, rated, depth2Usd sum (stale
   quotes left out) and `depthKnownPools` (the scored pools it sums: a known depth, no stale quote), volume24hUsd sum
   (null when no pool has a volume), median health over rated pools
 - `GET /api/pools?sort=health|depth|volume|gap|tvl|spread|top&dir=asc|desc&dex=&q=&minVolume=&rated=true|false&limit=&offset=` →
@@ -312,7 +338,7 @@ responses against it. The list names each route's type and query parameters; the
   persistence and 24 h volume and the `scoredAt` time; the snapshot and score fields are null until the pool is
   snapshotted and scored
 - `GET /api/pools/:id/history?window=24h|7d` → `HistoryResponse`: the `window`, its `from` / `to` bounds (ending at the
-  pool's newest snapshot) and `points: HistoryPoint[]` (timestamp, price, depth2Usd, spread10kBps, tvlUsd, health),
+  pool's newest snapshot) and `points: HistoryPoint[]` (timestamp, price, depth2Usd, spread10kBps, tvlUsd, health, feePips),
   built from `snapshots.seriesSummaryForPool` (health recomputed per point by core); `Cache-Control: public, max-age=60`
 - `GET /api/gaps?limit=&offset=&minVolume=` → `GapsResponse`: `items: GapItem[]` (pool summary + gap metrics) of the
   pools with 24 h volume ≥ `minVolume` (default $10k) by gap score, the floor applied as `minVolumeUsd`, and `total`
@@ -336,6 +362,9 @@ responses against it. The list names each route's type and query parameters; the
 `depth2UpUsd` / `depth2DownUsd` are the ±2 % level's `upUsd` (buy side) and `downUsd` (sell side) of the pool's newest
 snapshot, read from the stored `depth_usd_json` as core computed them; each is `null` when its token has no USD price
 (docs/METRICS.md) or the pool has no snapshot. They are listed, not sorted, so they are not denormalised columns.
+Every token object a response carries (`token0` / `token1` of a pool in summaries, details, gaps and scorecards,
+`TokenDetail.token`) adds `label`: core's `tokenLabel` over an index of the tokens of scored pools, built once per
+request. The `dex` query parameter and `Dex` fields take the `DEXES` ids.
 Validation with zod; unknown pool → 404 JSON `{ error }`.
 
 Scorecard responses (docs/design/scorecards.md §6) carry the mandate as core's `PublicMandate`, not as the stored
@@ -347,7 +376,7 @@ it, and `apps/api/src/routes/webhookSecret.test.ts` fails when any part of it sh
 ## CLI (apps/cli)
 
 `depthwatch <command>` via `tsx` (`pnpm depthwatch …`). Env: `DEPTHWATCH_RPC_URL`, `DEPTHWATCH_LOGS_RPC_URL` (eth_getLogs only, default: `DEPTHWATCH_RPC_URL`), `DEPTHWATCH_LOG_CHUNK`, `DEPTHWATCH_DB`, `DEPTHWATCH_PORT` (else the platform's `PORT`), `DEPTHWATCH_HOST` (`serve`, `start`, `demo`; default `0.0.0.0`), `DEPTHWATCH_LOG_LEVEL` (`debug|info|warn|error|silent`, default `info`), `DEPTHWATCH_PUBLIC_URL` (base of the scorecard link `mm register` prints and of webhook alerts' `scorecardUrl`; default `http://<host>:<port>`), `DEPTHWATCH_ADMIN_TOKEN` (environment only: `createApp`'s `adminToken` under `serve`, `start` and `demo`), `DEPTHWATCH_TOP_POOLS`, `DEPTHWATCH_KEEP_DAYS` (`prune`, `run`, `start`), `DEPTHWATCH_SEED_TOKENS` (`--seed`, `start`); for `start` also `DEPTHWATCH_SNAPSHOT_INTERVAL`, `DEPTHWATCH_VOLUME_INTERVAL`, `DEPTHWATCH_POSITIONS_INTERVAL`, `DEPTHWATCH_POSITIONS_BUDGET`, `DEPTHWATCH_DISCOVER_BUDGET`, `DEPTHWATCH_SHUTDOWN_GRACE` (durations: `90s`, `30m`, `6h`, a plain number is seconds).
-- `discover [--dex …] [--from-block N]` — incremental factory log scan in windows of 50 log chunks; each window upserts its pools and advances sync_state in one transaction, so reruns resume.
+- `discover [--dex …] [--from-block N]` — incremental factory log scan in windows of 50 log chunks; each window upserts its pools and advances sync_state in one transaction, so reruns resume. `--dex` takes the `DEXES` ids; a DEX without a cursor starts at its factories' first block (Aero: `aeroV2.startBlock`, the earliest `aeroSlipstream` start block).
   `--seed [--seed-token <address> …]`: no logs; `ChainReader.seedPools` for the pairs of the reference tokens plus the `--seed-token` ERC-20s (repeatable; `DEPTHWATCH_SEED_TOKENS`, comma-separated; lowercased; also read by `run --seed` and `start`), upsert, `seed:<dex>:lastBlock` = the seed block for each DEX whose seeder succeeded (log cursors untouched; pools already stored keep their creation block and are not searched again). A DEX whose seeder failed gets no marker and is logged; the step stores the other DEXes' pools, then fails naming it.
 - `snapshot [--top N] [--pool id…]` — readOverview for all pools → derive prices → rank by TVL (a Uniswap v4 pool by its ±2 % depth; a hooked one is not ranked, so it is tracked only through `--pool` or a mandate) → readState for top N → compute depth/spread/concentration (none for a hooked Uniswap v4 pool, which is also no price edge) and the price deviation → insert snapshots; also rebuild `prices`. One `MmSample` per active mandate of a snapshotted pool; a mandate on a hooked Uniswap v4 pool, or on a concentrated pool whose positions are not published (`positions:<pool>:lastBlock` unset), is an attribution failure, no sample. Under `start`, a stop before the storing transaction stores nothing.
 - `volume [--hours 24]` — readSwaps for tracked pools, bucket hourly, USD via prices; incremental per pool (`volume:<pool>:lastBlock` / `volume:<pool>:fromTs`): a later pass starts at the hour that held the previous head and rewrites it, keeping earlier hours; pools without coverage of the window read all of it. Uniswap v3 and Slipstream pools share one log scan; progress (blocks and chunks done of the total, %, elapsed, ETA, backoffs) is logged every 30 s.
@@ -387,3 +416,6 @@ build contains no mock data and, when `/api/health` does not answer, shows "The 
 - chain: fixture transport with hand-built responses; ABI decoding round-trips via viem's `encodeFunctionResult`.
 - db/api: in-memory SQLite; API tests through `app.request()`.
 - cli: `demo` end-to-end against fixtures.
+- Aero fixtures are hand-built from the ABI encodings with the values read on chain (docs/research/base-contracts.md §2.9),
+  never recorded. The demo world dates the Aero factories inside its synthetic history (earlier than on Base), so its
+  history holds Aero pools; `BASE_ADDRESSES` keeps the real start blocks.

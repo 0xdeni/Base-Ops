@@ -80,11 +80,18 @@ export function defaultStartBlock(addresses: ChainAddresses, dex: Dex): bigint {
       return addresses.uniswapV4.startBlock
     case 'aerodrome-v2':
       return addresses.aerodromeV2.startBlock
-    case 'aerodrome-slipstream': {
-      const starts = addresses.aerodromeSlipstream.map((d) => d.startBlock)
-      return starts.length === 0 ? 0n : starts.reduce((min, b) => minBigint(min, b))
-    }
+    case 'aerodrome-slipstream':
+      return earliestStart(addresses.aerodromeSlipstream)
+    case 'aero-v2':
+      return addresses.aeroV2.startBlock
+    case 'aero-slipstream':
+      return earliestStart(addresses.aeroSlipstream)
   }
+}
+
+function earliestStart(deployments: readonly { startBlock: bigint }[]): bigint {
+  const starts = deployments.map((d) => d.startBlock)
+  return starts.length === 0 ? 0n : starts.reduce((min, b) => minBigint(min, b))
 }
 
 export function resolveFromBlock(ctx: PipelineContext, dex: Dex, override?: bigint): bigint {

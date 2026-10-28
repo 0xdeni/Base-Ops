@@ -5,7 +5,7 @@
  * - Addresses are lowercase `0x…` strings. Native ETH (Uniswap v4 currency0 == address(0)) is NATIVE_ETH.
  * - Raw token amounts are `bigint` in the token's smallest unit. Human numbers are `number`.
  * - `price` always means "token1 per token0", decimal-adjusted (human) unless the name says otherwise.
- * - Fees are in pips (1e-6): 500 = 0.05 %, 3000 = 0.30 %. Aerodrome v2 fees (bps) are multiplied by 100.
+ * - Fees are in pips (1e-6): 500 = 0.05 %, 3000 = 0.30 %. Aerodrome v2 and Aero v2 fees (bps) are ×100.
  * - Pool ids are `${dex}:${address|poolId}` and unique across DEXes.
  */
 
@@ -15,12 +15,20 @@ export type Hex = `0x${string}`
 export const NATIVE_ETH: Address = '0x0000000000000000000000000000000000000000'
 export const BASE_CHAIN_ID = 8453 as const
 
-export type Dex = 'uniswap-v3' | 'uniswap-v4' | 'aerodrome-v2' | 'aerodrome-slipstream'
+export type Dex =
+  | 'uniswap-v3'
+  | 'uniswap-v4'
+  | 'aerodrome-v2'
+  | 'aerodrome-slipstream'
+  | 'aero-v2'
+  | 'aero-slipstream'
 export const DEXES: readonly Dex[] = [
   'uniswap-v3',
   'uniswap-v4',
   'aerodrome-v2',
   'aerodrome-slipstream',
+  'aero-v2',
+  'aero-slipstream',
 ]
 
 export type PoolKind = 'concentrated' | 'constant-product' | 'stable-swap'
@@ -43,13 +51,16 @@ export interface PoolMeta {
   poolId: Hex | null
   token0: TokenInfo
   token1: TokenInfo
-  /** LP fee in pips (1e-6). For v4 dynamic-fee pools this is the fee read at discovery time. */
+  /** LP fee in pips (1e-6) as last read: at discovery, then by every snapshot (`hasDynamicFee`). */
   feePips: number
   /** Tick spacing for concentrated pools; null otherwise. */
   tickSpacing: number | null
-  /** Aerodrome v2 stable (x³y + xy³) pools. */
+  /** Aerodrome v2 and Aero v2 stable (x³y + xy³) pools. */
   stable: boolean
-  /** Uniswap v4 hooks address; null otherwise. */
+  /**
+   * Uniswap v4: the hooks address. Aero Slipstream: the pool's swap hook when it is not the reviewed
+   * one or charges each block's first swap an initial fee. Otherwise null; non-null is `hooked`.
+   */
   hooks: Address | null
   createdAtBlock: bigint
 }
@@ -249,7 +260,7 @@ export type HealthGrade = 'A' | 'B' | 'C' | 'D' | 'F'
 
 /**
  * Why a pool has no grade (docs/METRICS.md, "Rated and unrated pools"), tested in this order:
- * `hooked` for a Uniswap v4 pool with a hook (not modelled: no depth, spread or concentration),
+ * `hooked` for a pool with a hook (`isHookedPool`; not modelled: no depth, spread or concentration),
  * `unpriced` when a side's USD depth is unknown, `one-sided` when the deeper side holds the rating
  * floor and the thinner does not, `thin` when neither does.
  */
@@ -294,7 +305,7 @@ export interface HealthInputs {
   /** The pool's kind: a reserve pool's `rangeHhi = 1` holds by construction and is not scored. */
   poolKind: PoolKind
   persistence: PersistenceMetrics | null
-  /** A Uniswap v4 pool with a hook (`isHookedPool`): unrated with reason `hooked`. Default false. */
+  /** A pool with a hook (`isHookedPool`): unrated with reason `hooked`. Default false. */
   hooked?: boolean
 }
 
@@ -349,6 +360,8 @@ export interface PoolSnapshot {
    * quotes"); null when a token has no USD price, and in snapshots stored before the field existed.
    */
   priceDeviationBps: number | null
+  /** LP fee in pips its depth and spread used (v4: the LP fee); null when stored before schema 7. */
+  feePips: number | null
 }
 
 /**

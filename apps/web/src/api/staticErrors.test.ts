@@ -55,7 +55,7 @@ describe('static client: 400 bodies', () => {
         { dex: 'sushi' as never },
         invalid([
           'dex',
-          'Invalid option: expected one of "uniswap-v3"|"uniswap-v4"|"aerodrome-v2"|"aerodrome-slipstream"',
+          'Invalid option: expected one of "uniswap-v3"|"uniswap-v4"|"aerodrome-v2"|"aerodrome-slipstream"|"aero-v2"|"aero-slipstream"',
         ]),
       ],
       [{ q: 'x'.repeat(101) }, invalid(['q', 'Too big: expected string to have <=100 characters'])],

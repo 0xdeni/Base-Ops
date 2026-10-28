@@ -23,6 +23,7 @@ import { slipstreamPoolId, slipstreamPoolMetas } from '../adapters/aerodromeSlip
 import { aerodromeV2PoolId, aerodromeV2PoolMetas } from '../adapters/aerodromeV2.js'
 import { uniswapV3PoolId, uniswapV3PoolMetas } from '../adapters/uniswapV3.js'
 import { computePoolId, uniswapV4PoolId, uniswapV4PoolMetas } from '../adapters/uniswapV4Pools.js'
+import { DexNotSupportedError } from '../adapters/unsupported.js'
 import { lowercase, type ReaderContext, ZERO_ADDRESS } from '../internal/context.js'
 import {
   asBigint,
@@ -291,9 +292,18 @@ export const seedUniswapV4: DexSeeder = async (ctx, block, tokens) => {
   }
 }
 
+/** A seeder for a DEX this package does not read yet: `seedPools` lists it in `failed`. */
+function unsupportedSeeder(dex: Dex): DexSeeder {
+  return async () => {
+    throw new DexNotSupportedError(dex, 'seeding')
+  }
+}
+
 export const SEEDERS: Readonly<Record<Dex, DexSeeder>> = Object.freeze({
   'uniswap-v3': seedUniswapV3,
   'uniswap-v4': seedUniswapV4,
   'aerodrome-v2': seedAerodromeV2,
   'aerodrome-slipstream': seedSlipstream,
+  'aero-v2': unsupportedSeeder('aero-v2'),
+  'aero-slipstream': unsupportedSeeder('aero-slipstream'),
 })

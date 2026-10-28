@@ -42,9 +42,12 @@ function readerAt(opts: SyntheticOptions) {
   })
 }
 
+/** The world's DEXes: the Aero adapters reject discovery until the world holds Aero pools. */
+const WORLD_DEXES = DEXES.filter((dex) => syntheticWorld().pools.some((p) => p.meta.dex === dex))
+
 async function discoverAll(reader: ReturnType<typeof readerAt>, toBlock: bigint) {
   const pools: PoolMeta[] = []
-  for (const dex of DEXES) pools.push(...(await reader.discoverPools(dex, 1n, toBlock)))
+  for (const dex of WORLD_DEXES) pools.push(...(await reader.discoverPools(dex, 1n, toBlock)))
   return pools
 }
 

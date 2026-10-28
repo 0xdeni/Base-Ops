@@ -256,6 +256,7 @@ export function buildPool(seed: PoolSeed, now: number): MockPool {
     spreads,
     concentration,
     priceDeviationBps: priceDeviationBps(seed.price, tokenUsd(seed.token0), tokenUsd(seed.token1)),
+    feePips: seed.feePips,
   }
   return {
     seed,

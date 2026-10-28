@@ -183,7 +183,11 @@ describe('seedPools', () => {
       { dex: 'aerodrome-v2', candidates: 6, found: 1, searched: 1 },
       { dex: 'aerodrome-slipstream', candidates: 45, found: 1, searched: 1 },
     ])
-    expect(seeded.failed).toEqual([])
+    // The Aero seeders reject until the chain package reads those DEXes.
+    expect(seeded.failed).toEqual([
+      { dex: 'aero-v2', error: 'aero-v2: seeding is not supported yet' },
+      { dex: 'aero-slipstream', error: 'aero-slipstream: seeding is not supported yet' },
+    ])
     const discovered = (
       await Promise.all(
         (['uniswap-v3', 'uniswap-v4', 'aerodrome-v2', 'aerodrome-slipstream'] as const).map((dex) =>
