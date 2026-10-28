@@ -129,22 +129,14 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-/* The words inside a bar sit above the KPI line on a patch of the bar's colour, so the line never
-   runs through them. */
+/* The words inside a bar, set in from the spine by an inline offset: 20 px (10 on phones), or
+   16 px past a KPI line they would otherwise reach. No patch: the line runs unbroken beside them. */
 .kpi-in {
   position: absolute;
   top: 50%;
   z-index: 4;
   translate: 0 -50%;
-  margin: -4px -8px;
-  padding: 4px 8px;
   color: var(--g100);
-}
-.kpi-h.s .kpi-in {
-  background: var(--sell-band);
-}
-.kpi-h.b .kpi-in {
-  background: var(--buy-band);
 }
 .kpi-in small,
 .kpi-out small {
@@ -156,11 +148,7 @@
   line-height: 1.35;
 }
 .kpi-h.s .kpi-in {
-  right: 20px;
   text-align: right;
-}
-.kpi-h.b .kpi-in {
-  left: 20px;
 }
 /* A bar too short for its words reads them under the bars, in white, beside the spine. */
 .kpi-under {
@@ -211,12 +199,6 @@
   .kpi-in .long,
   .kpi-out .long {
     display: none;
-  }
-  .kpi-h.s .kpi-in {
-    right: 10px;
-  }
-  .kpi-h.b .kpi-in {
-    left: 10px;
   }
   .kpi-under > :first-child {
     padding-right: 10px;

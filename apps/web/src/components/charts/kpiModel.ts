@@ -77,16 +77,38 @@ export function shortfallText(m: KpiModel): string | null {
   return `Shortfall against the KPI: ${usd(m.sell.shortfall)} on the sell side, ${usd(m.buy.shortfall)} on the buy side`
 }
 
-/**
- * Whether a side's words fit inside its bar on a `halfPx`-wide half: the 13 px title (about 7 px
- * a glyph) or the value at `valuePx` (about 0.56 em a glyph), 20 px from the spine (10 on phones)
- * and 12 px clear of the bar's end. A side that does not fit reads under the bars instead.
- */
-export function wordsFit(k: KpiSide, halfPx: number, valuePx: number, phone: boolean): boolean {
+/** A side's words, wide: the 13 px title (about 7 px a glyph) or the value at `valuePx` (0.56 em). */
+function wordsWidth(k: KpiSide, valuePx: number, phone: boolean): number {
   const title = phone ? (word(k.side).split(' ')[0] ?? '') : sideTitle(k)
-  const need =
-    Math.max(title.length * 7, usd(k.value).length * valuePx * 0.56) + (phone ? 10 : 20) + 12
-  return k.w * halfPx >= need
+  return Math.max(title.length * 7, usd(k.value).length * valuePx * 0.56)
+}
+
+/** The clearance between the words and the bar's end or the KPI line, and past the line. */
+const CLEAR = 12
+const PAST_LINE = 16
+
+/**
+ * Where a side's words sit inside its bar on a `halfPx`-wide half, in px from the spine, or null
+ * when they read under the bars. They start 20 px from the spine (10 on phones) and keep 12 px
+ * clear of the bar's end. When the KPI line lies inside the bar and the words would reach it, they
+ * start 16 px past the line instead, so the line runs unbroken beside them; when the bar leaves no
+ * room for them there, they read under the bars.
+ */
+export function wordsAt(
+  k: KpiSide,
+  halfPx: number,
+  valuePx: number,
+  phone: boolean,
+): number | null {
+  const width = wordsWidth(k, valuePx, phone)
+  const bar = k.w * halfPx
+  const inset = phone ? 10 : 20
+  const line = k.kpiW * halfPx
+  if (k.value !== null && k.kpiW < k.w && inset + width + CLEAR > line) {
+    const at = line + PAST_LINE
+    return bar - at >= width + CLEAR ? at : null
+  }
+  return bar >= inset + width + CLEAR ? inset : null
 }
 
 /** The caption when the store keeps per-side depth for the latest sample only. */

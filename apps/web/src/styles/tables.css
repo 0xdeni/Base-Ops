@@ -201,6 +201,13 @@ th[aria-sort] .sort-btn svg {
 .td-depth {
   gap: var(--s4);
 }
+/* The value takes one fixed width (it fits "$29.5M"), so every row's glyph, and its spine, sits
+   at the same x down the column. */
+.td-depth > span:last-child {
+  min-width: 6.5ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 .td-unit {
   color: var(--text-2);
 }

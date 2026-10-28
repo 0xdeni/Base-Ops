@@ -7,7 +7,9 @@
  * The lens: a mouse over a row, keyboard focus on its link or the first tap on touch. The readout
  * names the pool and its share, the totals swap to its two sides, and everything else dims to
  * 0.32 (150 ms; instant from the keyboard). The second tap opens the pool; Up and Down move focus
- * between row links; leaving the plot or blurring the figure restores the totals.
+ * between row links; leaving the plot or blurring the figure restores the totals. Every row's
+ * readout, "Open pool" included, sits hidden in the readout's own grid cell, so the line always
+ * holds the height of the tallest one and a read never moves the rows under the finger.
  */
 import {
   type FocusEvent,
@@ -27,6 +29,7 @@ import { Axis, Bracket, labelFits, PoolRow, TotalRow } from './ButterflyPlot.js'
 import {
   axisTicks,
   type ButterflyModel,
+  type ButterflyRow,
   butterflyLabel,
   butterflyModel,
   pickButterflyRows,
@@ -41,6 +44,16 @@ import './butterflyStates.css'
 export interface ButterflyGap {
   poolId: string
   turnoverRatio: number
+}
+
+/** A row in the readout: "WETH / cbBTC, Uniswap v3 0.3 %: 5 % of Base". */
+function Who({ row, scope }: { row: ButterflyRow; scope: string }) {
+  const t = readoutText(row, scope)
+  return (
+    <span>
+      <b>{t.who}</b>: {t.share}
+    </span>
+  )
 }
 
 export interface DepthButterflyProps {
@@ -146,7 +159,6 @@ export function DepthButterfly({
     }
   }
 
-  const who = lensed ? readoutText(lensed, scope) : null
   const cls = `bf${lensed ? ' is-lens' : ''}${lens?.instant ? ' is-instant' : ''}`
   const restWord = `The other ${count(m.rest.count)} ${m.rest.count === 1 ? 'pool' : 'pools'}.`
   return (
@@ -162,20 +174,28 @@ export function DepthButterfly({
       }}
     >
       <div className="bf-head" data-furniture="">
-        <p className="bf-who" aria-live="polite">
-          {who ? (
-            <>
-              <b>{who.who}</b>: {who.share}
-              {lens?.touch && lensed ? (
-                <Link className="bf-open" to={poolHref(lensed.id)}>
-                  Open pool
-                </Link>
-              ) : null}
-            </>
-          ) : (
-            `All of ${scope}, every tracked pool`
-          )}
-        </p>
+        <div className="bf-who">
+          <p className="bf-read" aria-live="polite">
+            {lensed ? (
+              <>
+                <Who row={lensed} scope={scope} />
+                {lens?.touch ? (
+                  <Link className="bf-open" to={poolHref(lensed.id)}>
+                    Open pool
+                  </Link>
+                ) : null}
+              </>
+            ) : (
+              `All of ${scope}, every tracked pool`
+            )}
+          </p>
+          {m.rows.map((r) => (
+            <p key={r.id} className="bf-read is-ghost" aria-hidden="true">
+              <Who row={r} scope={scope} />
+              <span className="bf-open">Open pool</span>
+            </p>
+          ))}
+        </div>
         <div className="s">
           <span className="meta">
             <i className="sw sell-band" aria-hidden="true" />

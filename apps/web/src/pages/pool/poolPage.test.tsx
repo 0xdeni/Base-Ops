@@ -48,6 +48,21 @@ describe('Pool page: stored sides, price from the base token (N2, UX2-02)', () =
   })
 })
 
+describe('Pool page: the pair title', () => {
+  it('glues the slash to the first symbol, so a wrapping title never starts a line with it', async () => {
+    renderPool(V3_WETH_USDC)
+    const h1 = await loaded()
+    expect(h1.textContent).toBe(`WETH${NB}/ USDC`)
+    expect(h1.textContent).toContain(`${NB}/ `)
+    expect(h1.textContent).not.toMatch(/ \//)
+    expect(
+      within(h1)
+        .getAllByRole('link')
+        .map((a) => a.textContent),
+    ).toEqual(['WETH', 'USDC'])
+  })
+})
+
 describe('Pool page: About this pool (L3)', () => {
   it('links an address-keyed pool to Basescan and offers a copy', async () => {
     const { container } = renderPool(V3_WETH_USDC)

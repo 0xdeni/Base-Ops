@@ -7,6 +7,10 @@
  * A mouse reads the square under it and a click opens the pool; on touch the first tap reads and
  * the second opens. The field is one focusable group: arrow keys step through the rated pools by
  * depth, Enter opens, Escape clears. While a filter is set, squares outside it dim to 0.22.
+ *
+ * Every square's readout, "Open pool" included, sits hidden in the readout's own grid cell, so the
+ * readout always holds the height of the tallest one and reading a square never moves the caption,
+ * the controls or the table under it.
  */
 import { type CSSProperties, memo, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -113,18 +117,21 @@ function Readout({
   total,
   scope,
   touch,
+  ghost = false,
 }: {
   q: FieldSquare<Pool> | undefined
   total: number
   scope: string
   touch: boolean
+  /** A hidden copy that only holds the readout's height: "Open pool" is plain text. */
+  ghost?: boolean
 }) {
   if (!q) return <span className="t2">Point at, focus or tap a square to read its pool.</span>
   if (q.kind === 'merged')
     return (
       <>
         <b className="who">{count(q.pools.length)} smallest pools</b>
-        <span>
+        <span className="depth">
           {usd(q.depth)} within 2{NB}% together, {shareOf(q.depth / total)} of {scope}
         </span>
       </>
@@ -135,7 +142,7 @@ function Readout({
       <b className="who">
         {pairLabel(p.pool.token0, p.pool.token1)}, {venueOf(p)}
       </b>
-      <span>
+      <span className="depth">
         {usd(q.depth)} within 2{NB}%: {usd(p.depth2DownUsd)} sell, {usd(p.depth2UpUsd)} buy
       </span>
       <span>
@@ -146,7 +153,9 @@ function Readout({
       ) : (
         <span className="t2">Not rated</span>
       )}
-      {touch ? (
+      {ghost ? (
+        <span className="lens-open">Open pool</span>
+      ) : touch ? (
         <Link className="lens-open" to={poolHref(p.pool.id)}>
           Open pool
         </Link>
@@ -175,6 +184,19 @@ export function SquareField({ pools, inFilter = null, scope = 'Base' }: SquareFi
     [pools, W, H, min],
   )
   const order = useMemo(() => stepOrder(m.squares, (p) => p.health.rated), [m])
+  const ghosts = useMemo(
+    () =>
+      m.squares.map((q) => (
+        <p
+          key={q.kind === 'pool' ? q.pool.pool.id : 'merged'}
+          className="lens is-ghost"
+          aria-hidden="true"
+        >
+          <Readout q={q} total={m.total} scope={scope} touch ghost />
+        </p>
+      )),
+    [m, scope],
+  )
   const cur = hot >= 0 ? m.squares[hot] : undefined
   const at = (e: { clientX: number; clientY: number }) => {
     const r = fieldRef.current?.getBoundingClientRect()
@@ -247,9 +269,12 @@ export function SquareField({ pools, inFilter = null, scope = 'Base' }: SquareFi
           ))}
         </div>
       </div>
-      <p className="lens" data-furniture="" aria-live="polite">
-        <Readout q={cur} total={m.total} scope={scope} touch={touch} />
-      </p>
+      <div className="lens-box" data-furniture="">
+        <p className="lens" aria-live="polite">
+          <Readout q={cur} total={m.total} scope={scope} touch={touch} />
+        </p>
+        {ghosts}
+      </div>
       <figcaption className="field-cap" data-furniture="">
         Where {scope}’s depth sits: one square per pool, its area true to the pool’s depth within 2
         {NB}% of the price. Solid: rated A to F. Outlined: not rated.

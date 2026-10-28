@@ -106,12 +106,12 @@ describe('Pool page: the facts row over the band (visual-v4 §6.4, §5.6)', () =
     const stats = await createMockClient({ now: NOW }).stats()
     const median = Math.floor(stats.totals.medianHealth ?? 0)
     await waitFor(() =>
-      expect(factLabels()[0]).toBe(`health; the median rated pool scores ${median}`),
+      expect(factLabels()[0]).toBe(`health; the median rated pool scores${NB}${median}`),
     )
     expect(factLabels().slice(1)).toEqual([
       'spread at $10K, a round trip',
-      expect.stringMatching(/^traded in 24\sh, [\d.]+× the depth within 2\s%$/),
-      expect.stringMatching(/^TVL, of which (\d+|under 1)\s% sits within 2\s%$/),
+      expect.stringMatching(/^traded in 24\sh, [\d.]+× the depth within\s2\s%$/),
+      expect.stringMatching(/^TVL, of which (\d+|under 1)\s% sits within\s2\s%$/),
     ])
     expect(within(row).getByRole('img', { name: /^Grade [A-F]$/ })).toBeTruthy()
   })

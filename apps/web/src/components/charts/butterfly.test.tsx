@@ -160,7 +160,7 @@ function renderButterfly(props: Partial<Parameters<typeof DepthButterfly>[0]> = 
 
 describe('DepthButterfly', () => {
   const totals = (c: HTMLElement) => [...c.querySelectorAll('.bf-tot')].map((e) => e.textContent)
-  const who = (c: HTMLElement) => c.querySelector('.bf-who')?.textContent
+  const who = (c: HTMLElement) => c.querySelector('.bf-read[aria-live]')?.textContent
 
   it('reads the scope and its two side totals in the head', () => {
     const { container } = renderButterfly({ pools: DEMO_POOLS })
@@ -240,6 +240,25 @@ describe('DepthButterfly', () => {
     expect(open.getAttribute('href')).toBe('/pools/uniswap-v4%3A0x96d4')
     // Once read, the row's own link takes the tap (butterflyStates.css) and opens the pool.
     expect(row.querySelector('.bf-link')?.getAttribute('href')).toBe('/pools/uniswap-v4%3A0x96d4')
+  })
+
+  it('holds every row’s readout hidden in the readout’s cell, so the first tap moves no row', () => {
+    const { container } = renderButterfly({ pools: DEMO_POOLS })
+    const cell = container.querySelector('.bf-who') as HTMLElement
+    const live = cell.querySelector('.bf-read[aria-live]') as HTMLElement
+    const ghosts = [...cell.querySelectorAll<HTMLElement>('.bf-read.is-ghost')]
+    const rows = [...container.querySelectorAll<HTMLElement>('.bf-pools .bf-r')]
+    expect(ghosts).toHaveLength(rows.length)
+    for (const g of ghosts) expect(g.getAttribute('aria-hidden')).toBe('true')
+    // A touch read shows the row's words and "Open pool": the text its hidden copy already holds.
+    rows.forEach((row, i) => {
+      const bar = row.querySelector('.bf-b') as HTMLElement
+      fireEvent.pointerDown(bar, { pointerType: 'touch' })
+      fireEvent.click(bar)
+      expect(row.classList.contains('is-on')).toBe(true)
+      expect(live.textContent).toBe(ghosts[i]?.textContent)
+      expect(live.textContent).toMatch(/Open pool$/)
+    })
   })
 
   it('moves focus between row links with Up and Down', () => {

@@ -200,12 +200,14 @@
   letter-spacing: -0.05em;
   white-space: nowrap;
 }
+/* The label is prose: it wraps without leaving one word or number alone on its last line. */
 .fact dt:not(.fact-eb) {
   order: 2;
   max-width: 30ch;
   font-size: var(--t-data);
   line-height: 1.4;
   color: var(--text-2);
+  text-wrap: pretty;
 }
 .ink .fact dt:not(.fact-eb) {
   color: var(--on-ink-2);

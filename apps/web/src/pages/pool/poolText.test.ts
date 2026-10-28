@@ -123,13 +123,15 @@ describe('healthTakeaway', () => {
 })
 
 describe('the facts’ comparisons and the callout', () => {
-  it('words each label from the stored values', () => {
-    expect(healthFactSuffix(61.475)).toBe('; the median rated pool scores 61')
+  it('words each label from the stored values, the closing number glued to the word before it', () => {
+    expect(healthFactSuffix(61.475)).toBe(`; the median rated pool scores${NB}61`)
     expect(healthFactSuffix(null)).toBe('')
-    expect(volumeFactLabel(14.02)).toBe(`traded in 24${NB}h, 14× the depth within 2${NB}%`)
+    expect(volumeFactLabel(14.02)).toBe(`traded in 24${NB}h, 14× the depth within${NB}2${NB}%`)
     expect(volumeFactLabel(null)).toBe(`traded in 24${NB}h`)
-    expect(tvlFactLabel(810_820, 8_394_440)).toBe(`TVL, of which 10${NB}% sits within 2${NB}%`)
-    expect(tvlFactLabel(2_000, 8_394_440)).toBe(`TVL, of which under 1${NB}% sits within 2${NB}%`)
+    expect(tvlFactLabel(810_820, 8_394_440)).toBe(`TVL, of which 10${NB}% sits within${NB}2${NB}%`)
+    expect(tvlFactLabel(2_000, 8_394_440)).toBe(
+      `TVL, of which under 1${NB}% sits within${NB}2${NB}%`,
+    )
     expect(tvlFactLabel(null, 8_394_440)).toBe('TVL')
   })
 
@@ -202,6 +204,15 @@ describe('poolAnswer', () => {
     expect(poolAnswer(level(null, 5_102_004))).toBe(
       `It takes $5.10M of selling to push WETH down 2${NB}%. The buy side is unknown: USDC has no USD price.`,
     )
+  })
+
+  it('says that no liquidity sits within 2 % when both sides hold $0, never "It takes $0"', () => {
+    expect(poolAnswer(level(0, 0))).toBe(`No liquidity sits within 2${NB}% of the price.`)
+    expect(poolAnswer(level(0, 0, false, false))).toBe(
+      `No liquidity sits within 2${NB}% of the price.`,
+    )
+    // One empty side still reads as a number: the other side holds depth.
+    expect(poolAnswer(level(0, 5_102_004))).toMatch(/^It takes \$0 of buying/)
   })
 
   it('says how much empties a side that runs out before 2 %', () => {

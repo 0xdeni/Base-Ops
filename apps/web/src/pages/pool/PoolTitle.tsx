@@ -1,11 +1,13 @@
 /**
  * The Pool title section (docs/design/visual-v4.md §6.4): the back link to Pools, the eyebrow
  * ("UNISWAP V3   0.05 % FEE"), then a two-column grid from 1024 px. At left the pair as the h1,
- * each symbol linking to its token page, and the price line "1 WETH = 2,329.96 USDC" with a ⇄
- * button that flips it (N2); at right, bottom-aligned, the answer sentence. The line starts from
- * the pool's base token (`lib/orient.ts`), so a price below 1 ("1 USDC = 0.7576 AERO") only shows
- * behind the toggle. Only the characters that change settle in (§4.3); a keyboard flip swaps
- * instantly. The title and the answer rise with the first view, the rest fades in (`data-in`).
+ * each symbol linking to its token page, with a no-break space before the slash so a title that
+ * wraps breaks after "WETH /" and no line starts with the slash; under it the price line
+ * "1 WETH = 2,329.96 USDC" with a ⇄ button that flips it (N2); at right, bottom-aligned, the
+ * answer sentence. The line starts from the pool's base token (`lib/orient.ts`), so a price below
+ * 1 ("1 USDC = 0.7576 AERO") only shows behind the toggle. Only the characters that change settle
+ * in (§4.3); a keyboard flip swaps instantly. The title and the answer rise with the first view,
+ * the rest fades in (`data-in`).
  */
 import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -75,8 +77,8 @@ export function PoolTitle({
           <h1 className="title pool-title" id="pool-title" data-rise="">
             <Link className="pool-tok" to={tokenHref(pool.token0.address)}>
               {pool.token0.symbol}
-            </Link>{' '}
-            /{' '}
+            </Link>
+            {`${NB}/ `}
             <Link className="pool-tok" to={tokenHref(pool.token1.address)}>
               {pool.token1.symbol}
             </Link>

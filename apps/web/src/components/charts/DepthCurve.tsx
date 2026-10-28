@@ -10,6 +10,9 @@
  * nearest point and keeps it until a tap elsewhere, a second tap on it, blur or Escape, like the
  * butterfly and the field. Arrow keys step through the points, Escape and blur clear (CH2). The
  * tooltip follows its point when the page scrolls.
+ *
+ * A snapshot whose measured levels all hold $0 has no range to draw: one sentence stands in for
+ * the plot (no ticks, no labels, no points) and the foot row stays.
  */
 import {
   type MouseEvent,
@@ -32,6 +35,7 @@ import {
   curveGeometry,
   curveLabel,
   curvePoints,
+  emptyNote,
   nearestPoint,
   outPath,
   pointText,
@@ -161,13 +165,31 @@ export function DepthCurve({ snapshot, token0, token1, heading, children }: Dept
       </span>
     </div>
   )
+  const foot = (
+    <ShowData
+      band
+      className="cv-foot"
+      note={`Straight lines join measured points only. Nothing is drawn past ±5${NB}%.`}
+    >
+      {children}
+    </ShowData>
+  )
   if (!points.length) {
     return (
       <div className="cv-wrap" data-chart="">
         {head}
-        <p className="chart-note">
+        <p className="cv-empty">
           Neither {token0.symbol} nor {token1.symbol} has a USD price, so depth is not drawn.
         </p>
+      </div>
+    )
+  }
+  if (g.empty) {
+    return (
+      <div className="cv-wrap" data-chart="">
+        {head}
+        <p className="cv-empty">{emptyNote(points, token0, token1)}</p>
+        {foot}
       </div>
     )
   }
@@ -339,13 +361,7 @@ export function DepthCurve({ snapshot, token0, token1, heading, children }: Dept
           ]}
         />
       ) : null}
-      <ShowData
-        band
-        className="cv-foot"
-        note={`Straight lines join measured points only. Nothing is drawn past ±5${NB}%.`}
-      >
-        {children}
-      </ShowData>
+      {foot}
     </div>
   )
 }

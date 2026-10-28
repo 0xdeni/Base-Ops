@@ -234,6 +234,27 @@ describe('SquareField', () => {
     expect(readout(container)).toContain('together')
   })
 
+  it('holds every square’s readout hidden in the readout’s cell, so a read never moves the caption', () => {
+    const { container } = renderField()
+    const box = container.querySelector('.lens-box') as HTMLElement
+    const live = box.querySelector('.lens[aria-live]') as HTMLElement
+    const ghosts = [...box.querySelectorAll<HTMLElement>('.lens.is-ghost')]
+    // One hidden readout per square, with "Open pool" as plain text, out of the a11y tree.
+    expect(ghosts).toHaveLength(model.squares.length)
+    for (const g of ghosts) expect(g.getAttribute('aria-hidden')).toBe('true')
+    expect(box.querySelectorAll('.lens.is-ghost a')).toHaveLength(0)
+    // The caption follows the cell, not the live readout.
+    expect(box.nextElementSibling?.classList.contains('field-cap')).toBe(true)
+    // After a tap the live readout says exactly what that square's hidden copy holds, so the
+    // cell already has its height.
+    const field = screen.getByRole('group')
+    const q = model.squares[2]!
+    fireEvent.pointerDown(field, { pointerType: 'touch' })
+    fireEvent.click(field, { clientX: q.x + q.s / 2, clientY: q.y + q.s / 2 })
+    expect(live.textContent).toMatch(/Open pool$/)
+    expect(live.textContent).toBe(ghosts[2]?.textContent)
+  })
+
   it('dims squares outside the table’s filter, and the merged square', () => {
     const { container } = renderField((p) => p.pool.dex === 'aerodrome-v2')
     const dim = container.querySelectorAll('.sq.dim')

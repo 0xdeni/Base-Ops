@@ -30,6 +30,8 @@
   font-size: var(--t-ui);
   font-weight: 800;
   line-height: 1;
+  /* A chip beside a 56 px fact value must not inherit that value's tight tracking. */
+  letter-spacing: 0;
   flex: none;
   --shape: 8px;
 }

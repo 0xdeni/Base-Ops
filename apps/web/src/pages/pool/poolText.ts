@@ -39,6 +39,7 @@ const PART_NAME: Readonly<Record<keyof HealthComponents, string>> = {
  * pool's first token, whose price the stored sides move (AGENTS.md rule 6): USDC / AERO reads "to
  * lift USDC", the same sides Home and the scorecards show. With an unpriced side it says which
  * token has no USD price; with a side that runs out before 2 % it says how much empties it (CH3).
+ * When both sides hold $0 within 2 % it says that no liquidity sits there.
  */
 export function poolAnswer(detail: Pick<PoolDetail, 'pool' | 'latest'>): string {
   const { pool } = detail
@@ -54,6 +55,7 @@ export function poolAnswer(detail: Pick<PoolDetail, 'pool' | 'latest'>): string 
   const downOut = raw?.down.reached === false
   if (up === null && down === null)
     return `Depth is unknown in dollars: neither ${t0} nor ${t1} has a USD price.`
+  if (up === 0 && down === 0) return `No liquidity sits within 2${NB}% of the price.`
   if (upOut || downOut) {
     const side = upOut ? 'buy' : 'sell'
     const v = upOut ? up : down
@@ -157,15 +159,19 @@ export function spreadAt(spreads: readonly SpreadPoint[], notional: number): num
   return s !== undefined && costs(s) ? s.spreadBps : null
 }
 
-/** The facts' comparisons (§6.4): each label carries what to read its value against (P4). */
+/**
+ * The facts' comparisons (§6.4): each label carries what to read its value against (P4). A number
+ * that ends a label is joined to the word before it with a no-break space, so it never sits alone
+ * on the label's last line.
+ */
 export function healthFactSuffix(median: number | null | undefined): string {
-  return median == null ? '' : `; the median rated pool scores ${score(median)}`
+  return median == null ? '' : `; the median rated pool scores${NB}${score(median)}`
 }
 
 /** "traded in 24 h, 14× the depth within 2 %": core's turnover, as the gap metrics store it. */
 export function volumeFactLabel(turnover: number | null | undefined): string {
   const base = `traded in 24${NB}h`
-  return turnover == null ? base : `${base}, ${ratio(turnover)} the depth within 2${NB}%`
+  return turnover == null ? base : `${base}, ${ratio(turnover)} the depth within${NB}2${NB}%`
 }
 
 /**
@@ -174,7 +180,7 @@ export function volumeFactLabel(turnover: number | null | undefined): string {
  */
 export function tvlFactLabel(depth2: number | null | undefined, tvl: number | null): string {
   if (depth2 == null || tvl === null || !(tvl > 0)) return 'TVL'
-  return `TVL, of which ${shareOf(depth2 / tvl)} sits within 2${NB}%`
+  return `TVL, of which ${shareOf(depth2 / tvl)} sits within${NB}2${NB}%`
 }
 
 /**

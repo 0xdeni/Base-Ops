@@ -11,6 +11,7 @@ import {
   curveGeometry,
   curveLabel,
   curvePoints,
+  emptyNote,
   nearestPoint,
   outPath,
   twoPct,
@@ -28,6 +29,14 @@ class TestPointerEvent extends MouseEvent {
   constructor(type: string, init: PointerEventInit = {}) {
     super(type, init)
     this.pointerType = init.pointerType ?? 'mouse'
+  }
+}
+
+/** A snapshot whose every measured level holds $0 on both sides. */
+function empty(): PoolSnapshotDto {
+  return {
+    ...SNAPSHOT,
+    depthUsd: SNAPSHOT.depthUsd.map((d) => ({ ...d, upUsd: 0, downUsd: 0, totalUsd: 0 })),
   }
 }
 
@@ -123,6 +132,24 @@ describe('curve data (CH3)', () => {
     expect(twoPct(points, 'buy')?.usd).toBe(6_079_641.56)
   })
 
+  it('marks a snapshot with $0 at every level empty: no step, no axis top, no ticks', () => {
+    const zero = curvePoints(empty(), WETH, USDC)
+    expect(zero).toHaveLength(6)
+    const g = curveGeometry(zero, 1200, false)
+    expect(g.empty).toBe(true)
+    expect([g.step, g.yMax]).toEqual([0, 0])
+    expect(g.yTicks).toEqual([])
+    expect(g.fy(0)).toBe(g.base)
+    expect(curveGeometry(points, 1200, false).empty).toBe(false)
+    expect(emptyNote(zero, WETH, USDC)).toBe(
+      `No liquidity sits within 5${NB}% of the price at this snapshot.`,
+    )
+    const sellOnly = zero.filter((p) => p.side === 'sell')
+    expect(emptyNote(sellOnly, WETH, USDC)).toBe(
+      `No liquidity sits within 5${NB}% of the price on the sell side at this snapshot; USDC has no USD price.`,
+    )
+  })
+
   it('states the asymmetry of the ±2 % depth in Show data', () => {
     expect(asymmetryNote(SNAPSHOT)).toBe(
       `Buying meets 19${NB}% more depth than selling at ±2${NB}%.`,
@@ -211,6 +238,18 @@ describe('DepthCurve', () => {
     fireEvent.keyDown(img, { key: 'Escape' })
     expect(document.querySelector('.tip.chart-tip')).toBeNull()
     expect(container.querySelector('.xh')).toBeNull()
+  })
+
+  it('draws no plot for a snapshot with no liquidity: one sentence, then the foot row', () => {
+    const { container } = renderCurve(empty())
+    expect(container.querySelector('svg.chart-svg, figure.cv')).toBeNull()
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(container.querySelectorAll('.ax, .cv-lab, rect.cv-pt, .cv-read')).toHaveLength(0)
+    expect(container.querySelector('.cv-empty')?.textContent).toBe(
+      `No liquidity sits within 5${NB}% of the price at this snapshot.`,
+    )
+    expect(screen.getByRole('button', { name: /Show data/ })).toBeTruthy()
+    expect(screen.getByText(/^Straight lines join measured points only/)).toBeTruthy()
   })
 
   describe('pointer and touch', () => {

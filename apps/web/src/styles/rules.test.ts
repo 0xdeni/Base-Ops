@@ -149,3 +149,52 @@ describe('layout guards (§5.1, §8.11)', () => {
     expect(block(allCss, '.disc-tail')).toMatch(/white-space:\s*nowrap/)
   })
 })
+
+describe('reads and labels that hold still (§5.6, §5.8, §5.9)', () => {
+  const css = stripComments(allCss)
+
+  it('stacks each readout over hidden copies of every reading in one grid cell', () => {
+    expect(block(css, '.bf-who')).toMatch(/display:\s*grid/)
+    expect(block(css, '.bf-read')).toMatch(/grid-area:\s*1 \/ 1/)
+    expect(block(css, '.bf-read.is-ghost')).toMatch(/visibility:\s*hidden/)
+    expect(block(css, '.lens-box')).toMatch(/display:\s*grid/)
+    expect(block(css, '.lens')).toMatch(/grid-area:\s*1 \/ 1/)
+    // The field's lines pack to the top, and the grade chip centres on its line with the words.
+    expect(block(css, '.lens')).toMatch(/align-content:\s*flex-start/)
+    expect(block(css, '.lens')).toMatch(/align-items:\s*center/)
+    expect(block(css, '.lens.is-ghost')).toMatch(/visibility:\s*hidden/)
+    expect(block(css, '.bf-open')).not.toMatch(/margin/)
+  })
+
+  it('dims the bracket sentence by colour, keeping its band patch opaque over the spine', () => {
+    for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const [, selector = '', body = ''] = m
+      if (/\.bf-call(?![-\w])|\.bf-call-t|\.bf-lab/.test(selector))
+        expect(body, selector).not.toMatch(/opacity/)
+    }
+    expect(block(css, '.bf-call-t')).toMatch(/background:\s*var\(--band\)/)
+    expect(block(css, '.bf.is-lens .bf-call-t')).toMatch(/color:\s*rgb\(255 255 255 \/ 0\.32\)/)
+    expect(block(css, '.bf.is-lens .bf-call-in')).toMatch(/border-color:/)
+  })
+
+  it('keeps the KPI line unbroken: the words inside a bar carry no patch', () => {
+    expect(block(css, '.kpi-in')).not.toMatch(/background/)
+    expect(css).not.toMatch(/\.kpi-in\s*\{[^}]*background/)
+  })
+
+  it('lines up every row glyph’s spine: the depth value has one fixed width', () => {
+    const value = block(css, '.td-depth > span:last-child')
+    expect(value).toMatch(/min-width:\s*6\.5ch/)
+    expect(value).toMatch(/text-align:\s*right/)
+    expect(value).toMatch(/font-variant-numeric:\s*tabular-nums/)
+  })
+
+  it('wraps fact labels as prose, never leaving one word alone on the last line', () => {
+    expect(block(css, '.fact dt:not(.fact-eb)')).toMatch(/text-wrap:\s*pretty/)
+  })
+
+  it('keeps a grade chip beside a fact value out of the value’s tight tracking', () => {
+    expect(block(css, '.fact dd')).toMatch(/letter-spacing:\s*-0\.05em/)
+    expect(block(css, '.grade')).toMatch(/letter-spacing:\s*0;/)
+  })
+})

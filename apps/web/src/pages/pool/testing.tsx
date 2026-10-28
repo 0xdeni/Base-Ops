@@ -57,7 +57,7 @@ export function renderPool(
 }
 
 export function loaded() {
-  return screen.findByRole('heading', { level: 1, name: /WETH \/ USDC|ETH \/ USDC/ })
+  return screen.findByRole('heading', { level: 1, name: /^W?ETH \/ USDC$/ })
 }
 
 /** The facts row: the ink block over the band. */

@@ -118,6 +118,19 @@
 .cv-foot {
   margin-top: 12px;
 }
+/* The sentence that stands in for the plot (no USD price, or no liquidity within 5 %): white on
+   the band, centred under the legend row, with the plot's breathing room around it. */
+.cv-empty {
+  max-width: 44ch;
+  margin: 64px auto;
+  font-size: var(--t-lead);
+  font-weight: 650;
+  line-height: 1.42;
+  letter-spacing: -0.01em;
+  text-align: center;
+  text-wrap: pretty;
+  color: var(--on-band);
+}
 
 /* Phones: the ±2 % values move to a readout row above the chart (32 px values). */
 @media (max-width: 52.49em) {
@@ -132,6 +145,10 @@
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
+  }
+  .cv-empty {
+    margin-block: 40px;
+    font-size: var(--t-body);
   }
   .cv-read {
     display: flex;

@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { KpiChart } from './KpiChart.js'
-import { kpiLabel, kpiModel, shortfallText, sideTitle, wordsFit } from './kpiModel.js'
+import { kpiLabel, kpiModel, shortfallText, sideTitle, wordsAt } from './kpiModel.js'
 
 afterEach(cleanup)
 
@@ -56,8 +56,23 @@ describe('kpiModel (visual-v4 §5.9.4)', () => {
 
   it('moves a side’s words under the bars when its bar is too short for them', () => {
     const m = kpiModel(7_600, 60_000, 50_000)
-    expect(wordsFit(m.buy, 640, 52, false)).toBe(true)
-    expect(wordsFit(m.sell, 640, 52, false)).toBe(false)
+    expect(wordsAt(m.buy, 640, 52, false)).toBe(20)
+    expect(wordsAt(m.sell, 640, 52, false)).toBeNull()
+    expect(wordsAt(m.sell, 640, 24, true)).toBeNull()
+  })
+
+  it('sets the words 16 px past a KPI line inside the bar that they would otherwise reach', () => {
+    // $799K and $988K against a $250K KPI: the line sits about a fifth of the way out.
+    const m = kpiModel(799_000, 988_000, 250_000)
+    const line = m.buy.kpiW * 650
+    expect(wordsAt(m.buy, 650, 52, false)).toBeCloseTo(line + 16, 6)
+    expect(wordsAt(m.sell, 650, 52, false)).toBeCloseTo(line + 16, 6)
+    // A KPI line far enough out leaves the words at 20 px, short of it.
+    const far = kpiModel(1_000_000, 1_000_000, 900_000)
+    expect(wordsAt(far.buy, 650, 52, false)).toBe(20)
+    // No room past the line: the words read under the bars.
+    const tight = kpiModel(330_000, 988_000, 250_000)
+    expect(wordsAt(tight.sell, 650, 52, false)).toBeNull()
   })
 })
 
@@ -113,6 +128,22 @@ describe('KpiChart', () => {
     near.unmount()
     const far = render(<KpiChart sell={386_000} buy={425_000} kpi={400_000} />)
     expect(far.container.querySelectorAll('.kpi-lab.is-out')).toHaveLength(0)
+  })
+
+  it('starts the in-bar words past a KPI line that lies inside the bar, never across it', () => {
+    const { container } = render(<KpiChart sell={799_000} buy={988_000} kpi={250_000} />)
+    const m = kpiModel(799_000, 988_000, 250_000)
+    // jsdom measures nothing: the figure falls back to 720 px, so each half is 360 px.
+    for (const [side, edge, k] of [
+      ['s', 'right', m.sell],
+      ['b', 'left', m.buy],
+    ] as const) {
+      const words = container.querySelector<HTMLElement>(`.kpi-h.${side} .kpi-in`)
+      const line = container.querySelector<HTMLElement>(`.kpi-h.${side} .kpi-line-in`)
+      const lineAt = (Number.parseFloat(line?.style[edge] ?? '') / 100) * 360
+      expect(lineAt).toBeCloseTo(k.kpiW * 360, 1)
+      expect(Number.parseFloat(words?.style[edge] ?? '')).toBeGreaterThan(lineAt)
+    }
   })
 
   it('reads the values inside the bars in ink, or under them when a bar is too short', () => {

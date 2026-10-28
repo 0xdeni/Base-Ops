@@ -38,22 +38,39 @@
   color: var(--on-band-2);
   white-space: nowrap;
 }
+/* The readout line: the live readout and, hidden in the same grid cell, every row's readout with
+   "Open pool", so the cell holds the tallest and a read never moves what is under it. Each is the
+   row's words, then "Open pool" on touch, centred and wrapping as two items 10 px apart, and sits
+   at the foot of the cell, next to the totals it names. */
 .bf-who {
   grid-column: 1 / -1;
-  min-height: 18px;
+  display: grid;
   margin: 0 0 8px;
-  text-align: center;
   font-size: var(--t-small);
   line-height: 1.35;
   font-weight: 650;
   color: var(--on-band-2);
+}
+.bf-read {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: flex-end;
+  justify-content: center;
+  column-gap: 10px;
+  min-height: 18px;
+  margin: 0;
+  text-align: center;
+}
+.bf-read.is-ghost {
+  visibility: hidden;
 }
 .bf-who b {
   font-weight: 750;
   color: var(--on-band);
 }
 .bf-open {
-  margin-left: 10px;
   color: var(--on-band);
   font-weight: 700;
   text-decoration: underline;

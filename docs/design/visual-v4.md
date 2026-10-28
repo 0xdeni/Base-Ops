@@ -948,7 +948,9 @@ visually hidden label "Search pools".
 
 Value first, label second; the label carries its comparison (P4).
 - **Value:** `--t-kpi`, 820, −0.05em, `nowrap`; a grade glyph or breach triangle 14 px after it.
-- **Label:** 15 px, `--text-2` (`--on-ink-2` on the ink block), ≤ 30ch, 8 px under the value.
+- **Label:** 15 px, `--text-2` (`--on-ink-2` on the ink block), ≤ 30ch, 8 px under the value,
+  `text-wrap: pretty`; a number that ends a label is joined to the word before it by a no-break
+  space ("scores 61", "within 2 %"), so no word or number sits alone on its last line.
 - **Facts row** (Pool, Scorecard): one ink block over the band; 4 or 3 equal columns from 1024 px
   with 1 px Gray 80 dividers, 2 columns from 600 px, 2 × 2 at 28 px values below 600 px (Pool), one
   column with bullets (Scorecard). A gap callout may follow under a Gray 80 rule: "Liquidity gap:
@@ -991,7 +993,8 @@ is a row, and rows are split by a 1 px `--line` rule. No block per section and n
 - **Rows:** 64 px, 1 px `--line`, 15 px / 600, tabular, 32 px side padding; one stretched link per
   row; hover `--surface-2`, 0 ms in, 150 ms out.
 - **Columns:** Pool (the pair at 17 px / 750, then "Uniswap v3, 0.05 %" at 13 px `--text-2`);
-  Health (glyph and score, or Not rated); Depth ±2 % (an 84 × 20 row glyph, then the value);
+  Health (glyph and score, or Not rated); Depth ±2 % (an 84 × 20 row glyph, then the value in a
+  fixed 6.5ch, right-aligned, so every row's spine shares one x);
   Spread at $10K ("Can't absorb $10K" when infeasible; "—" when unknown); 24 h volume; optional TVL,
   Gap score and Price through Columns (`?cols=`).
 - **Row glyph:** a 2 px `--text-1` spine at the centre, the sell bar (Cerulean) left and the buy
@@ -1047,8 +1050,11 @@ On the band, under the hero. One shared linear scale, `max = max(total sell, tot
 - **Lens:** a fine pointer over a row, keyboard focus on its link, or the first tap on touch. The
   readout becomes "**WETH / cbBTC, Uniswap v3 0.3 %**: 5 % of Base" (plus "Open pool" on touch),
   the totals swap to the row's two sides, the row gets a white 10 % background and everything else
-  dims to 0.32. The second tap opens the pool; arrow Up and Down move focus between row links.
-  Leaving the plot, or blurring the figure, restores the totals.
+  dims to 0.32 (bars by opacity; the bracket sentence and centred row labels by colour, so their
+  band patch keeps hiding the spine). The second tap opens the pool; arrow Up and Down move focus
+  between row links. Leaving the plot, or blurring the figure, restores the totals. The readout
+  line holds every row's readout hidden in its own grid cell ("Open pool" included where a touch
+  input exists), so it always has the height of the tallest and the first tap moves no row.
 - **Show data:** a white block with the table Pool, Sell ±2 %, Buy ±2 %, Share of Base, then
   "Every other pool" (484 pools) and the "All of Base" total row.
 - **Empty:** the spine only, with "No pools are scored yet." as the answer; never fake bars.
@@ -1067,9 +1073,12 @@ a skyline packer and a 3 px gutter; `k` is the largest scale at which the packin
   inset edge; the merged square is hatched white. Radius 16 % of the side, at least 1 px. Squares
   of 110 px and more carry the pair (14–24 px / 820, Blue); from 150 px the DEX and fee; the
   largest also "59 %" at 15 % of its side and "of Base's depth within 2 %".
-- **Readout** (`aria-live="polite"`, 48 px reserved, under the field): at rest "Point at, focus
-  or tap a square to read its pool."; then "**USDC / cbBTC, Uniswap v3 0.05 %** $1.43M within 2 %:
-  $772K sell, $660K buy 3 % of Base [A]" (plus "Open pool" on touch).
+- **Readout** (`aria-live="polite"`, under the field; every square's readout sits hidden in its
+  grid cell, so it holds the height of the tallest, at least 48 px, and a read never moves the
+  caption or the table): at rest "Point at, focus or tap a square to read its pool."; then
+  "**USDC / cbBTC, Uniswap v3 0.05 %** $1.43M within 2 %: $772K sell, $660K buy 3 % of Base [A]"
+  (plus "Open pool" on touch). On phones it sets three lines: the pair, the depth line, then the
+  share and grade.
 - **Interaction:** pointer hover reads; a click opens the pool; on touch the first tap reads and
   the second opens; the field is one `tabindex="0"` group: arrow keys step through the rated pools
   by depth, Enter opens, Escape clears. The hovered square gets `0 0 0 2px Blue, 0 0 0 4px Yellow`.
@@ -1097,7 +1106,9 @@ On the band. 340 px tall (240 on phones); plot top 72 (16 on phones), bottom 28.
   They never touch the area. On phones they move to a readout row above the chart ("Sell −2 %
   $386K" left, "Buy +2 % $425K" right, 32 px values) and the chart has no direct labels.
 - **Exhausted side:** a dashed segment and "Liquidity runs out"; a missing level: a sentence instead
-  of a shape (as v3).
+  of a shape (as v3). **No liquidity:** when every measured level holds $0, the sentence "No
+  liquidity sits within 5 % of the price at this snapshot." replaces the plot (no ticks, labels or
+  points; the foot row stays), and the answer reads "No liquidity sits within 2 % of the price."
 - **Crosshair:** the pointer snaps to the nearest measured point by x; a dashed 1.5 px white line
   runs from the plot top to the point, the point grows to 16 px and the tooltip (§5.10) shows "+2 %,
   buy side", Depth $425K, Spent 425,100 USDC, Price Reached. Arrow keys step through the six points
@@ -1114,7 +1125,9 @@ On the band: the latest sample's depth per side against the mandate's per-side K
 - A two-column figure meeting at a 2 px white spine; each half a bar from the spine on one scale,
   `S = 1.25 × max(KPI, sell, buy)`; bars `clamp(112px, 11vw, 152px)` tall, sell white, buy Yellow.
 - Inside each bar, 20 px from the spine (10 on phones), Gray 100 text: "Sell side, below KPI"
-  (13 px / 700; "Sell" on phones) over **$386K** (24–52 px / 820).
+  (13 px / 700; "Sell" on phones) over **$386K** (24–52 px / 820). When a KPI line inside the bar
+  would meet the words, they start 16 px past the line; with no room there they read under the
+  bars. The words carry no patch: the KPI line runs unbroken through the bar.
 - The KPI on each side: a 3 px dashed white line 24 px beyond the bars, labelled "KPI $400K" (13 px
   / 700, white) above it.
 - A side below its KPI shows the **shortfall** from the bar's end to the KPI line as Red hatching
@@ -1329,7 +1342,8 @@ price on Base." **First facts:** 24 h volume, median health, biggest gap.
 
 **Focal:** the mirrored depth curve on the band. **Answer:** "It takes $425K of buying to lift
 WETH 2 % and $386K of selling to push it down." **First facts:** health, spread at $10K, 24 h
-volume, TVL.
+volume, TVL. **Title:** the pair, each symbol a link, with a no-break space before the slash, so
+a title that wraps breaks after it ("VIRTUAL /" over "cbETH") and no line starts with "/".
 
 | Element (1440)                         |    y | Height | Element (390)                |        y |
 | -------------------------------------- | ---: | -----: | ---------------------------- | -------: |

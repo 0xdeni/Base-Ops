@@ -80,10 +80,15 @@ export interface CurveGeometry {
   cx: number
   fx: (pct: number) => number
   fy: (usd: number) => number
-  /** The y step and the axis top: `ceil(1.06 × max / step) × step`. */
+  /**
+   * True when every measured level holds $0: there is no range to scale, so the figure draws its
+   * empty state (no ticks, no labels, no points) instead of a plot.
+   */
+  empty: boolean
+  /** The y step and the axis top: `ceil(1.06 × max / step) × step`; 0 when `empty`. */
   step: number
   yMax: number
-  /** Tick values every two steps, labelled 8 px right of the spine. */
+  /** Tick values every two steps, labelled 8 px right of the spine; none when `empty`. */
   yTicks: number[]
   /** Spine first, then outward, per side: [x, y] of each measured point. */
   sell: [number, number][]
@@ -104,12 +109,15 @@ export function curveGeometry(
   const half = W / 2 - 10
   const fx = (p: number) => logPctX(p, cx, half)
   const max = Math.max(0, ...points.map((p) => p.usd))
-  const step = niceStepUp(max > 0 ? max * 1.06 : 1, 5)
-  const yMax = max > 0 ? Math.ceil((max * 1.06) / step) * step : step * 5
-  const fy = linear(0, yMax, base, top)
+  const empty = !(max > 0)
+  const step = empty ? 0 : niceStepUp(max * 1.06, 5)
+  const yMax = empty ? 0 : Math.ceil((max * 1.06) / step) * step
+  // An empty figure has no range: every value sits on the baseline.
+  const fy = empty ? () => base : linear(0, yMax, base, top)
   const yTicks: number[] = []
-  for (let v = step * 2; v <= yMax * (1 + 1e-9); v += step * 2)
-    yTicks.push(Number(v.toPrecision(12)))
+  if (!empty)
+    for (let v = step * 2; v <= yMax * (1 + 1e-9); v += step * 2)
+      yTicks.push(Number(v.toPrecision(12)))
   const sideOf = (side: 'sell' | 'buy') =>
     points.filter((p) => p.side === side).sort((a, b) => Math.abs(a.pct) - Math.abs(b.pct))
   const path = (side: 'sell' | 'buy'): [number, number][] => [
@@ -129,6 +137,7 @@ export function curveGeometry(
     cx,
     fx,
     fy,
+    empty,
     step,
     yMax,
     yTicks,
@@ -160,6 +169,19 @@ export function outPath(path: readonly [number, number][], exhausted: number): s
     .slice(exhausted - 1)
     .map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(2)} ${p[1].toFixed(2)}`)
     .join('')
+}
+
+/**
+ * The sentence that stands in for the plot when every measured level holds $0 (§5.9.3, as for a
+ * missing level): "No liquidity sits within 5 % of the price at this snapshot." A side with no USD
+ * price is named as such, since its depth is unknown rather than zero.
+ */
+export function emptyNote(points: readonly CurvePoint[], token0: Token, token1: Token): string {
+  const sell = points.some((p) => p.side === 'sell')
+  const buy = points.some((p) => p.side === 'buy')
+  if (sell === buy) return `No liquidity sits within 5${NB}% of the price at this snapshot.`
+  const unpriced = sell ? token1 : token0
+  return `No liquidity sits within 5${NB}% of the price on the ${sell ? 'sell' : 'buy'} side at this snapshot; ${unpriced.symbol} has no USD price.`
 }
 
 /** The x of a tick label, clamped 16 px inside the edges. */

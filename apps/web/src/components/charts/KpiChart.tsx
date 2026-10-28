@@ -4,11 +4,12 @@
  * one scale, sell white and buy Yellow, the value inside each bar in ink, the KPI as a dashed
  * white line 24 px beyond the bars on both sides. A side below its KPI shows its shortfall, from
  * the bar's end to the KPI line, as Red hatching; a breach reads in one glance. A side that holds
- * its KPI draws the stretch of the line inside its bar in ink, and its words mask the line where
- * they cross it. On phones a KPI label near the spine is set outward from its line, so the two
- * never meet.
+ * its KPI draws the stretch of the line inside its bar in ink, unbroken from the bar's top to its
+ * bottom: when the words would reach that line they start 16 px past it, and when the bar has no
+ * room for them there they read under the bars. On phones a KPI label near the spine is set
+ * outward from its line, so the two never meet.
  */
-import { type ReactNode, useRef } from 'react'
+import { type CSSProperties, type ReactNode, useRef } from 'react'
 import { usd } from '../../lib/format.js'
 import { useIsPhone } from '../../lib/useMediaQuery.js'
 import {
@@ -18,7 +19,7 @@ import {
   kpiModel,
   shortfallText,
   sideTitle,
-  wordsFit,
+  wordsAt,
 } from './kpiModel.js'
 import { useChartWidth } from './useChartWidth.js'
 import './charts.css'
@@ -43,15 +44,17 @@ function Words({
   k,
   className,
   furniture = false,
+  style,
 }: {
   k: KpiSide
   className: string
   furniture?: boolean
+  style?: CSSProperties
 }) {
   const title = sideTitle(k)
   const at = title.indexOf(' ')
   return (
-    <span className={className} data-furniture={furniture ? '' : undefined}>
+    <span className={className} data-furniture={furniture ? '' : undefined} style={style}>
       <small>
         {at < 0 ? title : title.slice(0, at)}
         {at < 0 ? null : <span className="long">{title.slice(at)}</span>}
@@ -64,7 +67,8 @@ function Words({
 /** A KPI line in the inner half of its side: on phones its label is set outward from the line. */
 const NEAR_SPINE = 0.5
 
-function Half({ k, kpi, inside }: { k: KpiSide; kpi: number; inside: boolean }) {
+/** One half: `at` is where the words start inside the bar, in px from the spine, or null. */
+function Half({ k, kpi, at }: { k: KpiSide; kpi: number; at: number | null }) {
   const edge = k.side === 'sell' ? 'right' : 'left'
   const inBar = k.value !== null && k.kpiW < k.w
   return (
@@ -77,7 +81,9 @@ function Half({ k, kpi, inside }: { k: KpiSide; kpi: number; inside: boolean }) 
           aria-hidden="true"
         />
       ) : null}
-      {inside ? <Words k={k} className="kpi-in" furniture /> : null}
+      {at === null ? null : (
+        <Words k={k} className="kpi-in" furniture style={{ [edge]: `${at.toFixed(1)}px` }} />
+      )}
       <i className="kpi-line" style={{ [edge]: pct(k.kpiW) }} aria-hidden="true" />
       {inBar ? (
         <i
@@ -111,10 +117,11 @@ export function KpiChart({ sell, buy, kpi, latestOnly = false, heading }: KpiCha
   const phone = useIsPhone()
   const m = kpiModel(sell, buy, kpi)
   const half = W / 2
-  const fits = {
-    sell: wordsFit(m.sell, half, valuePx(phone), phone),
-    buy: wordsFit(m.buy, half, valuePx(phone), phone),
+  const at = {
+    sell: wordsAt(m.sell, half, valuePx(phone), phone),
+    buy: wordsAt(m.buy, half, valuePx(phone), phone),
   }
+  const fits = { sell: at.sell !== null, buy: at.buy !== null }
   const short = shortfallText(m)
   return (
     <div className="kpi-wrap" data-chart="">
@@ -131,8 +138,8 @@ export function KpiChart({ sell, buy, kpi, latestOnly = false, heading }: KpiCha
       </div>
       <figure ref={figRef} className="kpi-fig" role="img" aria-label={kpiLabel(m)}>
         <div className="kpi-row">
-          <Half k={m.sell} kpi={kpi} inside={fits.sell} />
-          <Half k={m.buy} kpi={kpi} inside={fits.buy} />
+          <Half k={m.sell} kpi={kpi} at={at.sell} />
+          <Half k={m.buy} kpi={kpi} at={at.buy} />
         </div>
         {fits.sell && fits.buy ? null : (
           <div className="kpi-under" data-furniture="" aria-hidden="true">
