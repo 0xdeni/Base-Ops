@@ -1,6 +1,7 @@
 /**
- * "Skip to content" (A4): the first focusable element, 44 px high, visible only on focus. It moves
- * focus to <main> directly, so it also works under the static build's hash router.
+ * "Skip to content" (A4, docs/design/visual-v4.md §5.1): the first focusable element, 44 px high,
+ * `--text-1` fill, visible at top 8, left 8 only on `:focus-visible`. It moves focus to <main>
+ * directly, so it also works under the static build's hash router.
  */
 export function SkipLink() {
   return (

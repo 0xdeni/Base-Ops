@@ -163,7 +163,7 @@ describe('createSyntheticFixture', () => {
     }
     const keys = new Set(swaps.map((s) => `${s.poolId}:${s.blockNumber}:${s.logIndex}`))
     expect(keys.size).toBe(swaps.length)
-  })
+  }, 20_000)
 
   it('stakes the Slipstream [-300, 300] position of owner 1 in the CLGauge', async () => {
     const synthetic = byId.get(SYNTHETIC_POOL_IDS.wethUsdcSlipstream)

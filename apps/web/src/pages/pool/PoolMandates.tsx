@@ -1,6 +1,7 @@
 /**
- * "Mandates on this pool" (ia-v3 §4.3 section 5): shown only when market makers have mandates on
- * the pool, one shared mandate row each (status word, name, who and where, 7 d uptime bullet).
+ * "mandates on this pool" (ia-v3 §4.3 section 5, docs/design/visual-v4.md §6.4): the last row of
+ * the sections sheet, shown only when market makers have mandates on the pool, one shared mandate
+ * row each (status word, name, who and where, 7 d uptime bullet).
  */
 import { useScorecards } from '../../api/hooks.js'
 import type { PoolMetaDto } from '../../api/types.js'
@@ -16,7 +17,7 @@ export function PoolMandates({ pool }: { pool: PoolMetaDto }) {
   return (
     <Section
       id="s-mm"
-      title="Mandates on this pool"
+      title="mandates on this pool"
       takeaway={`${ok} of ${items.length} within KPI right now.`}
       className="pool-sec-mm"
     >

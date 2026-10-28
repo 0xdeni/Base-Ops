@@ -1,22 +1,23 @@
 /**
- * The pools table's controls (docs/design/visual-v3.md §5.8, PH4, TB7), shared by Pools and Token.
- * Desktop: a quiet "Columns" button whose popover holds the optional columns' checkboxes (`cols`).
- * Phones: "Sort: health" with the direction arrow opens the Sort sheet, which is also the column
- * picker, because the row's value is always the sort metric; its foot holds the Highest first /
- * Lowest first control. A keyboard open is instant (M2).
+ * The pools table's controls (docs/design/visual-v4.md §5.8, §6.3), shared by Pools and Token.
+ * Desktop: the small ghost "Columns" button (white on the band) whose popover holds the optional
+ * columns' checkboxes (`cols`). Phones: "Sort: health" with the direction arrow opens the Sort
+ * sheet, which is also the column picker, because the row's value is always the sort metric; its
+ * foot holds the Highest first / Lowest first control. A keyboard open is instant. The top LP share
+ * is offered only when some listed pool has it (`topShare`).
  */
 import { useState } from 'react'
 import type { SortDir } from '../../api/types.js'
 import { isKeyboardClick } from '../../lib/motion.js'
 import {
-  OPTIONAL_COLUMNS,
   type OptionalColumn,
+  offeredColumns,
+  offeredSorts,
   type PoolsSortKey,
-  SORT_KEYS,
   SORT_LABEL,
   SORT_SHORT,
 } from '../../lib/poolsTable.js'
-import { Button } from './Button.js'
+import { Button, buttonClass } from './Button.js'
 import { Icon } from './Icon.js'
 import { Checkbox } from './Inputs.js'
 import { Popover } from './Popover.js'
@@ -26,17 +27,20 @@ import { Sheet, SheetOptions } from './Sheet.js'
 export function ColumnsMenu({
   cols,
   onChange,
+  topShare,
   className,
 }: {
   cols: readonly OptionalColumn[]
   onChange: (cols: OptionalColumn[]) => void
+  /** Some listed pool has its top LP share: the column is offered. */
+  topShare: boolean
   /** Extra classes of the trigger, for its optical offset in its row. */
   className?: string
 }) {
   return (
     <Popover
       label="Columns"
-      triggerClassName={`btn quiet${className ? ` ${className}` : ''}`}
+      triggerClassName={buttonClass('ghost', 'sm', className)}
       trigger={
         <>
           <Icon name="columns" />
@@ -45,7 +49,7 @@ export function ColumnsMenu({
       }
     >
       <div className="cols-list">
-        {OPTIONAL_COLUMNS.map((c) => (
+        {offeredColumns(topShare, cols).map((c) => (
           <Checkbox
             key={c.key}
             checked={cols.includes(c.key)}
@@ -64,9 +68,12 @@ export function SortSheet({
   dir,
   onSort,
   onDir,
+  topShare,
 }: {
   sort: PoolsSortKey
   dir: SortDir
+  /** Some listed pool has its top LP share: it is offered as a sort. */
+  topShare: boolean
   /** A new sort metric, at its default direction. */
   onSort: (key: PoolsSortKey) => void
   onDir: (dir: SortDir) => void
@@ -76,7 +83,7 @@ export function SortSheet({
   return (
     <>
       <Button
-        icon={dir === 'asc' ? 'arrowUp' : 'arrowDown'}
+        iconEnd={dir === 'asc' ? 'arrowUp' : 'arrowDown'}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={(e) => {
@@ -106,7 +113,7 @@ export function SortSheet({
       >
         <SheetOptions<PoolsSortKey>
           label="Sort by"
-          options={SORT_KEYS.map((k) => ({ value: k, label: SORT_LABEL[k] }))}
+          options={offeredSorts(topShare, sort).map((k) => ({ value: k, label: SORT_LABEL[k] }))}
           value={sort}
           onChange={onSort}
         />

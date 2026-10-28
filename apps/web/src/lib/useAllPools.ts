@@ -1,13 +1,13 @@
 /**
- * Every scored pool, deepest first: the butterfly's total row sums them all (CH4),
- * so Home reads the whole list, not just the listed rows. `GET /api/pools` pages at 200, so a
- * live world with more pools is read in pages; the first page is shared with any other screen
- * asking the same query.
+ * Every scored pool, deepest first. Home's butterfly sums them all in its total row (CH4) and the
+ * Pools band draws one square per pool with depth (docs/design/visual-v4.md §5.9.2), so both read
+ * the whole list, not a page of it. `GET /api/pools` pages at 200, so a larger world is read in
+ * pages; the two screens ask the same queries and share the cache.
  */
 import { useQueries } from '@tanstack/react-query'
-import { useApi } from '../../api/context.js'
-import { usePools } from '../../api/hooks.js'
-import type { PoolSummary, PoolsQuery } from '../../api/types.js'
+import { useApi } from '../api/context.js'
+import { usePools } from '../api/hooks.js'
+import type { PoolSummary, PoolsQuery } from '../api/types.js'
 
 /** The API's largest page. */
 export const POOLS_PAGE = 200
@@ -50,7 +50,7 @@ export function useAllPools(): AllPools {
     isError: first.isError || restError,
     refetch: () => {
       void first.refetch()
-      for (const q of rest) void q.refetch()
+      for (const q of rest) if (q.isError) void q.refetch()
     },
   }
 }

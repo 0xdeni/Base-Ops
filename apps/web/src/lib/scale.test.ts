@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   clearOfEdges,
-  latticePitch,
+  fittedTimeTicks,
   linear,
   logPctX,
   median,
   mix2,
   niceStep,
-  niceTop,
+  niceStepUp,
   pathD,
-  seriesDomain,
   ticks,
   timeTicks,
 } from './scale.js'
@@ -55,13 +54,6 @@ describe('niceStep and ticks (CH1: round values only)', () => {
     expect(ticks(5, 1, 3)).toEqual([])
     expect(ticks(2, 2, 3)).toEqual([2])
   })
-
-  it('tops a zero-based axis at the nice tick covering the maximum', () => {
-    expect(niceTop(13.8)).toBe(15)
-    expect(niceTop(10)).toBe(10)
-    expect(niceTop(14_335_397)).toBe(15_000_000)
-    expect(niceTop(0)).toBe(1)
-  })
 })
 
 describe('logPctX (CH3: log-spaced ±1, 2, 5 %)', () => {
@@ -79,32 +71,6 @@ describe('logPctX (CH3: log-spaced ±1, 2, 5 %)', () => {
     const two = logPctX(2, cx, half) - cx
     expect(one / half).toBeCloseTo(Math.log(2) / Math.log(6), 9)
     expect(two / one).toBeCloseTo(Math.log(3) / Math.log(2), 9)
-  })
-})
-
-describe('seriesDomain (CH5)', () => {
-  it('pads the values 18 % and floors at 0', () => {
-    const [lo, hi] = seriesDomain([10, 20])
-    expect(lo).toBeCloseTo(8.2, 9)
-    expect(hi).toBeCloseTo(21.8, 9)
-    expect(seriesDomain([0, 1])[0]).toBe(0)
-  })
-
-  it('includes the p10–median band', () => {
-    const [lo, hi] = seriesDomain([10, 12], { band: [8, 11] })
-    expect(lo).toBeLessThan(8)
-    expect(hi).toBeGreaterThan(12)
-  })
-
-  it('never crops a line to less than 20 % of the median (10.3–10.4 bps stays flat)', () => {
-    const [lo, hi] = seriesDomain([10.3, 10.35, 10.4], { minSpan: 0.2 })
-    // 20 % of 10.35 is 2.07, padded 18 % on each side.
-    expect(hi - lo).toBeCloseTo(2.07 * 1.36, 6)
-    expect((lo + hi) / 2).toBeCloseTo(10.35, 6)
-  })
-
-  it('falls back to [0, 1] without values', () => {
-    expect(seriesDomain([])).toEqual([0, 1])
   })
 })
 
@@ -159,12 +125,34 @@ describe('helpers', () => {
   it('interpolates two ranges', () => {
     expect(mix2([0, 10], [10, 30], 0.5)).toEqual([5, 20])
   })
+})
 
-  it('snaps the halftone pitch to whole device pixels (§3.7)', () => {
-    expect(latticePitch(1, false)).toBe(5)
-    expect(latticePitch(2, true)).toBe(4)
-    expect(latticePitch(1.5, false) * 1.5).toBe(8)
-    expect(latticePitch(1.25, true) * 1.25).toBe(5)
-    expect(latticePitch(0, false)).toBe(5)
+describe('v4 chart helpers', () => {
+  it('takes the smallest round step at or above span / count (1, 2, 2.5, 5, 10 × 10ⁿ)', () => {
+    expect(niceStepUp(1_280_000, 5)).toBe(500_000)
+    expect(niceStepUp(1_180_000, 5)).toBe(250_000)
+    expect(niceStepUp(15_200_000, 5)).toBe(5_000_000)
+    expect(niceStepUp(13.83, 3)).toBe(5)
+    expect(niceStepUp(60, 3)).toBe(20)
+    expect(niceStepUp(0, 3)).toBe(1)
+  })
+
+  it('ticks a fitted axis every 15 minutes up to 2 hours, then by landmarks', () => {
+    const t0 = Date.UTC(2026, 9, 25, 10, 39) / 1000
+    expect(fittedTimeTicks([t0, t0 + 51 * 60]).map((t) => t.label)).toEqual([
+      '10:45',
+      '11:00',
+      '11:15',
+      '11:30',
+    ])
+    const day = Date.UTC(2026, 9, 25) / 1000
+    expect(fittedTimeTicks([day, day + 86_400]).map((t) => t.label)).toEqual([
+      '00:00',
+      '06:00',
+      '12:00',
+      '18:00',
+      '00:00',
+    ])
+    expect(fittedTimeTicks([t0, t0])).toEqual([])
   })
 })

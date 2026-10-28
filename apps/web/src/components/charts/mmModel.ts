@@ -1,8 +1,7 @@
 /**
- * Scales of the market-maker chart (docs/design/visual-v3.md §5.9 "Market-maker chart"): the buy
- * side above a zero line and the sell side mirrored below it on one symmetric scale, the KPI on
- * both sides, magnitude ticks at KPI multiples clear of the KPI and zero labels, and the breach
- * bands. Pure.
+ * Scales of the market-maker chart (docs/design/visual-v4.md §5.9.5): the buy side above a zero
+ * line and the sell side mirrored below it on one symmetric scale, the KPI on both sides,
+ * magnitude ticks at KPI multiples clear of the KPI and zero labels, and the breach bands. Pure.
  */
 import type { MmSampleDto } from '../../api/types.js'
 import { usd, usdTick } from '../../lib/format.js'
@@ -36,19 +35,19 @@ export function mmScaleMax(
  */
 export const LABEL_GAP = 24
 
-/** The KPI multiples a magnitude tick may sit at (docs/design/visual-v3.md §5.9). */
+/** The KPI multiples a magnitude tick may sit at. */
 const KPI_MULTIPLES: readonly number[] = [0.5, 1.5, 2, 3]
 
 export interface MmYLabel {
   /** Signed: buy side above zero, sell side below. */
   v: number
   text: string
-  /** The KPI labels are `text-2`; the rest `text-3`. */
+  /** The KPI labels are drawn strong; the magnitude ticks and "0" plain. */
   strong: boolean
 }
 
 /**
- * The y labels of the right gutter (§5.9): "KPI $50K" on both sides and "0" at the
+ * The y labels of the right gutter: "KPI $50K" on both sides and "0" at the
  * zero line, merged into one "KPI ±$250K" at the zero line when the KPI lines sit under
  * `LABEL_GAP` from it (the whole-pool context makes the scale tens of times the KPI). Then up to
  * two magnitude ticks per side at 0.5×, 1.5×, 2× or 3× the KPI, each below 0.97 M, at least 0.2 M

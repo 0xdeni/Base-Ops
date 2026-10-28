@@ -1,0 +1,53 @@
+/* The DEX filter (docs/design/visual-v4.md §5.4): on the Pools band, a radiogroup of 44 px rows,
+   each the DEX name, its share of all depth within 2 % and a 6 px bar drawn to that share on one
+   scale. The selected row is a white block with Blue text and a Blue bar. */
+
+.dexf {
+  display: grid;
+  gap: 4px;
+}
+.dexf-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 16px;
+  align-items: center;
+  min-height: 44px;
+  margin-inline: -12px;
+  padding: 6px 12px;
+  border-radius: var(--r-ctl);
+  color: var(--on-band);
+  text-align: left;
+}
+.dexf-row b,
+.dexf-row .num {
+  font-size: var(--t-data);
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+.dexf-bar {
+  grid-column: 1 / -1;
+  position: relative;
+  display: block;
+  height: 6px;
+  background: rgb(255 255 255 / 0.22);
+}
+.dexf-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 2px;
+  background: #ffffff;
+  transform-origin: 0 50%;
+}
+.dexf-row[aria-checked="true"] {
+  background: #ffffff;
+  color: var(--blue);
+}
+.dexf-row[aria-checked="true"] .dexf-bar {
+  background: rgb(0 0 255 / 0.14);
+}
+.dexf-row[aria-checked="true"] .dexf-bar i {
+  background: var(--blue);
+}
+.dexf-row:focus-visible {
+  outline-color: var(--focus-band);
+}

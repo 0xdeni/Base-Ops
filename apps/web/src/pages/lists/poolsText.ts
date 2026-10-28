@@ -1,5 +1,5 @@
 /**
- * The Pools explorer's sentences (ia-v3 §4.2, docs/design/visual-v3.md §6.2). Every number comes
+ * The Pools explorer's sentences (ia-v3 §4.2, docs/design/visual-v4.md §6.3). Every number comes
  * from the API (`/api/stats` sums and medians from core); the page only words them.
  */
 import { type Dex, healthGrade } from '@depthwatch/core'

@@ -1,9 +1,9 @@
 /**
  * The wrapper of a dense table (Details, Show data, Compare DEXes, the Scorecards table view;
- * docs/design/visual-v3.md §5.8, TB7). A table wider than its column scrolls inside it, never the
- * page; on phones it bleeds to the screen edges and, only while the table overflows (`is-over`),
- * its first column stays put and the trailing edge fades, so a clipped cell reads as "scrolls"
- * rather than "cut off" (tables.css).
+ * docs/design/visual-v4.md §5.8). A table wider than its column scrolls inside it, never the page;
+ * on phones it bleeds to the screen edges and, only while the table overflows (`is-over`), its
+ * first column stays put and the trailing edge fades, so a clipped cell reads as "scrolls" rather
+ * than "cut off" (tables.css).
  */
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react'
 

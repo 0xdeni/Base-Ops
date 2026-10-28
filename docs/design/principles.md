@@ -4,7 +4,7 @@ Status: **binding for v3**. Every screen, component and pull request is checked 
 
 This file distils the four research notes into rules that can be checked: [`research/product-ui.md`](research/product-ui.md), [`research/data-ui.md`](research/data-ui.md), [`research/motion.md`](research/motion.md) and [`research/type-a11y.md`](research/type-a11y.md). Those notes hold the full citations and say how each source was read. Rules here link their primary source; the list at the end gives every URL. The v2 failures behind these rules are in [`critique-v2.md`](critique-v2.md). The screen-by-screen structure is in [`ia-v3.md`](ia-v3.md).
 
-**Amended rules.** The v3 visual spec changes the wording of some rules ([visual-v3.md §2](visual-v3.md#2-rules-this-spec-adds-to-principlesmd-and-ia-v3md)). That wording is carried in at the rules it changes, marked "amended", and wins over the older wording beside it.
+**Amended rules.** The v3 visual spec changes the wording of some rules ([visual-v3.md §2](visual-v3.md#2-rules-this-spec-adds-to-principlesmd-and-ia-v3md)). That wording is carried in at the rules it changes, marked "amended", and wins over the older wording beside it. The v4 visual spec amends further rules ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)); its wording is carried in at those rules, marked "v4 amended", and wins over everything beside it.
 
 **How to read this file**
 - Rule IDs (`P3`, `T7`, …) are stable. Reviews cite them.
@@ -31,7 +31,7 @@ Colour belongs to data. The product earns trust by being calm, exact and open ab
 
 The idea has three consequences, each of which can be checked:
 1. A first viewport that shows neither a depth signature nor a ranked answer is wrong.
-2. A chromatic colour outside a data mark, a status glyph, the focus ring or the logo is wrong.
+2. A chromatic colour outside a data mark, a status glyph, the focus ring or the logo is wrong. (v4 amended, [visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends): Base Blue may also be the band, the primary button and the nav indicator.)
 3. A number that does not answer "compared to what?" moves behind disclosure or goes.
 
 ---
@@ -51,6 +51,7 @@ The idea has three consequences, each of which can be checked:
   | Methodology                  | 0 outside formulas                                                                                                                                                     |
 
   Sources: [Few, 13 mistakes](https://www.thedataschool.co.uk/anh-vu/are-you-making-these-13-dashboard-design-mistakes/); [Cowan, about 4 chunks](https://memory.psych.missouri.edu/assets/doc/articles/2001/cowan-bbs-2001.pdf).
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): on Pools, the DEX filter's five shares are labels, exempt like the table's columns.
 - **P3. The first viewport states its answer in one sentence that carries the key number.** The sentence has at most 20 words, for example "It takes $6.1M of buying to lift WETH 2 %". It is not a slogan ([Uniswap ChartHeader](https://github.com/Uniswap/interface/blob/main/apps/web/src/components/Charts/ChartHeader.tsx)). _Test:_ the H1, or the answer directly under it, contains the screen's key number. Methodology is exempt; its answer is a sentence about provenance.
 - **P4. Every visible number answers "compared to what?"** It needs a target, a band, a peer, a share, a scale or a previous value. Otherwise it moves to disclosure ([Few #2](https://www.thedataschool.co.uk/anh-vu/are-you-making-these-13-dashboard-design-mistakes/); [Tufte](https://kraft.blog/2006/02/envisioning-information-multiples-and-colors/)). _Test:_ for each number in the first viewport, name its comparison.
 - **P5. Use at most two levels of disclosure.** A page holds sections, and a section may hold a "Details" disclosure. Never nest a disclosure inside a disclosure, and never put tabs inside an expander ([NN/g progressive disclosure](https://www.nngroup.com/articles/progressive-disclosure/): more than two levels "typically have low usability"). _Test:_ the DOM has no `[aria-expanded]` control inside a collapsed region.
@@ -79,6 +80,7 @@ The idea has three consequences, each of which can be checked:
   | Token          | ≤ 1,600        | —                 |
 
   The v2 phone heights were 3,564 (Home), 2,668 (Pool) and 4,273 (Scorecard).
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the budgets of [visual-v4.md §6.1](visual-v4.md#61-budgets) replace this table: Home ≤ 2,000 on desktop and ≤ 2,900 on phones, Pool ≤ 3,000 / 3,200, Scorecard ≤ 2,500 / 2,900, Gaps ≤ 2,300 / 3,000, Scorecards list ≤ 1,000 / 1,200, Token ≤ 2,600 / 3,200, Not found one viewport; Pools ≤ 1,400 plus 64 per row on desktop (50 rows) and ≤ 1,600 plus 64 per row on phones (25 rows).
 - **P10. Order by importance.** The answer sits top left, then the focal element, then facts, then sections in the order `ia-v3.md` gives, then "About". Group with space before using boxes ([Apple HIG Layout](https://developer.apple.com/design/human-interface-guidelines/layout)).
 - **P11. Per-view element budget:**
   - at most 1 filled button;
@@ -97,6 +99,7 @@ The idea has three consequences, each of which can be checked:
   - Inter, Geist, Space Grotesk, DM Sans, Plus Jakarta Sans and Manrope never appear as the visible face.
 
   Source: [type-a11y §1.5](research/type-a11y.md). _Test:_ the computed `font-family` of every text node resolves to one of the two families, and mono appears only on `.addr`, `.hash`, `.block` and `code`.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): IBM Plex Mono also sets eyebrows: the one line of metadata above a title, a band or a fact, uppercase, 12 px, 500, +0.09em. Nowhere else.
 - **T2. Self-host the fonts.**
   - Build one woff2 subset per face from the `google/fonts` TTFs with the `pyftsubset` command in type-a11y §1.6. The subset keeps `tnum case frac ss01–ss04` and the glyphs `± × − ≥ ≈`.
   - Hanken has no `↑` and no thin, figure or narrow no-break spaces ([type-a11y §1.2](research/type-a11y.md), measured with fontTools). Every arrow (delta, sort, the ⇄ price swap, chevrons) is therefore an SVG icon, never a text glyph.
@@ -126,12 +129,14 @@ The idea has three consequences, each of which can be checked:
   | `--t-display` | `clamp(2.25rem, 1.761rem + 2.174vw, 3.5rem)` (36→56)     | 1.04        | 500                           | −0.03em  | The Home answer sentence only                                                                                      |
 
   Source: [type-a11y §2.1](research/type-a11y.md). _Test:_ grep the CSS. Every `font-size` is a token, and each clamp's max is at most 2.5 × its min ([utopia `checkWCAG`](https://github.com/trys/utopia-core/blob/main/src/index.ts)).
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the type scale of [visual-v4.md §3.4](visual-v4.md#34-type-scale) replaces this table: `--t-mega` 96→196, `--t-title` 52→120, `--t-display` 32→64, `--t-say` 28→48, `--t-answer` 22→36, `--t-h2` 26→40, `--t-kpi` 36→56, `--t-figure` 24→40, then 19, 16, 15, 13 and 12 px. Page titles and section headings are lowercase words.
 - **T5. The floor is 12 px.** Nothing renders below it. v2 used 11 px uppercase labels. _Test:_ `getComputedStyle` over all text nodes.
 - **T6. Weights.**
   - Use 400, 500 and 600 only. Display and h1 use 500, and fact values use 400.
   - 700 or more is allowed only on the grade letter in the focal grade.
   - Weight never changes on hover or selection ([Rauno](https://github.com/raunofreiberg/interfaces)).
   - Large and light beats bold ([Uniswap fonts.ts](https://github.com/Uniswap/interface/blob/main/packages/ui/src/theme/fonts.ts)).
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the weights of visual-v4.md §3.4: body 450, data 600, display sizes 750–850, so the oversized lowercase reads as Base's headlines do.
 - **T7. Tracking tightens with size.**
 
   | Size     | Tracking           |
@@ -141,6 +146,7 @@ The idea has three consequences, each of which can be checked:
   | ≥ 32 px  | −0.02 to −0.04em   |
 
   Hanken has a low x-height, so stay at the loose end of each range. Positive tracking appears only at 12 px ([Inter dynamic metrics](https://d.rsms.me/inter-website/v3/dynmetrics/); [product-ui §2.3](research/product-ui.md)).
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the tracking of visual-v4.md §3.4, down to −0.062em on the Home figure; eyebrows are tracked +0.09em.
 - **T8. Line-height.**
   - Single-line UI: 1.25–1.43.
   - Reading copy: 1.5–1.63.
@@ -155,6 +161,7 @@ The idea has three consequences, each of which can be checked:
   - Never justify ([WCAG 1.4.8](https://github.com/w3c/wcag/blob/main/guidelines/sc/20/visual-presentation.html)).
 - **T10. Wrapping.** Set `text-wrap: balance` on h1–h3 and display, and `text-wrap: pretty` on prose.
 - **T11. No uppercase.** Use sentence case for every label, table header, chip and button. _Test:_ `grep -r "text-transform: *uppercase" apps/web/src` returns nothing.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the one exception is `.eyebrow` (T1). _Test:_ `text-transform: uppercase` appears only in the `.eyebrow` rule.
 - **T12. Tabular figures.**
   - Set `font-variant-numeric: tabular-nums` on every number that is compared or updates: tables, facts, axes and the block number.
   - Hanken is tabular by default. Set the property anyway for the fallback face.
@@ -232,6 +239,7 @@ The idea has three consequences, each of which can be checked:
   - `--bad-mark`: light `oklch(0.585 0.120 25)` `#b85c57` (4.22:1); dark `oklch(0.680 0.090 22)` `#ca827f` (6.2:1). Used for breach marks.
   - `--band-op`: 0.06 light, 0.09 dark.
   - The field tokens (visual-v3.md §3.7): `--ht-pitch` 3px and `--ht-r` 1px (the total row's dot pitch and radius); `--field-top` 1; `--field-low` 0.12 light, 0.1 dark; `--field-under` 0.14 light, 0.12 dark.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the locked Base brand kit hex values of [visual-v4.md §2.2](visual-v4.md#22-palette), never interpolated, with alpha allowed; the roles of §3.1. Gray 100 `#0A0B0D` is Base's black, chosen on purpose.
 
 - **C2. The chrome is monochrome.** Links, buttons, nav, selection, segmented thumbs, row hover and section headings all use neutrals. Chromatic colour appears only in:
   - data marks;
@@ -240,11 +248,13 @@ The idea has three consequences, each of which can be checked:
   - the logo mark.
 
   Source: [Apple HIG Color](https://developer.apple.com/design/human-interface-guidelines/color), "one colour, one meaning"; [Linear calmer interface](https://linear.app/now/behind-the-latest-design-refresh). _Test:_ sample the screenshot. Every pixel with OKLCH chroma > 0.05 lies inside a chart, glyph, focus ring or logo.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): Base Blue may also be the band, the primary button and the nav indicator (and the light focus ring). It never marks data, a series, a link underline or a status.
 - **C3. One colour, one meaning.**
   - `sell` blue and `buy` orange mark the two sides of a book and nothing else. They never colour text links, status or decoration.
   - v2 used `#1d4db5` for both links and bid bars, and that ends.
   - Blue and orange are the colour-blind-safe pair ([Okabe–Ito](https://siegal.bio.nyu.edu/color-palette/)).
   - Red and green never mark sides.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the sell side is Cerulean (white on the Blue band), the buy side Yellow everywhere (with a 1 px Gray 100 edge on white); value labels are ink; Blue never marks data.
 - **C4. Status colour.**
   - Use status colour only for the grade band and for KPI state, and always pair it with a shape and a word.
   - Grade bands:
@@ -252,10 +262,12 @@ The idea has three consequences, each of which can be checked:
     - C = `warn`, square;
     - D–F = `bad`, triangle.
   - Source: [Lighthouse](https://github.com/GoogleChrome/lighthouse/blob/main/report/assets/styles.css). _Test:_ grayscale the screenshot. Every status is still readable.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): Green, Tan and Red fill the grade glyph and the status chip behind an ink letter and shape; status words are ink with a coloured shape. Red and Green are never text.
 - **C5. Where saturation goes.**
   - The most saturated region of a screen is its focal element.
   - On status strips, colour only the exceptions. Within-KPI cells are neutral `border`, and breach cells are `bad` ([data-ui §7](research/data-ui.md); [Few #10](https://www.thedataschool.co.uk/anh-vu/are-you-making-these-13-dashboard-design-mistakes/)).
   - Amended (with CH7 and CH8, breach marks): "Breach bands and breached strip cells use `--bad-mark`, not `--bad`. Bands sit at `--band-op` opacity. `--bad` stays for status words, shapes and chips."
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): breach bands and breached cells use Red (`--bad`, bands at `--breach-op`); `--bad-mark` and `--band-op` are retired.
 - **C6. Contrast tiers.** All three gates must pass in both themes:
   - text-1: ≥ 15:1 and |Lc| ≥ 95;
   - text-2: ≥ 7:1 and |Lc| ≥ 75;
@@ -263,12 +275,14 @@ The idea has three consequences, each of which can be checked:
   - controls and chart marks: ≥ 3:1.
 
   Sources: [WCAG 1.4.3](https://github.com/w3c/wcag/blob/main/guidelines/sc/20/contrast-minimum.html), [1.4.11](https://github.com/w3c/wcag/blob/main/guidelines/sc/21/non-text-contrast.html); [APCA](https://github.com/Myndex/SAPC-APCA/blob/master/documentation/APCA_in_a_Nutshell.md). _Test:_ the contrast script over the token pairs.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the contrast tiers of [visual-v4.md §2.4](visual-v4.md#24-contrast-rules): text-1 ≥ 15:1, text-2 ≥ 6:1 on the canvas (≥ 5.4:1 in wells), white and white at 80 % on the band; marks and controls ≥ 3:1.
 - **C7. Dark mode is designed, not inverted.**
   - The canvas is tinted.
   - Elevation comes from lightness: canvas, then well, then raised, then overlay, about +3 L\* per step.
   - No shadows.
   - Text is never pure white.
   - Data colours are lighter and less saturated than in light mode ([Apple HIG Dark Mode](https://developer.apple.com/design/human-interface-guidelines/dark-mode); [Material color spec](https://github.com/material-foundation/material-color-utilities/blob/main/typescript/dynamiccolor/color_spec_2021.ts)).
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): dark is Gray 100 with Gray 80 edges; blocks are the canvas colour told apart by their edge; text is Gray 10, and white appears only on Blue.
 - **C8. Plumbing.**
   - `color-scheme` is set.
   - `<meta name="theme-color">` equals `canvas` in each theme.
@@ -281,14 +295,17 @@ The idea has three consequences, each of which can be checked:
   - No glows.
   - No coloured icon backgrounds.
   - Amended (with E6, the field of light): "The C9 area fill may be drawn as a halftone screen, the field of light. It is side-colour dots on a lattice anchored at the spine, with dot opacity following the same top-to-baseline ramp (visual-v3.md §3.7), over a faint solid gradient. It is allowed only inside depth areas (the mirrored curve) and the butterfly's total row. The E6 background texture uses every fourth lattice point of the same grid behind the curve."
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): no gradients and no texture; hatching marks "the rest" (the butterfly's other pools, the field's merged square) and KPI shortfalls.
 
 ## 5. Surfaces and elevation
 
 - **E1. The page is one surface.** Sections sit directly on `canvas`, separated by space and at most one `border` hairline. There is no bordered card per section, and no white card on a grey page ([Linear](https://linear.app/now/behind-the-latest-design-refresh); [Refactoring UI](https://github.com/kylecoberly/knowledge/wiki/Refactoring-UI): "use fewer borders"). _Test:_ fewer than 3 elements per page have both a border and a background different from `canvas`. The exceptions are the inputs and overlays listed in `E2`.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the page has a flat Base Blue band, plane-1 blocks on the canvas, plane-2 blocks stacked over the band's lower edge and one sections sheet per detail page ([visual-v4.md §5.2](visual-v4.md#52-the-band-and-blocks), §5.7). Never a block in a block, never one block per section.
 - **E2. At most one level of containment.**
   - The allowed containers are popover, menu, dialog, sheet, code block, input, the badge preview and a phone table's scroll wrapper.
   - Never put a card inside a card.
   - Source: [Apple HIG Layout](https://developer.apple.com/design/human-interface-guidelines/layout): group with alignment and space before reaching for containers.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the containers are the band, blocks (plain, over, ink, panel), the sections sheet and the floating layers; never a block in a block.
 - **E3. Radii follow role and nest concentrically.**
   - Chips and grade glyphs: 4.
   - Buttons, inputs and the segmented outer edge: 6.
@@ -298,17 +315,20 @@ The idea has three consequences, each of which can be checked:
   - Dialog and sheet: 12.
   - No pills, except the shields-style badge, which keeps its own shape.
   - Source: [Vercel WIG](https://github.com/vercel-labs/web-interface-guidelines).
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the radii of [visual-v4.md §3.6](visual-v4.md#36-radii): blocks 18, phone sheet 24, popover 16, tooltip 12, controls 12, segmented item 9, glyph 6, status chip 9; bars 0; no pills.
 - **E4. Shadows belong to floating layers only.** Each is two layers plus a 1 px hairline. Light theme values:
   - `--shadow-pop`: `0 0 0 1px var(--border-subtle), 0 1px 2px rgb(22 27 35 / 0.06), 0 6px 16px rgb(22 27 35 / 0.08)`
   - `--shadow-dialog`: `0 0 0 1px var(--border-subtle), 0 2px 4px rgb(22 27 35 / 0.06), 0 16px 40px rgb(22 27 35 / 0.12)`
 
   The dark theme uses no shadows: `overlay` plus a 1 px `border`. _Test:_ `box-shadow` appears only on overlay selectors and focus rings.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the four planes of [visual-v4.md §3.7](visual-v4.md#37-elevation): blocks carry `--edge`, `--sh-1` or `--sh-band` and `--hl`; floating layers `--sh-3`; text and chart marks never carry a shadow, and `box-shadow` never animates.
 - **E5. Hairlines.**
   - 1 px `border-subtle` between table rows.
   - 1 px `border` between major regions.
   - Never vertical rules in tables, never zebra stripes, never borders on both a row and its cells.
 - **E6. Texture.** A 1 px dot on a 20 px grid at `border-subtle` sits only behind the focal depth chart, with a 40 px fade at the leading edge. Nothing else carries texture ([Uniswap chart texture](https://github.com/Uniswap/interface/blob/main/apps/web/src/components/Charts/hooks/useApplyChartTextureEffects.ts)).
   - Amended: "The E6 background texture uses every fourth lattice point of the same grid behind the curve" as the field of light (C9): 20 px on desktop, 16 px on phones. The field itself is the only other texture, inside depth areas and the butterfly's total row.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): no texture (C9).
 
 ## 6. Motion
 
@@ -325,6 +345,7 @@ The idea has three consequences, each of which can be checked:
   ```
 
   Hover colour changes use the `ease` keyword. Linear progress uses `linear`.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the motion tokens of [visual-v4.md §3.8](visual-v4.md#38-motion-tokens): `--ease-out` `cubic-bezier(0.16, 1, 0.3, 1)`, `--ease-in-out` `cubic-bezier(0.65, 0, 0.35, 1)`, `--ease-drawer` unchanged, and the `--d-*` durations.
 - **M2. Frequency gate.**
 
   | How often it happens                              | Motion             |
@@ -361,6 +382,7 @@ The idea has three consequences, each of which can be checked:
   - **Lens.** It enters on pointer over a pool row (fine pointer) or a tap on its bars (coarse): the stratum overlay moves `translateX(±offset × track width → 0)` over 280 ms `--ease-in-out`; other rows' bars, labels and Gap go to opacity 0.38, the total field, caps and gaps to 0.22 and row values to 1, each over 150 ms `ease`. Moving to another row shows the new overlay at the spine, opacity 0.4 → 1 over 150 ms `ease`. It exits when the pointer leaves the rows, focus leaves the figure, or on a tap outside or a second tap, over 150 ms `ease`. Focus is instant with no slide. Reduced motion: the overlay appears at the spine with a 150 ms opacity change.
   - **Total-row reveal.** On the first Home view, with M6's bars, the total field is revealed from the spine with `clip-path: inset()` over 300 ms `--ease-out` after a 150 ms delay; total values, caps, strata gaps and the "Gap" marker fade 0 → 1 over 150 ms `--ease-out` at 300 ms. All of it ends by 450 ms. Reduced motion: part of the 200 ms opacity fade.
   - **Tween clock.** The Pool range switch, the Scorecard window and the whole-pool context toggle morph over 280 ms `--ease-in-out` on the tween clock in `src/lib/motion.ts`: a no-op Web Animation times each tween, so a new tween on the same key starts from the current interpolated state. Ticks cross-fade (old `max(0, 1 − 2.5e)`, new `max(0, (e − 0.4) / 0.6)`) and scrubbing pauses while it runs. Keyboard changes pass 0 ms. Reduced motion: an instant change plus a 150 ms opacity 0.4 → 1 settle.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the motion catalogue of [visual-v4.md §4](visual-v4.md#4-motion-catalogue) replaces this table: press 120 ms, hover 160 ms, the route cross-fade 100 ms out and 180 ms in from the same instant, the disclosure fades and settles from −8 px (no height), the phone sheet closes over 260 ms.
 - **M4. Animate only `transform`, `opacity` and occasionally `clip-path`.** Never use `transition: all`. Never animate `box-shadow`, `width`, `height`, `top`, `left` or `margin`, except the disclosure height. Never use `ease-in` on UI. _Test:_ `grep -rE "transition:\s*all|ease-in[^-]" apps/web/src` returns nothing.
 - **M5. Every pressable element has `:active` feedback.** Set `-webkit-tap-highlight-color: transparent` and `touch-action: manipulation`. Never scale below 0.95. Never enter from `scale(0)`.
 - **M6. The one orchestrated moment.** On the first Home view of a session, the butterfly bars grow out from the spine:
@@ -371,6 +393,7 @@ The idea has three consequences, each of which can be checked:
   - input is never blocked.
 
   Nothing else on any page animates on load ([motion §12.1](research/motion.md)). Under reduced motion it is a 200 ms opacity fade. The butterfly's total row is part of this moment (M3, "Total-row reveal").
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the first view plays once per session on whichever route the visitor lands (`dw-first-view` in `sessionStorage`, `?replay=1` replays it): the band drops, the title rises, bars grow from their spine and blocks settle over the band, every step ending by 450 ms ([visual-v4.md §4.1](visual-v4.md#41-the-first-view-the-one-orchestrated-moment)).
 - **M7. Never:**
   - count-up numbers;
   - chart lines drawing in;
@@ -494,6 +517,7 @@ Sources for this section: [data-ui §3](research/data-ui.md), [Uniswap formatter
   - Height is 320–356 px on desktop and 240 px on phones.
 
   Sources: [Uniswap DepthChart helpers](https://github.com/Uniswap/interface/blob/main/apps/web/src/pages/PoolDetails/components/ChartSection/DepthChartModel.helpers.ts); [data-ui §1](research/data-ui.md).
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): flat white and Yellow areas on the band, 12 px square points ringed in the side colour, and the two ±2 % labels above the plot ([visual-v4.md §5.9.3](visual-v4.md#593-mirrored-depth-curve-pool-focal-ch3)).
 - **CH4. Depth butterfly** (Home and Token focal).
   - One row per pool, with sell bars left and buy bars right of a centre spine, on **one shared linear scale**, sorted by depth.
   - Desktop (≥ 840 px):
@@ -508,6 +532,7 @@ Sources for this section: [data-ui §3](research/data-ui.md), [Uniswap formatter
   - Every row is a link to its pool.
 
   Source: [data-ui §11 sketch](research/data-ui.md). _Test:_ rows share one `xScale`, and a $31.5K pool renders narrower than 4 px next to $6.1M.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the total row draws the 7 deepest pools as per-pool segments with a hatched rest, and a bracket states the share of the deepest pool ([visual-v4.md §5.9.1](visual-v4.md#591-depth-butterfly-home-focal-token)).
 - **CH5. Time series.**
   - Stack small multiples that share the x axis. Never use dual y axes.
   - Range pills: 24 h and 7 d (plus 30 d for scorecards), stored in the URL.
@@ -527,12 +552,14 @@ Sources for this section: [data-ui §3](research/data-ui.md), [Uniswap formatter
   - A KPI or target is a 1 px dashed `text-2` reference line with a direct label ("KPI $50K per side"). It is never red ([CDS ReferenceLine](https://github.com/coinbase/cds/blob/master/apps/docs/docs/components/charts/ReferenceLine/_webExamples.mdx)).
   - Breach episodes are `bad` bands at 12 % opacity behind the series.
   - Amended: breach bands use `--bad-mark` at `--band-op` opacity (0.06 light, 0.09 dark), not `bad` at 12 %. `--bad` stays for status words, shapes and chips.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): breach bands use Red at `--breach-op` (0.14 light, 0.22 dark).
 - **CH8. Compact glyphs.**
   - **Bullet graph.** A 6 px bar in `text-1` on a `well` track, with a 2×14 px target tick in `text-2` ([Few bullet graph](https://en.wikipedia.org/wiki/Bullet_graph)).
   - **Weighted health bar.** Four segments sized 35 / 25 / 20 / 20, with 2 px gaps, each filled in `text-1` to its component score on a `well` track. It is 8 px high when focal and 4 px in tables (80 px wide).
   - **Uptime strip.** One row of cells, one per sample, with 2 px gaps, 12 px high. Within-KPI cells are `border`, breaches are `bad`, and unevaluable cells are hollow. It is never split into up and down rows.
     - Amended: breached strip cells use `--bad-mark`, not `bad`.
   - **Row depth glyph.** An 80×20 butterfly on the table's shared scale.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): breached strip cells use Red; the glyph sizes are those of visual-v4.md §5.9.8.
 - **CH9. Every chart has an accessible equivalent:**
   - a title or takeaway sentence;
   - `role="img"` with an `aria-label` summary;
@@ -624,6 +651,7 @@ Sources for this section: [data-ui §3](research/data-ui.md), [Uniswap formatter
   - Its open state is not stored in the URL.
   - Controls position (amended): "A section's Details control sits in its heading: under the takeaway in the left column on desktop, at the right end of the heading line on phones. Its panel opens under the visual."
 - **K11. The logo is the mark plus wordmark:** a 20 px mark and a 16 px / 600 wordmark. The mark is the only place the side colours appear outside data.
+  - **v4 amended** ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the mark's sides are Cerulean and Yellow (a 0.5 px Gray 100 edge on the Yellow in light), its spine `currentColor`; 22 px in the app bar and 28 px in the footer, with the wordmark at 21 / 850.
 
 ## 12. States
 
@@ -735,12 +763,16 @@ Sources for this section: [data-ui §3](research/data-ui.md), [Uniswap formatter
 
 Any of these in a screenshot or diff blocks the merge. Each is a default that nothing in the product chose. The IDs in brackets refer to the rules above and to the pattern list in [product-ui §11](research/product-ui.md).
 1. **Tracked ALL-CAPS labels**: `24H VOLUME`, `ALL SCORED POOLS`, `DEPTH ±2%` [SD4, T5]. _grep:_ `text-transform: uppercase`.
+   - v4 amended: eyebrows are the one exception (T1, T11).
 2. **Middle-dot meta strings** in UI text: `Open source · no token · no custody`, `±1 · 2 · 5 %` [SD4]. _grep:_ `·` in `.tsx`.
 3. **Arrows glued to links**: `All gaps →`, `Open scorecard →` [CP3]. _grep:_ `→` or `->` inside link text.
 4. **Mono for decorative labels**, axis ticks or scales such as `$1k · $10k · $100k` [SD4].
+   - v4 amended: eyebrows are the one exception (T1).
 5. **`WORD — fragment` labels**, such as `Demo data — synthetic …` [SD4].
 6. **The card kit**: a bordered rounded card around every section, one radius everywhere, a white card on a grey page [K2].
+   - v4 amended: v4 has the band, blocks stacked over it and one sections sheet per detail page (E1), never a card per section.
 7. **Cards in cards**: KPI cards inside a KPI panel, uptime tiles inside an uptime panel [K11].
+   - v4 amended: never a block in a block (E2).
 8. **The stat-tile hero**: big number, small label, caption, in a 2×2 or 4-up grid [D2, D3].
 9. **Identical feature cards**: four "What we measure" boxes with the same shape [L2].
 10. **Chip soup**: more than one chip per row; chips for non-state data such as DEX, fee, "stable" or "synthetic" [K12].
@@ -755,6 +787,7 @@ Any of these in a screenshot or diff blocks the merge. Each is a default that no
     - the default four-column footer.
 12. **Default faces as the voice**: Inter, Roboto, Arial, system-ui, Geist, Space Grotesk, JetBrains Mono for labels. Also the Google Fonts `<link>`.
 13. **Generic near-black canvases** (`#111`, `#0b0b0b`, v2's `#0b0e13`) and greys with no deliberate hue. Use the tinted ramp in `C1`.
+    - v4 amended: Gray 100 `#0A0B0D` is Base's black, chosen on purpose (C1).
 14. **An accented word or a differently coloured number in a headline** [SD5].
 15. **Decorative devices**: glyph dividers between sections, `01 / 02 / 03` markers, ornamental icons.
 16. **Motion clichés**:

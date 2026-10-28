@@ -1,6 +1,7 @@
 /**
- * The filled status chip (K5, §5.5): the scorecard's own page only, where it is the subject and
- * the one filled element. 24 px high; 22 px in the phone meta line (`compact`).
+ * The filled status chip (docs/design/visual-v4.md §5.5): the scorecard's own page only. 32 px,
+ * radius 9, 15 px / 800, the shape and the word in Gray 100 on the Red fill (Green within KPI);
+ * 28 px in the phone meta line (`compact`).
  */
 import type { ScorecardStatus } from '@depthwatch/core'
 import { Shape } from './Icon.js'

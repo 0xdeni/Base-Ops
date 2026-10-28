@@ -1,29 +1,42 @@
 /**
- * The depth butterfly (CH4, ia-v3 §4.1, docs/design/visual-v3.md §5.9): the Home and
- * Token focal. One row per pool, sell side left and buy side right of the spine, on one shared
- * linear scale set by the scope's own total, closed by the "All of …" total row drawn as the field
- * of light (§3.7). The lens (§4 rows 3–5): hover, focus or tap a row and its stratum leaves the
- * stack and slides to the spine over 280 ms while the rest of the scope stays as a dimmed ghost;
- * focus lenses instantly, row to row only cross-fades, reduced motion fades in place. The first
- * view grows the bars from the spine (`intro`, §4 rows 1–2).
+ * The depth butterfly (CH4, ia-v3 §4.1, docs/design/visual-v4.md §5.9.1): the Home and Token
+ * focal, drawn on the band. The head reads the scope and its two side totals; the total row splits
+ * each side into the deepest pools and a hatched rest, with a bracket stating the deepest pool's
+ * share; then one row per pool, sell side left of the spine and buy side right, all on one scale.
+ *
+ * The lens: a mouse over a row, keyboard focus on its link or the first tap on touch. The readout
+ * names the pool and its share, the totals swap to its two sides, and everything else dims to
+ * 0.32 (150 ms; instant from the keyboard). The second tap opens the pool; Up and Down move focus
+ * between row links; leaving the plot or blurring the figure restores the totals. Every row's
+ * readout, "Open pool" included, sits hidden in the readout's own grid cell, so the line always
+ * holds the height of the tallest one and a read never moves the rows under the finger.
  */
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  type FocusEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import { Link } from 'react-router-dom'
 import type { PoolSummary } from '../../api/types.js'
-import { NB, poolHref, ratio, shareOf, usd, usdTick } from '../../lib/format.js'
-import { animate, DUR, EASE, prefersReducedMotion } from '../../lib/motion.js'
+import { count, poolHref, usd, usdTick } from '../../lib/format.js'
+import { useIsPhone } from '../../lib/useMediaQuery.js'
+import { Axis, Bracket, labelFits, PoolRow, TotalRow } from './ButterflyPlot.js'
 import {
   axisTicks,
+  type ButterflyModel,
+  type ButterflyRow,
   butterflyLabel,
   butterflyModel,
-  gapMarkerTight,
   pickButterflyRows,
-  rowLinkLabel,
-  type Stratum,
-  strataBoundaries,
+  readoutText,
 } from './butterflyModel.js'
 import { ShowData } from './ShowData.js'
-import { vars } from './useChartWidth.js'
+import { useChartWidth } from './useChartWidth.js'
 import './charts.css'
 import './butterfly.css'
 import './butterflyStates.css'
@@ -31,6 +44,16 @@ import './butterflyStates.css'
 export interface ButterflyGap {
   poolId: string
   turnoverRatio: number
+}
+
+/** A row in the readout: "WETH / cbBTC, Uniswap v3 0.3 %: 5 % of Base". */
+function Who({ row, scope }: { row: ButterflyRow; scope: string }) {
+  const t = readoutText(row, scope)
+  return (
+    <span>
+      <b>{t.who}</b>: {t.share}
+    </span>
+  )
 }
 
 export interface DepthButterflyProps {
@@ -42,52 +65,19 @@ export interface DepthButterflyProps {
   gap?: ButterflyGap | null
   /** "Base" on Home, the token symbol on a token page. */
   scope?: string
-  /** First view of the session: the bars grow from the spine (M6). */
-  intro?: boolean
-  /** Below the axis, e.g. a "Show all 312 pools" link. */
-  more?: ReactNode
   /** The "Show data" table (CH9). */
   children?: ReactNode
 }
 
-type LensHow = 'slide' | 'fade' | 'instant'
+/** The side lane outside the bars: room for row labels on desktop, a margin on phones. */
+const LANE = { desktop: 56, phone: 8 } as const
 
-function TotalSide({
-  side,
-  value,
-  strata,
-  width,
-  track,
-  lens,
-  lensRef,
-}: {
-  side: 'sell' | 'buy'
-  value: number
-  strata: Stratum[]
-  width: number
-  track: number
-  lens: Stratum | null
-  lensRef: (el: HTMLSpanElement | null) => void
-}) {
-  return (
-    <span className={`bf-side ${side}`}>
-      <span className="bf-track tot-track" data-side={side}>
-        <span className="tot-field" style={vars({ '--w': width })} />
-        {strataBoundaries(strata, track).map((o) => (
-          <i key={o} className="tot-sep" style={vars({ '--o': o })} />
-        ))}
-        <span className="tot-cap" style={vars({ '--w': width })} />
-        <span
-          ref={lensRef}
-          className={`tot-lens${lens ? ' on' : ''}`}
-          style={vars({ '--w': lens ? lens.w : 0 })}
-        />
-        <span className="bf-val tot-val" style={vars({ '--w': width })}>
-          {usd(value)}
-        </span>
-      </span>
-    </span>
-  )
+interface Lens {
+  k: number
+  /** Set from the keyboard: the dim is instant. */
+  instant: boolean
+  /** Set by a tap: the readout offers "Open pool". */
+  touch: boolean
 }
 
 export function DepthButterfly({
@@ -95,275 +85,187 @@ export function DepthButterfly({
   rows: rowsProp,
   gap = null,
   scope = 'Base',
-  intro = false,
-  more,
   children,
 }: DepthButterflyProps) {
   const rows = rowsProp ?? pickButterflyRows(pools, gap?.poolId)
   const m = butterflyModel(rows, pools)
   const figRef = useRef<HTMLElement | null>(null)
-  const lensEls = useRef<{ sell: HTMLSpanElement | null; buy: HTMLSpanElement | null }>({
-    sell: null,
-    buy: null,
-  })
-  const [lens, setLens] = useState(-1)
-  const [instant, setInstant] = useState(false)
-  const [grow, setGrow] = useState(intro)
-  const [track, setTrack] = useState(480)
-  const cur = useRef(-1)
-  const how = useRef<LensHow | null>(null)
-
-  // The intro plays once; afterwards re-renders never replay it.
-  useEffect(() => {
-    if (!grow) return
-    const t = setTimeout(() => setGrow(false), 600)
-    return () => clearTimeout(t)
-  }, [grow])
-
-  const drawn = m.rows.length > 0 && m.max > 0
-  // The total track's width: strata gaps under 3 px are skipped, and the lens slides this far.
-  useLayoutEffect(() => {
-    const el = drawn ? figRef.current?.querySelector<HTMLElement>('.tot-track') : null
-    if (!el) return
-    const read = () => el.clientWidth > 0 && setTrack(el.clientWidth)
-    read()
-    if (typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(read)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [drawn])
-
-  const set = (k: number, mode: 'pointer' | 'instant') => {
-    if (k === cur.current) return
-    const prev = cur.current
-    cur.current = k
-    how.current =
-      k < 0 || mode === 'instant'
-        ? 'instant'
-        : prev >= 0 || prefersReducedMotion()
-          ? 'fade'
-          : 'slide'
-    setInstant(mode === 'instant')
-    setLens(k)
-  }
-
-  // Lens enter: the stratum starts where it sits in the stack and slides to the spine (WAAPI,
-  // cancelling any previous slide); from one lensed row to the next it only cross-fades (M2).
-  useLayoutEffect(() => {
-    const mode = how.current
-    if (mode === null) return
-    how.current = null
-    for (const side of ['sell', 'buy'] as const) {
-      const el = lensEls.current[side]
-      if (!el) continue
-      for (const a of el.getAnimations?.() ?? []) a.cancel()
-      const s = lens >= 0 ? m.strata[side][lens] : null
-      if (!s || mode === 'instant') continue
-      if (mode === 'fade')
-        animate(el, [{ opacity: 0.4 }, { opacity: 1 }], { duration: DUR.settle, easing: 'ease' })
-      else {
-        const dx = (side === 'sell' ? -1 : 1) * s.o * (el.parentElement?.clientWidth ?? track)
-        animate(el, [{ transform: `translateX(${dx}px)` }, { transform: 'none' }], {
-          duration: DUR.morph,
-          easing: EASE.inOut,
-        })
-      }
-    }
-  })
+  /** The latest press in the plot: its pointer kind, and when (focus right after it is not a key's). */
+  const pointer = useRef({ type: 'mouse', at: Number.NEGATIVE_INFINITY })
+  const W = useChartWidth(figRef)
+  const phone = useIsPhone()
+  const [lens, setLens] = useState<Lens | null>(null)
 
   // A tap or click outside the figure ends the lens.
   useEffect(() => {
-    if (lens < 0) return
-    const outside = (e: PointerEvent) => {
-      if (!figRef.current?.contains(e.target as Node)) set(-1, 'pointer')
+    if (!lens) return
+    const outside = (e: globalThis.PointerEvent) => {
+      if (!figRef.current?.contains(e.target as Node)) setLens(null)
     }
     document.addEventListener('pointerdown', outside)
     return () => document.removeEventListener('pointerdown', outside)
-  })
+  }, [lens])
 
-  const rowOf = (target: EventTarget | null): number => {
-    const el = target instanceof Element ? target.closest<HTMLElement>('[data-k]') : null
-    return el ? Number(el.dataset.k) : -1
-  }
-  const fine = () =>
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(hover: hover) and (pointer: fine)').matches
-  const coarse = () =>
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(pointer: coarse)').matches
-
-  if (!drawn) {
+  if (!(m.max > 0)) {
     return (
-      <figure className="bfly is-empty" aria-label={`No ${scope} pools are scored yet`}>
-        <span className="bfly-spine" />
+      <figure className="bf is-empty" aria-label={`No ${scope} pools are scored yet`}>
+        <span className="bf-spine" />
       </figure>
     )
   }
 
-  const lensed = lens >= 0 ? m.rows[lens] : undefined
-  const axis = axisTicks(m.ticks, m.max, track)
-  const cls = `bfly${grow ? ' grow' : ''}${lensed ? ' is-lens' : ''}${instant ? ' is-instant' : ''}`
+  const lane = phone ? LANE.phone : LANE.desktop
+  const track = Math.max(1, W / 2 - lane)
+  const kept = axisTicks(m.ticks, m.max, track, usdTick)
+  const lensed = lens ? m.rows[lens.k] : undefined
+  const rowOf = (target: EventTarget | null): number => {
+    const el = target instanceof Element ? target.closest<HTMLElement>('.bf-pools [data-k]') : null
+    return el ? Number(el.dataset.k) : -1
+  }
+  const set = (k: number, how: Omit<Lens, 'k'>) => {
+    if (k < 0) setLens(null)
+    else if (!lens || lens.k !== k || lens.instant !== how.instant || lens.touch !== how.touch)
+      setLens({ k, ...how })
+  }
+
+  const onOver = (e: PointerEvent) => {
+    if (e.pointerType !== 'mouse') return
+    const k = rowOf(e.target)
+    if (k >= 0) set(k, { instant: false, touch: false })
+  }
+  const onFocus = (e: FocusEvent) => {
+    const t = e.target as Element
+    // Keyboard focus lenses at once; the focus a press brings is left to the pointer.
+    if (!t.classList.contains('bf-link') || Date.now() - pointer.current.at < 600) return
+    set(rowOf(t), { instant: true, touch: false })
+  }
+  // On a coarse pointer a row's link takes no taps until the row is lensed (butterflyStates.css),
+  // so the first tap lands on the row and reads it; the second follows the link.
+  const onClick = (e: MouseEvent) => {
+    if ((e.target as Element).closest?.('a')) return
+    const k = rowOf(e.target)
+    if (k >= 0)
+      set(lens?.k === k ? -1 : k, { instant: false, touch: pointer.current.type !== 'mouse' })
+  }
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    const links = [...(figRef.current?.querySelectorAll<HTMLElement>('.bf-pools .bf-link') ?? [])]
+    const i = links.indexOf(e.target as HTMLElement)
+    if (i < 0) return
+    const next = links[i + (e.key === 'ArrowDown' ? 1 : -1)]
+    if (next) {
+      e.preventDefault()
+      next.focus()
+    }
+  }
+
+  const cls = `bf${lensed ? ' is-lens' : ''}${lens?.instant ? ' is-instant' : ''}`
+  const restWord = `The other ${count(m.rest.count)} ${m.rest.count === 1 ? 'pool' : 'pools'}.`
   return (
-    <>
-      {/* biome-ignore lint/a11y/useSemanticElements: the figure groups the row links (§5.9 "Accessibility") */}
-      <figure
-        ref={figRef}
-        className={cls}
-        role="group"
-        aria-label={butterflyLabel(m, scope)}
-        onBlur={(e) => {
-          if (!figRef.current?.contains(e.relatedTarget as Node | null)) set(-1, 'instant')
-        }}
-      >
-        <div className="bfly-head" aria-hidden="true">
-          <span className="lh-sell">
-            <span className="sw sell" />
-            <span className="lh-long">Sell side, price down</span>
-            <span className="lh-short">Sell side</span>
-          </span>
-          <span className="lh-mid">Depth within 2{NB}%</span>
-          <span className="lh-buy">
-            <span className="sw buy" />
-            <span className="lh-long">Buy side, price up</span>
-            <span className="lh-short">Buy side</span>
-          </span>
-        </div>
-        {/* biome-ignore lint/a11y/useKeyWithClickEvents: the tap path of coarse pointers; keyboard focus on a row's link lenses it */}
-        <ol
-          className="bfly-rows"
-          onPointerOver={(e) => {
-            if (e.pointerType === 'mouse' && fine()) {
-              // A short-leader Gap marker steps back while its row is lensed (its value label takes
-              // the lane): pointing at the marker ends the lens, so the word is there to click.
-              if ((e.target as Element).closest('.bf-gap.is-tight')) return set(-1, 'pointer')
-              const k = rowOf(e.target)
-              if (k >= 0) set(k, 'pointer')
-            }
-          }}
-          onPointerLeave={(e) => {
-            if (e.pointerType === 'mouse') set(-1, 'pointer')
-          }}
-          onFocus={(e) => {
-            const k = rowOf(e.target)
-            if (k >= 0) set(k, 'instant')
-          }}
-          onClick={(e) => {
-            if (!coarse() || (e.target as Element).closest('a')) return
-            const k = rowOf(e.target)
-            set(k >= 0 && k !== cur.current ? k : -1, 'pointer')
-          }}
-        >
-          {m.rows.map((r, i) => {
-            const isGap = gap !== null && gap.poolId === r.id
-            return (
-              <li
-                key={r.id}
-                className={`bfly-row${i === lens ? ' is-on' : ''}`}
-                data-k={i}
-                style={vars({ '--i': i })}
-              >
-                <span className="bf-side sell">
-                  <span className="bf-track">
-                    <span
-                      className={`bf-bar${r.sell ? '' : ' is-zero'}`}
-                      style={vars({ '--w': r.sellW })}
-                    />
-                    <span className="bf-val" style={vars({ '--w': r.sellW })}>
-                      {usd(r.sell)}
-                    </span>
-                  </span>
-                </span>
-                <span className="bf-label">
-                  <Link className="bf-pair" to={poolHref(r.id)} aria-label={rowLinkLabel(r, scope)}>
-                    {r.pair}
+    // biome-ignore lint/a11y/useSemanticElements: the figure groups the row links under one summary (§5.9)
+    <figure
+      ref={figRef}
+      className={cls}
+      data-chart=""
+      role="group"
+      aria-label={butterflyLabel(m, scope)}
+      onBlur={(e) => {
+        if (!figRef.current?.contains(e.relatedTarget as Node | null)) setLens(null)
+      }}
+    >
+      <div className="bf-head" data-furniture="">
+        <div className="bf-who">
+          <p className="bf-read" aria-live="polite">
+            {lensed ? (
+              <>
+                <Who row={lensed} scope={scope} />
+                {lens?.touch ? (
+                  <Link className="bf-open touch-hit" to={poolHref(lensed.id)}>
+                    Open pool
                   </Link>
-                  <span className="bf-dex">{r.dexShort}</span>
-                </span>
-                <span className="bf-side buy">
-                  <span className="bf-track">
-                    <span
-                      className={`bf-bar${r.buy ? '' : ' is-zero'}`}
-                      style={vars({ '--w': r.buyW })}
-                    />
-                    <span className="bf-val" style={vars({ '--w': r.buyW })}>
-                      {usd(r.buy)}
-                    </span>
-                    {isGap ? (
-                      // The dotted leader is drawn by the marker, not the link, so a tap on the
-                      // bars beside it lenses the row instead of following the link.
-                      <span
-                        className={`bf-gap${gapMarkerTight(r.buyW) ? ' is-tight' : ''}`}
-                        style={{ left: `calc(${r.buyW} * 100% + 8px)` }}
-                      >
-                        <Link
-                          className="bf-gap-link touch-hit"
-                          to="/gaps"
-                          aria-label={`Liquidity gap: ${r.pair} trades ${ratio(gap.turnoverRatio)} its depth a day`}
-                        >
-                          Gap
-                        </Link>
-                      </span>
-                    ) : null}
-                  </span>
-                </span>
-              </li>
-            )
-          })}
+                ) : null}
+              </>
+            ) : (
+              `All of ${scope}, every tracked pool`
+            )}
+          </p>
+          {m.rows.map((r) => (
+            <p key={r.id} className="bf-read is-ghost" aria-hidden="true">
+              <Who row={r} scope={scope} />
+              <span className="bf-open">Open pool</span>
+            </p>
+          ))}
+        </div>
+        <div className="s">
+          <span className="meta">
+            <i className="sw sell-band" aria-hidden="true" />
+            Sell side<span className="long">, price down</span>
+          </span>
+          <b className="bf-tot num">{usd(lensed ? lensed.sell : m.total.sell)}</b>
+        </div>
+        <div className="b">
+          <span className="meta">
+            <i className="sw buy-band" aria-hidden="true" />
+            Buy side<span className="long">, price up</span>
+          </span>
+          <b className="bf-tot num">{usd(lensed ? lensed.buy : m.total.buy)}</b>
+        </div>
+      </div>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: the lens follows the pointer; the row links carry the keyboard path */}
+      <div
+        className="bf-plot"
+        onPointerDown={(e) => {
+          pointer.current = { type: e.pointerType, at: Date.now() }
+        }}
+        onPointerOver={onOver}
+        onPointerLeave={(e) => {
+          if (e.pointerType === 'mouse') setLens(null)
+        }}
+        onFocus={onFocus}
+        onClick={onClick}
+        onKeyDown={onKey}
+      >
+        <TotalRow m={m} scope={scope} showLabel={totalLabelFits(m, scope, track, lane)} />
+        <Bracket m={m} />
+        <ol className="bf-pools">
+          {m.rows.map((r, i) => (
+            <PoolRow
+              key={r.id}
+              row={r}
+              index={i}
+              on={lens?.k === i}
+              stacked={!phone && !labelFits(r, track, lane)}
+              scope={scope}
+              gap={gap !== null && gap.poolId === r.id && !phone ? gap : null}
+            />
+          ))}
         </ol>
-        <div className="bf-total" style={vars({ '--i': Math.min(m.rows.length, 5) })}>
-          <TotalSide
-            side="sell"
-            value={m.total.sell}
-            strata={m.strata.sell}
-            width={m.total.sell / m.max}
-            track={track}
-            lens={lensed ? (m.strata.sell[lens] ?? null) : null}
-            lensRef={(el) => {
-              lensEls.current.sell = el
-            }}
-          />
-          <span className="bf-label">
-            <span className="bf-pair tot-name">All of {scope}</span>
-            <span className="bf-dex tot-cap-l" aria-live="polite">
-              {lensed
-                ? `this pool: ${shareOf(lensed.share)}`
-                : `${m.poolCount} ${m.poolCount === 1 ? 'pool' : 'pools'}`}
-            </span>
-          </span>
-          <TotalSide
-            side="buy"
-            value={m.total.buy}
-            strata={m.strata.buy}
-            width={m.total.buy / m.max}
-            track={track}
-            lens={lensed ? (m.strata.buy[lens] ?? null) : null}
-            lensRef={(el) => {
-              lensEls.current.buy = el
-            }}
-          />
-        </div>
-        <div className="bfly-axis" aria-hidden="true">
-          <span className="ax sell">
-            {axis.map((v) => (
-              <span key={v} className="tk" style={{ left: `${(1 - v / m.max) * 100}%` }}>
-                {usdTick(v)}
-              </span>
-            ))}
-          </span>
-          <span className="ax-mid">One scale for every pool</span>
-          <span className="ax buy">
-            {axis.map((v) => (
-              <span key={v} className="tk" style={{ left: `${(v / m.max) * 100}%` }}>
-                {usdTick(v)}
-              </span>
-            ))}
-          </span>
-        </div>
-        {more ? <div className="bfly-more">{more}</div> : null}
-      </figure>
-      <ShowData className="bfly-foot">{children}</ShowData>
-    </>
+      </div>
+      <Axis m={m} kept={kept} />
+      <ShowData
+        band
+        className="bf-foot"
+        note={
+          <>
+            One scale for every pool.
+            {m.rest.count ? (
+              <>
+                {' '}
+                <span className="hatch" aria-hidden="true" />
+                {restWord}
+              </>
+            ) : null}
+          </>
+        }
+      >
+        {children}
+      </ShowData>
+    </figure>
   )
+}
+
+/** "All of Base" at 17 px / 800 (about 10 px a glyph) fits left of the sell total. */
+function totalLabelFits(m: ButterflyModel, scope: string, track: number, lane: number): boolean {
+  const need = `All of ${scope}`.length * 10 + 12
+  return (1 - Math.min(1, m.total.sell / m.max)) * track + lane >= need
 }

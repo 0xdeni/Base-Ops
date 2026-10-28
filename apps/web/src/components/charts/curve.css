@@ -1,0 +1,183 @@
+/* The mirrored depth curve on the band (docs/design/visual-v4.md §5.9.3): flat white and Yellow
+   areas, ringed square points, labels above the plot and the phone readout row. */
+
+.cv-wrap {
+  --t-cv-read: 2rem; /* the phone readout values, 32 px */
+  min-width: 0;
+  color: var(--on-band);
+}
+.cv-head {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: end;
+}
+.cv-head > :last-child {
+  justify-self: end;
+}
+.cv-head .meta {
+  font-size: var(--t-small);
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--on-band-2);
+  white-space: nowrap;
+}
+.cv-mid {
+  text-align: center;
+  color: var(--on-band-2);
+}
+.cv-read {
+  display: none;
+}
+.cv {
+  position: relative;
+  margin: 16px 0 0;
+  min-width: 0;
+}
+.cv svg {
+  width: 100%;
+  overflow: visible;
+}
+.cv svg:focus-visible {
+  outline: 2px solid var(--focus-band);
+  outline-offset: 6px;
+  border-radius: 6px;
+}
+.cv .ax {
+  font-family: var(--sans);
+  font-size: var(--t-caption);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  fill: var(--on-band-2);
+}
+.cv .ax.is-strong {
+  font-weight: 700;
+  fill: var(--on-band);
+}
+.cv-band {
+  fill: rgb(255 255 255 / 0.08);
+}
+.cv-area.sell {
+  fill: var(--sell-band);
+}
+.cv-area.buy {
+  fill: var(--buy-band);
+}
+/* Past the point where liquidity runs out: a dashed segment, never a filled shape. */
+.cv-out {
+  fill: none;
+  stroke-width: 2px;
+  stroke-dasharray: 5 4;
+  stroke-linejoin: round;
+}
+.cv-out.sell {
+  stroke: var(--sell-band);
+}
+.cv-out.buy {
+  stroke: var(--buy-band);
+}
+.cv-mid-line {
+  stroke: var(--on-band);
+  stroke-width: 2px;
+}
+/* Points read as rings: Blue inside a 3 px ring of the side's colour, never a Blue square. */
+.cv-pt {
+  fill: var(--band);
+  stroke-width: 3px;
+}
+.cv-pt.sell {
+  stroke: var(--sell-band);
+}
+.cv-pt.buy {
+  stroke: var(--buy-band);
+}
+.cv .xh {
+  stroke: var(--on-band);
+  stroke-width: 1.5px;
+  stroke-dasharray: 3 3;
+}
+.cv .lab-k {
+  font-family: var(--sans);
+  font-size: var(--t-small);
+  font-weight: 650;
+  fill: var(--on-band-2);
+}
+.cv .lab-v {
+  font-family: var(--sans);
+  font-size: var(--t-figure);
+  font-weight: 820;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+  fill: var(--on-band);
+}
+.cv .lead-l {
+  stroke: rgb(255 255 255 / 0.6);
+  stroke-width: 1px;
+  stroke-dasharray: 2 3;
+}
+.cv-foot {
+  margin-top: 12px;
+}
+/* The sentence that stands in for the plot (no USD price, or no liquidity within 5 %): white on
+   the band, centred under the legend row, with the plot's breathing room around it. */
+.cv-empty {
+  max-width: 44ch;
+  margin: 64px auto;
+  font-size: var(--t-lead);
+  font-weight: 650;
+  line-height: 1.42;
+  letter-spacing: -0.01em;
+  text-align: center;
+  text-wrap: pretty;
+  color: var(--on-band);
+}
+
+/* Phones: the ±2 % values move to a readout row above the chart (32 px values). */
+@media (max-width: 52.49em) {
+  .cv-head {
+    grid-template-columns: 1fr 1fr;
+  }
+  /* The legend row drops its middle; the band's heading there stays for assistive tech. */
+  .cv-mid {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .cv-empty {
+    margin-block: 40px;
+    font-size: var(--t-body);
+  }
+  .cv-read {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 16px;
+  }
+  .cv-read span {
+    display: grid;
+    gap: 4px;
+    font-size: var(--t-cv-read);
+    font-weight: 820;
+    letter-spacing: -0.05em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .cv-read span:last-child {
+    text-align: right;
+  }
+  .cv-read small {
+    font-size: var(--t-small);
+    font-weight: 650;
+    letter-spacing: 0;
+    color: var(--on-band-2);
+  }
+}
+@media (forced-colors: active) {
+  .cv-area,
+  .cv-pt,
+  .cv-band {
+    forced-color-adjust: none;
+  }
+}

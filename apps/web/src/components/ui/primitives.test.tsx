@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Providers } from '../../App.js'
 import { createMockClient } from '../../api/mock.js'
 import { BackLink } from './BackLink.js'
-import { Button, IconButton } from './Button.js'
+import { Band } from './Band.js'
+import { Block, Overlap } from './Block.js'
+import { Button, ButtonLink, buttonClass, IconButton } from './Button.js'
 import { CopyButton } from './CopyButton.js'
-import { Fact, Facts } from './Fact.js'
+import { Fact, Facts, FactsRow } from './Fact.js'
 import { GradeGlyph } from './GradeGlyph.js'
 import { ICON_NAMES, Icon } from './Icon.js'
 import { NotFoundState, SectionError, useDelayedPending } from './States.js'
@@ -19,7 +21,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('icons and buttons (K1, K9)', () => {
+describe('icons and buttons (§5.3, §5.13)', () => {
   it('draws every icon as a 16 px, 1.5 px stroke, aria-hidden SVG', () => {
     for (const name of ICON_NAMES) {
       const { container, unmount } = render(<Icon name={name} />)
@@ -29,6 +31,25 @@ describe('icons and buttons (K1, K9)', () => {
       expect(svg?.getAttribute('aria-hidden')).toBe('true')
       unmount()
     }
+  })
+
+  it("has the variants of §5.3, none of them sharing the band's class", () => {
+    expect(buttonClass('primary')).toBe('btn primary')
+    expect(buttonClass('on-band')).toBe('btn on-band')
+    expect(buttonClass('ghost', 'sm')).toBe('btn ghost is-sm')
+    expect(buttonClass('on-band-ghost', 'md', 'x')).toBe('btn on-band-ghost x')
+    render(
+      <MemoryRouter>
+        <Button>Retry</Button>
+        <ButtonLink variant="on-band" to="/pools">
+          Browse pools
+        </ButtonLink>
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('button', { name: 'Retry' }).className).toBe('btn ghost')
+    const browse = screen.getByRole('link', { name: 'Browse pools' })
+    expect(browse.className).toBe('btn on-band')
+    expect(browse.classList.contains('band')).toBe(false)
   })
 
   it('names icon buttons and keeps a loading button labelled', () => {
@@ -57,7 +78,7 @@ describe('icons and buttons (K1, K9)', () => {
   })
 })
 
-describe('grades and status (C4, K5): shape plus word', () => {
+describe('grades and status (§5.5): ink letter and shape on a kit fill', () => {
   it('names the grade glyph and picks the band shape', () => {
     render(
       <>
@@ -91,7 +112,7 @@ describe('grades and status (C4, K5): shape plus word', () => {
   })
 })
 
-describe('facts (D3): value first, label second', () => {
+describe('facts (§5.6): value first, label second', () => {
   it('pairs each value with its label, glyph or breached triangle', () => {
     render(
       <Facts layout="scorecard">
@@ -107,9 +128,76 @@ describe('facts (D3): value first, label second', () => {
     expect(screen.getByRole('img', { name: 'Grade A' })).toBeTruthy()
     expect(document.querySelector('dl')?.className).toBe('facts is-stack')
   })
+
+  it('puts an eyebrow above the value, and the facts row in one ink block over the band', () => {
+    render(
+      <FactsRow layout="pool" note="Liquidity gap: one of 48 pools.">
+        <Fact eyebrow="24 h volume" value="$11.4M" label="traded in 24 h" />
+      </FactsRow>,
+    )
+    const row = document.querySelector('.facts-row') as HTMLElement
+    expect(row.className).toBe('blk ink facts-row')
+    expect(row.hasAttribute('data-over')).toBe(true)
+    expect(row.querySelector('dl')?.className).toBe('facts is-grid')
+    const terms = screen.getAllByRole('term')
+    expect(terms.map((t) => [t.className, t.textContent])).toEqual([
+      ['eyebrow fact-eb', '24 h volume'],
+      ['', 'traded in 24 h'],
+    ])
+    expect(row.querySelector('.facts-note')?.textContent).toBe('Liquidity gap: one of 48 pools.')
+  })
 })
 
-describe('number change (§4 row 12)', () => {
+describe('the band and blocks (§5.2)', () => {
+  it('lays the band on its own ground layer, with the eyebrow rising in the first view', () => {
+    render(
+      <Band label="What a gap is" eyebrow="Liquidity gaps">
+        <p className="lead">A gap is a pool that trades far more each day than its depth.</p>
+      </Band>,
+    )
+    const band = screen.getByRole('region', { name: 'What a gap is' })
+    expect(band.className).toBe('band')
+    const ground = band.firstElementChild as HTMLElement
+    expect(ground.className).toBe('band-ground')
+    expect(ground.getAttribute('aria-hidden')).toBe('true')
+    const eyebrow = band.querySelector('.eyebrow') as HTMLElement
+    expect(eyebrow.textContent).toBe('Liquidity gaps')
+    expect(eyebrow.hasAttribute('data-in')).toBe(true)
+  })
+
+  it('stacks blocks over the band, ink and panel variants, and single destinations', () => {
+    render(
+      <MemoryRouter>
+        <Overlap grid>
+          <Block over span={4}>
+            depth
+          </Block>
+          <Block variant="ink" over span={5} to="/gaps" linkLabel="See all gaps">
+            205×
+          </Block>
+          <Block variant="panel" flush as="section">
+            about
+          </Block>
+        </Overlap>
+      </MemoryRouter>,
+    )
+    const overlap = document.querySelector('.overlap') as HTMLElement
+    expect(overlap.className).toBe('wrap overlap')
+    expect(overlap.firstElementChild?.className).toBe('grid')
+    const plain = screen.getByText('depth')
+    expect(plain.className).toBe('blk blk--over c4')
+    expect(plain.hasAttribute('data-over')).toBe(true)
+    const dest = screen.getByRole('link', { name: 'See all gaps' })
+    expect(dest.className).toBe('blk ink blk--over c5 is-dest')
+    expect(dest.getAttribute('href')).toBe('/gaps')
+    const panel = screen.getByText('about')
+    expect(panel.tagName).toBe('SECTION')
+    expect(panel.className).toBe('blk blk--panel blk--flush')
+    expect(panel.hasAttribute('data-over')).toBe(false)
+  })
+})
+
+describe('number change (§4.3)', () => {
   it('swaps instantly when not animated', () => {
     const { rerender, container } = render(<TextChange value="$7.82K" animate={false} />)
     rerender(<TextChange value="$7.66K" animate={false} />)
@@ -127,7 +215,7 @@ describe('number change (§4 row 12)', () => {
   })
 })
 
-describe('copy (K8)', () => {
+describe('copy (§4.4)', () => {
   it('reads "Copied" with a check for 2 s and announces it', async () => {
     vi.useFakeTimers()
     const writeText = vi.fn(() => Promise.resolve())
@@ -144,7 +232,7 @@ describe('copy (K8)', () => {
   })
 })
 
-describe('states (ST1–ST4, M10)', () => {
+describe('states (§5.12)', () => {
   it('shows no loading UI under 300 ms and keeps it at least 400 ms once shown', () => {
     vi.useFakeTimers()
     const { result, rerender } = renderHook(({ p }) => useDelayedPending(p), {
@@ -180,19 +268,22 @@ describe('states (ST1–ST4, M10)', () => {
       <Providers client={createMockClient()} mock staticBuild>
         <MemoryRouter>
           <NotFoundState
-            title="Pool not found"
+            title="pool not found"
             message="Depthwatch does not track this pool, or the link is wrong."
             id="uniswap-v3:0xdead"
           />
         </MemoryRouter>
       </Providers>,
     )
-    expect(screen.getByRole('heading', { level: 1, name: 'Pool not found' })).toBeTruthy()
+    const h1 = screen.getByRole('heading', { level: 1, name: 'pool not found' })
+    expect(h1.className).toBe('display')
+    expect(h1.previousElementSibling?.textContent).toBe('Not found')
+    expect(h1.previousElementSibling?.className).toBe('eyebrow')
     expect(screen.getByText('uniswap-v3:0xdead').className).toBe('mono nf-id')
     expect(
       screen.getByText(/This static copy only holds the data it was exported with\./),
     ).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Browse pools' }).className).toBe('btn secondary')
-    expect(screen.getByRole('link', { name: 'See liquidity gaps' }).className).toBe('plink')
+    expect(screen.getByRole('link', { name: 'Browse pools' }).className).toBe('btn ghost')
+    expect(screen.getByRole('link', { name: 'See liquidity gaps' }).className).toBe('ulink')
   })
 })

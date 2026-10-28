@@ -1,8 +1,9 @@
 /**
- * The Gaps screen's sentences and URL state (ia-v3 §2, §4.4, docs/design/visual-v3.md §6.4).
- * `view` is `list` (default) or `table`; the table's `sort` and `dir` sit beside it, defaults left
- * out, replaced not pushed. A meaningful gap trades 3× its ±2 % depth a day or more (TB9), the
- * threshold every screen uses; the numbers come from the API (core's `computeGap`).
+ * The Gaps screen's sentences and URL state (ia-v3 §2, §4.4, docs/design/visual-v4.md §6.5).
+ * `view` is `list` (default) or `table`; the table's `sort` and `dir` sit beside it, and `rows=all`
+ * shows every meaningful gap instead of the first 20; defaults left out, replaced not pushed. A
+ * meaningful gap trades 3× its ±2 % depth a day or more (TB9), the threshold every screen uses;
+ * the numbers come from the API (core's `computeGap`).
  */
 import type { GapItem, SortDir } from '../../api/types.js'
 import { MEANINGFUL_GAP_TURNOVER } from '../../components/charts/TurnoverGlyph.js'
@@ -15,7 +16,12 @@ export interface GapsState {
   view: GapsView
   sort: GapsSortKey
   dir: SortDir
+  /** `rows=all`: every meaningful gap in the list, not the first 20. */
+  allRows: boolean
 }
+
+/** Meaningful gaps the list shows before "Show all 48" (§6.5). */
+export const GAP_PAGE = 20
 
 export const GAPS_DEFAULT_SORT: GapsSortKey = 'turnover'
 
@@ -36,10 +42,13 @@ export function readGapsState(params: URLSearchParams): GapsState {
     ? (raw as GapsSortKey)
     : GAPS_DEFAULT_SORT
   const dir: SortDir = params.get('dir') === 'asc' ? 'asc' : 'desc'
-  return { view, sort, dir }
+  return { view, sort, dir, allRows: params.get('rows') === 'all' }
 }
 
-/** `params` with `patch` applied; the table's order only travels with the table view. */
+/**
+ * `params` with `patch` applied; the table's order only travels with the table view, and `rows`
+ * only with the list.
+ */
 export function writeGapsState(
   params: URLSearchParams,
   patch: Partial<GapsState>,
@@ -53,6 +62,8 @@ export function writeGapsState(
   else out.delete('sort')
   if (table && next.dir !== 'desc') out.set('dir', next.dir)
   else out.delete('dir')
+  if (!table && next.allRows) out.set('rows', 'all')
+  else out.delete('rows')
   return out
 }
 
@@ -76,6 +87,13 @@ export function tradesSentence(g: GapItem): string {
 /** What the sentence summarises, on hover and focus: "$1.60M traded through $31.5K of depth". */
 export function tradesDetail(g: GapItem): string {
   return `${usd(g.gap.volume24hUsd)} traded through ${usd(g.gap.depth2Usd)} of depth`
+}
+
+/** The list's foot while the quiet rows wait: "20 more pools trade less than 3× their depth." */
+export function restSentence(n: number): string {
+  return n === 1
+    ? `1 more pool trades less than ${MEANINGFUL_GAP_TURNOVER}× its depth.`
+    : `${n} more pools trade less than ${MEANINGFUL_GAP_TURNOVER}× their depth.`
 }
 
 /** The quiet rows' disclosure: "Show 5 more pools that trade less than 3× their depth". */
