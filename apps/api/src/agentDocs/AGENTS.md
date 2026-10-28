@@ -1,10 +1,11 @@
 # Depthwatch API: guide for agents
 
 Depthwatch measures executable liquidity on Base mainnet (chain id 8453). For every Uniswap v3,
-Uniswap v4, Aerodrome v2 and Aerodrome Slipstream pool it tracks, it reports how much capital
-moves the price by 1, 2 and 5 % in each direction, what a $1k / $10k / $100k / $1M round trip
-costs with fees included, how concentrated the liquidity is, how stable it has been over 24 h and
-7 d, and a 0–100 Liquidity Health Score. This server answers read-only JSON over HTTP.
+Uniswap v4, Aerodrome v2, Aerodrome Slipstream, Aero v2 and Aero Slipstream pool it tracks, it
+reports how much capital moves the price by 1, 2 and 5 % in each direction, what a $1k / $10k /
+$100k / $1M round trip costs with fees included, how concentrated the liquidity is, how stable it
+has been over 24 h and 7 d, and a 0–100 Liquidity Health Score. This server answers read-only JSON
+over HTTP.
 
 Typical use: an agent about to trade on Base checks how deep the pool is on the side it will
 trade and what a round trip costs at its size, then verifies on chain and executes elsewhere.
@@ -50,9 +51,14 @@ Read `source` before anything else:
 The project status is MVP: the math is unit-tested against hand-computed values, but numbers
 from a live deployment have not yet been validated against Base mainnet at scale. Which pools a
 deployment covers depends on how its operator discovers them: factory log scans find every pool
-of the four DEXes, `depthwatch discover --seed` only the pools between the reference tokens (the
+of the six DEXes, `depthwatch discover --seed` only the pools between the reference tokens (the
 major Base tokens plus any the operator adds). A pool missing from `/api/pools` may simply not be
 indexed; `GET /api/stats` counts the pools found, tracked and scored.
+
+Aerodrome moved to a new platform, Aero, on 2026-10-21: new factories, a new AERO token and new
+gauges. Aerodrome's pools still trade and keep their ids (`aerodrome-v2`, `aerodrome-slipstream`);
+Aero's pools have ids of their own (`aero-v2`, `aero-slipstream`), so liquidity that moved shows up
+as a different pool, not as a change to the old one.
 
 ## Conventions and units
 
@@ -65,6 +71,14 @@ indexed; `GET /api/stats` counts the pools found, tracked and scored.
 - **Addresses** are lowercase `0x` + 40 hex. `GET /api/tokens/:address` accepts any case and
   lowercases it. Native ETH in Uniswap v4 pools is `0x0000000000000000000000000000000000000000`
   with symbol `ETH`.
+- **Symbols are not unique; the address is the identity.** Aerodrome's AERO
+  (`0x940181a94a35a4569e4529a3cdfb74e38fd98631`) and Aero's AERO
+  (`0x3f5bf3edac59d650d8fdf9657a71f2f904a3a4ee`) both answer `AERO`, and copycats reuse any symbol.
+  Every token object (`pool.token0`, `pool.token1`, `token`) carries `label` for display: the
+  symbol when no other token of a scored pool shares it, else `SYMBOL (name)` (`AERO (Aerodrome)`,
+  `AERO (Aero)`), else `SYMBOL (0x3f5b…a4ee)` when the name is shared too. A label can change as
+  pools are scored; match tokens by address, never by symbol or label. The two AEROs are priced
+  separately from their own pools: there is no peg between them.
 - **Price orientation**: `price` is always token1 per token0, decimal adjusted. Read
   `pool.token0` and `pool.token1` before interpreting it: in a WETH/USDC pool where WETH is
   token0, `price` is USDC per WETH.
@@ -110,6 +124,14 @@ indexed; `GET /api/stats` counts the pools found, tracked and scored.
   Uniswap v4 depth and spread pay the LP fee combined with the direction's protocol fee from
   slot0 (`protocolFee + lpFee − protocolFee × lpFee / 1e6`, e.g. 625 pips for a 500-pip pool with
   a 125-pip protocol fee), so a v4 pool's spread floor is above twice its `feePips`.
+  **Dynamic fees**: a Slipstream pool's fee (`dex` `aerodrome-slipstream` or `aero-slipstream`) can
+  change every block: Aerodrome's fee module and Aero's swap hook set it (Aero's up to its cap,
+  at most 5 %). Depth and spread use the fee read at the snapshot's block; `pool.feePips` is the
+  latest snapshot's reading, `latest.feePips` and each history point's `feePips` the fee that
+  snapshot used (`null` before it was stored). A trade a block later can pay another fee, so on
+  these pools check the fee on chain before sizing a trade. The dashboard marks them "dynamic".
+  Aero v2 pools charge the factory's base fee in bps (× 100 here); MEV taxes and per-caller fee
+  discounts are not modelled.
 - **Concentration**, inside ±5 % of the mid price: `rangeHhi` (0..1, 1 = all in-band liquidity
   in one tick range), `activeRangeShare` (share in the range holding the current price) and
   `owners` (`count`, `top1Share`, `top3Share`, `hhi`, `coverage`; `null` when positions were not
@@ -129,14 +151,16 @@ indexed; `GET /api/stats` counts the pools found, tracked and scored.
   part that was scored 0 or neutral for lack of data. `concentrationBasis` says what the
   concentration part rests on: `owners` (`20 × (1 − top1Share)`, owners covering at least 90 %
   of the in-band liquidity), `ranges` (`20 × (1 − rangeHhi)`, a concentrated pool without such
-  owners) or `neutral` (10: an Aerodrome v2 pool, or no data). Depth counts twice the thinner of
-  the two ±2 % sides, so a one-sided pool scores 0 for it. **Rated pools** are those with both ±2 %
-  sides known and the thinner at least $5,000 (`rated: true`); only they have a **grade**: A ≥ 80,
-  B ≥ 65, C ≥ 50, D ≥ 35, else F. The others have `grade: null`, keep their `total`, and say why
-  in `unratedReason`: `thin` (neither side holds $5,000), `one-sided` (the deeper side does, the
-  thinner does not), `unpriced` (a side has no USD price) or `hooked` (a Uniswap v4 pool with a
-  hook, whose swaps the pool's state does not describe: no depth, spread or concentration is
-  computed, so those are empty or `null`, and the pool is not used to price tokens).
+  owners) or `neutral` (10: an Aerodrome v2 or Aero v2 pool, or no data). Depth counts twice the
+  thinner of the two ±2 % sides, so a one-sided pool scores 0 for it. **Rated pools** are those with
+  both ±2 % sides known and the thinner at least $5,000 (`rated: true`); only they have a **grade**:
+  A ≥ 80, B ≥ 65, C ≥ 50, D ≥ 35, else F. The others have `grade: null`, keep their `total`, and say
+  why in `unratedReason`: `thin` (neither side holds $5,000), `one-sided` (the deeper side does, the
+  thinner does not), `unpriced` (a side has no USD price) or `hooked` (a pool with a swap hook
+  Depthwatch does not model, `pool.hooks` non-null: a Uniswap v4 pool with a hook, or an Aero
+  Slipstream pool off the reviewed swap hook or charging each block's first swap an initial fee; its
+  swaps the pool's state does not describe, so no depth, spread or concentration is computed, those
+  are empty or `null`, and the pool is not used to price tokens).
 - **Gap score**: `turnoverRatio = volume24hUsd / depth2Usd`;
   `gapScore = 100 × clamp(log10(turnoverRatio) / 2, 0, 1)`: 0 at a turnover of 1× or less, 50 at
   10×, 100 at 100× or more. A high gap score means a day's volume is large next to the ±2 %
@@ -202,7 +226,7 @@ number of matching pools ignoring `limit` / `offset`.
 | ----------- | ---------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `sort`      | `health`, `depth`, `volume`, `gap`, `tvl`, `spread`, `top` | `health` | Health total, ±2 % depth, 24 h volume, gap score, TVL, `spread10kBps` or `ownerTop1Share`. `null` values sort last in both directions. |
 | `dir`       | `asc`, `desc`                                              | `desc`   | Ties are broken by pool id, ascending.                                                                                                 |
-| `dex`       | one of the four `dex` values                               | all      | Keep one DEX.                                                                                                                          |
+| `dex`       | one of the six `dex` values                                | all      | Keep one DEX.                                                                                                                          |
 | `q`         | text, at most 100 characters                               | none     | Case-insensitive substring of either token's symbol or address, the pool address or the v4 pool id.                                    |
 | `minVolume` | number ≥ 0 (USD)                                           | none     | Keep pools whose known 24 h volume is at least this; pools with unknown volume are dropped.                                            |
 | `rated`     | `true`, `false`                                            | both     | `true` keeps only rated pools, `false` only unrated ones.                                                                              |
@@ -210,18 +234,18 @@ number of matching pools ignoring `limit` / `offset`.
 | `offset`    | integer ≥ 0                                                | 0        | Rows to skip.                                                                                                                          |
 
 `PoolSummary` fields: `pool` (pool metadata: `id`, `dex`, `kind` (`concentrated`,
-`constant-product`, `stable-swap`), `address`, `poolId`, `token0` and `token1` (`address`,
-`symbol`, `name`, `decimals`), `feePips`, `tickSpacing`, `stable`, `hooks`, `createdAtBlock`),
+`constant-product`, `stable-swap`), `address`, `poolId`, `token0` and `token1` (`address`, `symbol`,
+`name`, `decimals`, `label`), `feePips`, `tickSpacing`, `stable`, `hooks`, `createdAtBlock`),
 `price`, `tvlUsd`, `depth2Usd`, `depth2UpUsd` (USD of token1 that lifts the price 2 %, the buy
 side), `depth2DownUsd` (USD of token0 that pushes it down 2 %, the sell side), `spread10kBps`,
 `priceDeviationBps`, `staleQuote`, `health` (`total`, `grade`, `rated`, `unratedReason`,
-`concentrationBasis`), `gapScore`, `volume24hUsd`, `ownerTop1Share` (the largest LP's share of
-the pool, `null` unless indexed owners hold liquidity in the band and cover at least 90 % of it),
-`updatedAt`. `health` is always present; `grade` is `null` for an unrated pool, and sorting by health puts unrated pools
-after the rated ones in both directions; sorting by depth puts stale quotes after the others. The
-two sides come from the newest snapshot's ±2 % level; a side is `null` when its token has no USD
-price, and when the known tick range ends before 2 % it is the total up to that point
-(`latest.depth[].up.reached` / `.down.reached` on `GET /api/pools/:id` say which).
+`concentrationBasis`), `gapScore`, `volume24hUsd`, `ownerTop1Share` (the largest LP's share of the
+pool, `null` unless indexed owners hold liquidity in the band and cover at least 90 % of it),
+`updatedAt`. `health` is always present; `grade` is `null` for an unrated pool, and sorting by
+health puts unrated pools after the rated ones in both directions; sorting by depth puts stale
+quotes after the others. The two sides come from the newest snapshot's ±2 % level; a side is `null`
+when its token has no USD price, and when the known tick range ends before 2 % it is the total up to
+that point (`latest.depth[].up.reached` / `.down.reached` on `GET /api/pools/:id` say which).
 
 ### `GET /api/pools/:id`
 
@@ -231,7 +255,8 @@ One pool, scored or not; 404 `pool not found` for an unknown id. Fields:
   `token0Usd`, `token1Usd`, `tvlUsd`, `activeLiquidity`, `depth` (raw amounts per level and
   side), `depthUsd` (USD per level and side), `spreads` (`notionalUsd` 1000 / 10000 / 100000 /
   1000000, `spreadBps`, `feasible`, `buyAvgPrice`, `sellAvgPrice`; snapshots stored before the
-  $1M point have the first three), `concentration`, `priceDeviationBps`.
+  $1M point have the first three), `concentration`, `priceDeviationBps`, `feePips` (the LP fee
+  this snapshot's depth and spread used; `null` in snapshots stored before it).
 - `score`: `total`, `grade` (`null` when unrated), `rated`, `unratedReason`,
   `concentrationBasis`, `components` (`depth`, `spread`, `concentration`, `persistence`), `notes`;
   `gap`: `volume24hUsd`, `depth2Usd`, `turnoverRatio`, `gapScore`.
@@ -253,9 +278,10 @@ the pool is scored.
 Response: `{ window, from, to, points }`. The window ends at the pool's newest snapshot (`to`),
 not at the current time, and `from = to − window`; both bounds are inclusive. `points` holds one
 entry per stored snapshot in the window, ascending: `timestamp`, `price`, `depth2Usd`,
-`spread10kBps`, `tvlUsd`, `health` (the score total recomputed for that snapshot). 404 `pool not
-found` for an unknown id. The response carries `Cache-Control: public, max-age=60` (see
-[Caching](#caching-rate-limits-and-cors)).
+`spread10kBps`, `tvlUsd`, `health` (the score total recomputed for that snapshot), `feePips` (the
+LP fee that snapshot used, `null` before it was stored: on a Slipstream pool it explains a spread
+that moved with the fee). 404 `pool not found` for an unknown id. The response carries
+`Cache-Control: public, max-age=60` (see [Caching](#caching-rate-limits-and-cors)).
 
 ### `GET /api/gaps`
 
@@ -284,7 +310,8 @@ A token, its USD price and the scored pools that contain it. 400 for an address 
 | `limit`   | integer 1–200                                              | 50      |
 | `offset`  | integer ≥ 0                                                | 0       |
 
-Fields: `token` (`address`, `symbol`, `name`, `decimals`), `usd` (`null` when unpriced), `via`
+Fields: `token` (`address`, `symbol`, `name`, `decimals`, `label`: told apart from the tokens of
+scored pools even when this one has none), `usd` (`null` when unpriced), `via`
 (pool ids the price was derived through, plus `wrap:weth` for the native ETH ↔ WETH step and
 any other non-pool source; empty for an anchor stable or an unpriced token),
 `priceUpdatedAt`, `pools` (`PoolSummary[]`, sorted as requested), `total` (scored pools with the
@@ -479,7 +506,8 @@ Say the trade is: buy token X with N USD worth of token Y on Base.
 4. **Read the side's depth.** `GET /api/pools/:id`, then `latest.depthUsd[]`: `upUsd` or
    `downUsd` at 1, 2 and 5 %. If N is below the side's depth at 1 %, the trade moves the pool
    price by less than 1 % in that snapshot's state, so your average price is worse than
-   `latest.price` by at most about 1 % plus the pool fee (`feePips`). If a level's
+   `latest.price` by at most about 1 % plus the pool fee (`feePips`; on a Slipstream pool, the fee
+   read at that snapshot's block, which the next block can change). If a level's
    `latest.depth[].up.reached` or `.down.reached` is `false`, the pool cannot move that far
    within known liquidity: treat it as too thin at that level.
 5. **Read the cost.** `latest.spreads[]` is the round-trip cost in bps at $1k, $10k, $100k and

@@ -95,7 +95,7 @@ export function mmRoutes(ctx: ApiContext): Hono {
     const row = ctx.db.scores.getRow(mandate.poolId)
     const body: ScorecardDetail = {
       ...toScorecardDto(loadScorecard(ctx, mandate)),
-      pool: row ? toPoolSummary(row) : null,
+      pool: row ? toPoolSummary(row, ctx.db.tokens.sharedSymbols()) : null,
     }
     return c.json(body)
   })

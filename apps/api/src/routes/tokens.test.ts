@@ -23,7 +23,7 @@ describe('GET /api/tokens/:address', () => {
 
   it('returns token info, USD price and the pools containing it', async () => {
     const body = await token(seed.tokens.WETH.address)
-    expect(body.token).toEqual(seed.tokens.WETH)
+    expect(body.token).toEqual({ ...seed.tokens.WETH, label: 'WETH' })
     expect(body.usd).toBe(3000.25)
     expect(body.via).toEqual([seed.pools.wethUsdcV3.id])
     expect(body.priceUpdatedAt).toBe(seed.now)

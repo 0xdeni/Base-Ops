@@ -47,6 +47,7 @@ export type {
   StaticBundle,
   StatsResponse,
   TokenDetail,
+  TokenDto,
 } from './dto.js'
 export type { HistoryInput } from './history.js'
 export {
@@ -103,3 +104,5 @@ export {
   SEED_TOSHI,
   seedDatabase,
 } from './testing/seed.js'
+export type { LabelledPool, LabelledToken } from './tokenLabels.js'
+export { labelPool, labelToken } from './tokenLabels.js'

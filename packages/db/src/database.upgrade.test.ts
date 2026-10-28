@@ -57,6 +57,7 @@ describe('openDatabase on a file of an older schema', () => {
     fresh.raw.exec('DROP TABLE mm_alerts; DROP TABLE mm_samples; DROP TABLE mandates')
     fresh.raw.exec('DROP INDEX snapshots_pool_block')
     fresh.raw.exec('ALTER TABLE snapshots DROP COLUMN price_deviation_bps')
+    fresh.raw.exec('ALTER TABLE snapshots DROP COLUMN fee_pips')
     fresh.raw.prepare('DELETE FROM schema_version WHERE version > 1').run()
     expect(currentVersion(fresh.raw)).toBe(1)
     expect(names(fresh, 'table')).not.toContain('mandates')
@@ -76,6 +77,7 @@ describe('openDatabase on a file of an older schema', () => {
       { version: 4, applied_at: NOW + 5 },
       { version: 5, applied_at: NOW + 5 },
       { version: 6, applied_at: NOW + 5 },
+      { version: 7, applied_at: NOW + 5 },
     ])
     expect(upgraded.tokens.get(fixtureToken().address)).toEqual(fixtureToken())
     upgraded.mandates.upsert(fixtureMandate())
@@ -111,6 +113,7 @@ describe('openDatabase on a file of an older schema', () => {
     expect(v2.mmSamples.count()).toBe(3)
     v2.raw.exec('DROP INDEX mm_samples_timestamp; DROP INDEX mm_alerts_timestamp')
     v2.raw.exec('ALTER TABLE snapshots DROP COLUMN price_deviation_bps')
+    v2.raw.exec('ALTER TABLE snapshots DROP COLUMN fee_pips')
     v2.close()
 
     const upgraded = openDatabase(path, { now: () => NOW + 5 })
@@ -163,6 +166,7 @@ describe('openDatabase on a file of an older schema', () => {
     fresh.raw.exec('DROP INDEX snapshots_pool_block; DROP INDEX mm_samples_mandate_block')
     fresh.raw.exec('DROP INDEX mm_samples_timestamp; DROP INDEX mm_alerts_timestamp')
     fresh.raw.exec('ALTER TABLE snapshots DROP COLUMN price_deviation_bps')
+    fresh.raw.exec('ALTER TABLE snapshots DROP COLUMN fee_pips')
     fresh.raw.prepare('DELETE FROM schema_version WHERE version > 2').run()
     expect(currentVersion(fresh.raw)).toBe(2)
     fresh.close()
@@ -193,6 +197,7 @@ describe('openDatabase on a file of an older schema', () => {
     const fresh = openDatabase(path, { now: () => NOW })
     const snapshot = fixtureSnapshot()
     fresh.raw.exec('ALTER TABLE snapshots DROP COLUMN price_deviation_bps')
+    fresh.raw.exec('ALTER TABLE snapshots DROP COLUMN fee_pips')
     fresh.raw.prepare('DELETE FROM schema_version WHERE version > 4').run()
     fresh.raw
       .prepare(
@@ -223,6 +228,7 @@ describe('openDatabase on a file of an older schema', () => {
     expect(upgraded.snapshots.latestForPool(snapshot.poolId)).toEqual({
       ...snapshot,
       priceDeviationBps: null,
+      feePips: null,
     })
     upgraded.snapshots.insert({
       ...snapshot,
@@ -258,6 +264,7 @@ describe('openDatabase on a file of an older schema', () => {
     fresh.raw.exec(
       `UPDATE snapshots SET owner_top1_share = json_extract(concentration_json, '$.owners.top1Share')`,
     )
+    fresh.raw.exec('ALTER TABLE snapshots DROP COLUMN fee_pips')
     fresh.raw.prepare('DELETE FROM schema_version WHERE version > 5').run()
     fresh.close()
 
@@ -269,6 +276,36 @@ describe('openDatabase on a file of an older schema', () => {
       .all()
       .map((row) => row.top)
     expect(stored).toEqual([0.4, null, null, null])
+  })
+
+  it('upgrades a version-6 database: its snapshots read an unknown fee, new ones store theirs', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'depthwatch-db-'))
+    tempDirs.push(dir)
+    const path = join(dir, 'v6.sqlite')
+
+    // A version-6 file: Aerodrome pools only, a snapshot stored before `fee_pips` existed.
+    const fresh = openDatabase(path, { now: () => NOW })
+    const pool = fixturePool({ dex: 'aerodrome-slipstream', feePips: 400 })
+    const snapshot = fixtureSnapshot({ poolId: pool.id, feePips: 400 })
+    fresh.pools.upsertMany([pool])
+    fresh.snapshots.insert(snapshot)
+    fresh.raw.exec('ALTER TABLE snapshots DROP COLUMN fee_pips')
+    fresh.raw.prepare('DELETE FROM schema_version WHERE version > 6').run()
+    expect(currentVersion(fresh.raw)).toBe(6)
+    fresh.close()
+
+    const upgraded = openDatabase(path, { now: () => NOW + 6 })
+    open.push(upgraded)
+    expect(upgraded.migration).toEqual({ from: 6, to: SCHEMA_VERSION })
+    expect(upgraded.pools.get(pool.id)).toEqual(pool)
+    expect(upgraded.snapshots.latestForPool(pool.id)).toEqual({ ...snapshot, feePips: null })
+    upgraded.snapshots.insert({
+      ...snapshot,
+      blockNumber: snapshot.blockNumber + 1n,
+      timestamp: snapshot.timestamp + 1,
+      feePips: 2055,
+    })
+    expect(upgraded.snapshots.latestForPool(pool.id)?.feePips).toBe(2055)
   })
 
   it('refuses a database written by a newer schema', () => {

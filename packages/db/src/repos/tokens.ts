@@ -1,4 +1,9 @@
-import type { Address, TokenInfo } from '@depthwatch/core'
+import {
+  type Address,
+  buildSharedSymbols,
+  type SharedSymbols,
+  type TokenInfo,
+} from '@depthwatch/core'
 import type { SqlContext } from '../context.js'
 import { colNumber, colText, jsonList, normalizeAddress, type Row, toCount } from '../sql.js'
 
@@ -7,6 +12,12 @@ const UPSERT = `INSERT INTO tokens (address, symbol, name, decimals) VALUES (?, 
     symbol = excluded.symbol, name = excluded.name, decimals = excluded.decimals`
 
 const SELECT = 'SELECT address, symbol, name, decimals FROM tokens'
+
+/** The distinct tokens of the pools with a score row: the set token labels are told apart in. */
+const SCORED_TOKENS = `SELECT address, symbol, name FROM tokens WHERE address IN (
+    SELECT p.token0 FROM pools AS p JOIN scores AS s ON s.pool_id = p.id
+    UNION SELECT p.token1 FROM pools AS p JOIN scores AS s ON s.pool_id = p.id
+  ) ORDER BY address`
 
 export function rowToToken(row: Row): TokenInfo {
   return {
@@ -56,6 +67,19 @@ export class TokensRepo {
       out.set(token.address, token)
     }
     return out
+  }
+
+  /**
+   * Core's `buildSharedSymbols` over the tokens of scored pools, in one query: the index
+   * `tokenLabel` reads (DESIGN.md "API"). A token outside it is still labelled against it.
+   */
+  sharedSymbols(): SharedSymbols {
+    const rows = this.ctx.all(SCORED_TOKENS).map((row) => ({
+      address: colText(row, 'address') as Address,
+      symbol: colText(row, 'symbol'),
+      name: colText(row, 'name'),
+    }))
+    return buildSharedSymbols(rows)
   }
 
   all(): TokenInfo[] {

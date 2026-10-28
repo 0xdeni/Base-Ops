@@ -15,15 +15,21 @@ import type {
   Jsonified,
   MmSample,
   PersistenceMetrics,
-  PoolMeta,
   PoolSnapshot,
   PublicMandate,
   PublicScorecardSummary,
-  TokenInfo,
   UnratedReason,
 } from '@depthwatch/core'
+import type { LabelledPool, LabelledToken } from './tokenLabels.js'
 
-export type PoolMetaDto = Jsonified<PoolMeta>
+/**
+ * A token as every response carries it: `TokenInfo` plus `label`, core's `tokenLabel` over the
+ * tokens of scored pools (the symbol, or "SYMBOL (name)" / "SYMBOL (0x3f5b…a4ee)" when another
+ * address shares it). The address is the identity; the label is for display.
+ */
+export type TokenDto = LabelledToken
+/** `PoolMeta` with labelled tokens (`TokenDto`). */
+export type PoolMetaDto = Jsonified<LabelledPool>
 export type PoolSnapshotDto = Jsonified<PoolSnapshot>
 
 /** Error body of every non-2xx response. */
@@ -193,6 +199,8 @@ export interface HistoryPoint {
   tvlUsd: number | null
   /** Liquidity Health Score total (0..100) at this snapshot. */
   health: number
+  /** `PoolSnapshot.feePips`: the LP fee (pips) this snapshot used; null when stored before it. */
+  feePips: number | null
 }
 
 /** `GET /api/pools/:id/history?window=`. The window ends at the pool's newest snapshot. */
@@ -226,7 +234,7 @@ export interface GapsResponse {
 
 /** `GET /api/tokens/:address` */
 export interface TokenDetail {
-  token: TokenInfo
+  token: TokenDto
   /** Derived USD price; null when the token is unreachable from the stable anchors. */
   usd: number | null
   /** Pool ids / sources the USD price was derived through (empty for anchors or unpriced). */

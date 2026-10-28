@@ -76,8 +76,8 @@ describe('openDatabase', () => {
   it('creates the schema and records every migration once', () => {
     const db = memory()
     expect(db.migration).toEqual({ from: 0, to: SCHEMA_VERSION })
-    expect(MIGRATIONS.length).toBe(6)
-    expect(SCHEMA_VERSION).toBe(6)
+    expect(MIGRATIONS.length).toBe(7)
+    expect(SCHEMA_VERSION).toBe(7)
     expect(names(db, 'table')).toEqual(EXPECTED_TABLES)
     expect(names(db, 'index')).toEqual(EXPECTED_INDEXES)
     const versions = db.raw

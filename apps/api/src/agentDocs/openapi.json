@@ -3,7 +3,7 @@
   "info": {
     "title": "Depthwatch API",
     "version": "0.1.0",
-    "summary": "Read-only liquidity metrics for Uniswap v3/v4 and Aerodrome pools on Base mainnet (chain id 8453).",
+    "summary": "Read-only liquidity metrics for Uniswap v3/v4, Aerodrome and Aero pools on Base mainnet (chain id 8453).",
     "description": "Depthwatch measures executable liquidity: USD depth at ±1/2/5 % per side, round-trip effective spread at $1k/$10k/$100k (fees included), LP concentration, liquidity persistence over 24 h and 7 d, a 0–100 Liquidity Health Score and a liquidity gaps feed. Conventions: price is token1 per token0, decimal adjusted; the up side is buy pressure on token0 (input token1), the down side sell pressure (input token0); raw token amounts and block numbers are decimal strings; times are unix seconds; null means not known, never zero; USD prices are derived from the pools and are not an oracle. Check GET /api/health first: source \"demo\" means synthetic data; snapshotAgeSeconds says how old the newest snapshot is, and ?maxAge=<seconds> makes it answer 503 when older. Responses are compressed when Accept-Encoding allows it and carry an ETag (304 on If-None-Match); GET /AGENTS.md \"Caching\" has the Cache-Control values. Errors are JSON { error, issues? }. This document lists every GET route; the operator-only write routes POST /api/mm and DELETE /api/mm/{id} (bearer DEPTHWATCH_ADMIN_TOKEN) are not described here. The full guide is GET /AGENTS.md; metric definitions are in docs/METRICS.md of the repository.",
     "license": { "name": "MIT", "identifier": "MIT" }
   },
@@ -490,7 +490,7 @@
       "UnratedReason": {
         "type": ["string", "null"],
         "enum": ["hooked", "unpriced", "one-sided", "thin", null],
-        "description": "Why a pool has no grade, null when it is rated: hooked (a Uniswap v4 pool with a hook: depth, spread and concentration are not computed), unpriced (a side has no USD price), one-sided (the deeper ±2 % side holds $5,000, the thinner does not) or thin (neither side does)."
+        "description": "Why a pool has no grade, null when it is rated: hooked (a pool with a swap hook Depthwatch does not model, PoolMeta.hooks: depth, spread and concentration are not computed), unpriced (a side has no USD price), one-sided (the deeper ±2 % side holds $5,000, the thinner does not) or thin (neither side does)."
       },
       "ConcentrationBasis": {
         "type": ["string", "null"],
@@ -615,12 +615,19 @@
       },
       "TokenInfo": {
         "type": "object",
-        "required": ["address", "symbol", "name", "decimals"],
+        "required": ["address", "symbol", "name", "decimals", "label"],
         "properties": {
-          "address": { "$ref": "#/components/schemas/Address" },
+          "address": {
+            "$ref": "#/components/schemas/Address",
+            "description": "The token's identity. Symbols are not unique: Aerodrome's and Aero's AERO both answer AERO."
+          },
           "symbol": { "type": "string" },
           "name": { "type": "string" },
-          "decimals": { "type": "integer" }
+          "decimals": { "type": "integer" },
+          "label": {
+            "type": "string",
+            "description": "Display name: the symbol, unless another token of a scored pool shares it; then SYMBOL (name), or SYMBOL (0x3f5b…a4ee) when the name is shared too. Computed per response; it can change as pools are scored."
+          }
         }
       },
       "PoolMeta": {
@@ -658,13 +665,16 @@
           "token1": { "$ref": "#/components/schemas/TokenInfo" },
           "feePips": {
             "type": "integer",
-            "description": "LP fee in millionths: 500 = 0.05 %. Uniswap v4 swaps (and so v4 depth and spread) also pay the slot0 protocol fee, which this value does not include."
+            "description": "LP fee in millionths: 500 = 0.05 %, as last read (at discovery, then by every snapshot). Slipstream pools (aerodrome-slipstream, aero-slipstream) have a dynamic fee that can change every block: this is the latest snapshot's reading. Uniswap v4 swaps (and so v4 depth and spread) also pay the slot0 protocol fee, which this value does not include."
           },
           "tickSpacing": { "type": ["integer", "null"], "description": "Concentrated pools only." },
-          "stable": { "type": "boolean", "description": "Aerodrome v2 stable (x³y + xy³) pool." },
+          "stable": {
+            "type": "boolean",
+            "description": "Aerodrome v2 or Aero v2 stable (x³y + xy³) pool."
+          },
           "hooks": {
             "anyOf": [{ "$ref": "#/components/schemas/Address" }, { "type": "null" }],
-            "description": "Uniswap v4 hooks address."
+            "description": "Uniswap v4: the hooks address. Aero Slipstream: the pool's swap hook when it is not the reviewed one or charges each block's first swap an initial fee. Null otherwise; a non-null hooks makes the pool unrated with reason hooked."
           },
           "createdAtBlock": { "$ref": "#/components/schemas/DecimalString" }
         }
@@ -1009,7 +1019,15 @@
       },
       "HistoryPoint": {
         "type": "object",
-        "required": ["timestamp", "price", "depth2Usd", "spread10kBps", "tvlUsd", "health"],
+        "required": [
+          "timestamp",
+          "price",
+          "depth2Usd",
+          "spread10kBps",
+          "tvlUsd",
+          "health",
+          "feePips"
+        ],
         "properties": {
           "timestamp": { "$ref": "#/components/schemas/UnixSeconds" },
           "price": { "type": "number" },
@@ -1019,6 +1037,10 @@
           "health": {
             "type": "number",
             "description": "Health total recomputed for this snapshot."
+          },
+          "feePips": {
+            "type": ["integer", "null"],
+            "description": "The LP fee in millionths this snapshot's depth and spread used: a Slipstream pool's fee moves from block to block, and this explains a spread that moved with it. null in snapshots stored before schema version 7."
           }
         }
       },

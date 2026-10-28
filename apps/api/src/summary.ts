@@ -2,15 +2,19 @@
  * Mappers from repository rows to wire DTOs. Everything that leaves the API goes through
  * `toJsonSafe`, so bigints (block numbers, raw amounts) are decimal strings on the wire.
  */
-import { type GapMetrics, isStaleQuote, toJsonSafe } from '@depthwatch/core'
+import { type GapMetrics, isStaleQuote, type SharedSymbols, toJsonSafe } from '@depthwatch/core'
 import type { DexStats, ScoredPoolRow } from '@depthwatch/db'
 import type { DexStatsDto, GapItem, PoolSummary } from './dto.js'
+import { labelPool } from './tokenLabels.js'
 
-/** Table row for a scored pool: score fields from `scores`, the rest from its newest snapshot. */
-export function toPoolSummary(row: ScoredPoolRow): PoolSummary {
+/**
+ * Table row for a scored pool: score fields from `scores`, the rest from its newest snapshot; its
+ * tokens labelled against `shared` (`tokens.sharedSymbols()`, read once per request).
+ */
+export function toPoolSummary(row: ScoredPoolRow, shared: SharedSymbols): PoolSummary {
   const { score, latest } = row
   return {
-    pool: toJsonSafe(row.pool),
+    pool: toJsonSafe(labelPool(row.pool, shared)),
     price: latest?.price ?? null,
     tvlUsd: latest?.tvlUsd ?? null,
     depth2Usd: score.depth2Usd ?? latest?.depth2Usd ?? null,
@@ -33,14 +37,14 @@ export function toPoolSummary(row: ScoredPoolRow): PoolSummary {
   }
 }
 
-export function toGapItem(row: ScoredPoolRow): GapItem {
+export function toGapItem(row: ScoredPoolRow, shared: SharedSymbols): GapItem {
   const gap: GapMetrics = {
     volume24hUsd: row.score.gap.volume24hUsd,
     depth2Usd: row.score.gap.depth2Usd,
     turnoverRatio: row.score.gap.turnoverRatio,
     gapScore: row.score.gap.gapScore,
   }
-  return { pool: toPoolSummary(row), gap }
+  return { pool: toPoolSummary(row, shared), gap }
 }
 
 export function toDexStats(stats: DexStats): DexStatsDto {
