@@ -80,8 +80,10 @@ export function ButterflySkeleton({ waiting }: { waiting: boolean }) {
         </span>
       </span>
       <span className="hsb-call" />
-      {ROWS.map(([sell, buy]) => (
-        <span key={`${sell}-${buy}`} className="hsb-row">
+      {ROWS.map(([sell, buy], row) => (
+        // Rows repeat the same widths, so their place is the only stable key.
+        // biome-ignore lint/suspicious/noArrayIndexKey: a fixed list that never reorders
+        <span key={row} className="hsb-row">
           <span className="hsb-side s">
             <Skeleton height="var(--barh)" width={`max(2px, ${sell * 100}%)`} />
           </span>
