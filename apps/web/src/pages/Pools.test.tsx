@@ -8,7 +8,7 @@
 
 import { healthGrade } from '@depthwatch/core'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMockClient } from '../api/mock.js'
 import type { ApiClient, PoolsQuery } from '../api/types.js'
 import { bps, NB, score, usd } from '../lib/format.js'
@@ -22,6 +22,7 @@ const SETTLE_MS = 400
 afterEach(() => {
   cleanup()
   unstubPhone()
+  vi.useRealTimers()
 })
 
 const renderAt = (path: string, client?: ApiClient) => renderPage(path, '/pools', <Pools />, client)
@@ -34,9 +35,18 @@ const answerText = () => document.getElementById('pools-answer')?.textContent
 const cellText = (row: HTMLElement, text: string) =>
   [...row.querySelectorAll('td')].some((td) => td.textContent === text)
 
+/**
+ * The search tests run `setTimeout` on a fake clock that also follows real time, so the page's
+ * other timers and Testing Library's polling run as usual; `settle()` moves it past the debounce
+ * at once instead of waiting for it.
+ */
+function fakeClock() {
+  vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout'] })
+}
+
 async function settle() {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS))
+    await vi.advanceTimersByTimeAsync(SETTLE_MS)
   })
 }
 
@@ -210,9 +220,12 @@ describe('Pools: the table (TB2–TB4)', () => {
 
 describe('Pools: search ↔ URL', () => {
   it('writes the typed query to the URL after the debounce, replacing the entry', async () => {
+    fakeClock()
     const h = renderAt('/pools')
     await table()
     fireEvent.change(searchBox(), { target: { value: 'weth' } })
+    expect(last(h)).toBe('/pools')
+    await settle()
     await waitFor(() => expect(last(h)).toBe('/pools?q=weth'))
     expect(searchBox().getAttribute('placeholder')).toBe('Search by symbol or address')
     act(() => h.navigate?.(-1))
@@ -222,9 +235,11 @@ describe('Pools: search ↔ URL', () => {
   })
 
   it('lets the nav link clear the search instead of re-applying it', async () => {
+    fakeClock()
     const h = renderAt('/pools')
     await table()
     fireEvent.change(searchBox(), { target: { value: 'weth' } })
+    await settle()
     await waitFor(() => expect(last(h)).toBe('/pools?q=weth'))
     fireEvent.click(screen.getByRole('link', { name: 'Nav link' }))
     await waitFor(() => expect(last(h)).toBe('/pools'))
@@ -234,6 +249,7 @@ describe('Pools: search ↔ URL', () => {
   })
 
   it('seeds the input from the URL and follows the URL when it changes underneath', async () => {
+    fakeClock()
     const h = renderAt('/pools?q=usdc')
     await table()
     expect(searchBox().value).toBe('usdc')
