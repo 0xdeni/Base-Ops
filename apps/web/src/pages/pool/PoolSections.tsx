@@ -1,7 +1,8 @@
 /**
- * The Pool sections that read the latest snapshot and score (ia-v3 §4.3, D4): Health, Cost to
- * trade and Who provides it. Each is one heading, one takeaway, one visual and a Details
- * disclosure in the heading (K10) holding the numbers behind the visual (L2).
+ * The Pool sections that read the latest snapshot and score (ia-v3 §4.3, docs/design/visual-v4.md
+ * §5.7, §6.4): health, cost to trade and who provides it, rows of the sections sheet. Each is one
+ * lowercase heading, one finding, one visual and a Details trigger in the head (K10) whose panel,
+ * under the visual, holds the numbers behind it (L2).
  */
 import { HEALTH_MAX } from '@depthwatch/core'
 import { Link } from 'react-router-dom'
@@ -23,7 +24,7 @@ export function HealthSection({ detail }: { detail: PoolDetail }) {
   const { score: health } = detail
   if (!health) {
     return (
-      <Section id="s-health" title="Health" takeaway="Not scored yet.">
+      <Section id="s-health" title="health" takeaway="Not scored yet.">
         <p className="muted">Health is graded once the pool is snapshotted and scored.</p>
       </Section>
     )
@@ -31,7 +32,7 @@ export function HealthSection({ detail }: { detail: PoolDetail }) {
   return (
     <Section
       id="s-health"
-      title="Health"
+      title="health"
       takeaway={healthTakeaway(health, detail.latest?.concentration ?? null, detail.pool.kind)}
       details={{
         content: (
@@ -69,6 +70,9 @@ export function HealthSection({ detail }: { detail: PoolDetail }) {
             {health.rated ? null : (
               <p className="tbl-note">{unratedDetail(health.unratedReason)}</p>
             )}
+            {health.notes.length ? (
+              <p className="tbl-note">Scoring notes: {health.notes.join('; ')}.</p>
+            ) : null}
             <p className="tbl-note">
               <Link className="plink" to="/methodology#health">
                 How health is graded
@@ -79,7 +83,6 @@ export function HealthSection({ detail }: { detail: PoolDetail }) {
       }}
     >
       <HealthBar components={health.components} />
-      {health.notes.length ? <p className="small faint">{health.notes.join(' ')}</p> : null}
     </Section>
   )
 }
@@ -89,7 +92,7 @@ export function CostSection({ detail }: { detail: PoolDetail }) {
   const { token0, token1 } = detail.pool
   if (!spreads.length) {
     return (
-      <Section id="s-cost" title="Cost to trade" takeaway={costTakeaway(spreads)}>
+      <Section id="s-cost" title="cost to trade" takeaway={costTakeaway(spreads)}>
         <p className="muted">Spreads appear after the first snapshot.</p>
       </Section>
     )
@@ -97,7 +100,7 @@ export function CostSection({ detail }: { detail: PoolDetail }) {
   return (
     <Section
       id="s-cost"
-      title="Cost to trade"
+      title="cost to trade"
       takeaway={costTakeaway(spreads)}
       details={{
         content: (
@@ -154,12 +157,12 @@ export function WhoSection({ detail }: { detail: PoolDetail }) {
       bandPct={c.bandPct}
     />
   ) : (
-    <p className="muted">Owners are not indexed for this pool, so health uses the range HHI.</p>
+    <ShareBar activeShare={c.activeRangeShare} bandPct={c.bandPct} />
   )
   return (
     <Section
       id="s-who"
-      title="Who provides it"
+      title="who provides it"
       takeaway={whoTakeaway(c, detail.pool.kind)}
       details={
         c
@@ -213,6 +216,11 @@ export function WhoSection({ detail }: { detail: PoolDetail }) {
                       A full-range pool: all its liquidity is one range by construction.
                     </p>
                   ) : null}
+                  {c.owners ? null : (
+                    <p className="tbl-note">
+                      Owners are not indexed for this pool, so health uses the range HHI.
+                    </p>
+                  )}
                 </>
               ),
             }

@@ -1,15 +1,17 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMockClient } from '../../api/mock.js'
+import type { PoolSummary } from '../../api/types.js'
+import { barWidth, labelFits } from './ButterflyPlot.js'
 import {
+  axisTicks,
+  bracketText,
   butterflyLabel,
   butterflyModel,
-  GAP_TIGHT_SHARE,
-  gapMarkerTight,
   pickButterflyRows,
   rowLinkLabel,
-  strataBoundaries,
+  TOTAL_SEGMENTS,
 } from './butterflyModel.js'
 import { ButterflyTable } from './ChartTables.js'
 import { DEMO_POOLS, GAP_POOL_ID, summary } from './chartFixtures.js'
@@ -17,64 +19,81 @@ import { DepthButterfly } from './DepthButterfly.js'
 
 afterEach(cleanup)
 
-const NB = ' '
+const NB = '\u00a0'
 
-describe('butterfly geometry (CH4)', () => {
-  const m = butterflyModel(DEMO_POOLS, DEMO_POOLS)
+/** The demo's six pools plus six thin ones: more pools than the total row has segments. */
+const MANY: PoolSummary[] = [
+  ...DEMO_POOLS,
+  ...Array.from({ length: 6 }, (_, i) =>
+    summary(`uniswap-v3:0xe${i}`, ['WETH', `T${i}`], 'uniswap-v3', 10_000 + i * 1_000, 9_000 + i),
+  ),
+]
+
+const sumW = (segs: readonly { w: number }[]) => segs.reduce((s, x) => s + x.w, 0)
+
+describe('butterfly model (CH4, visual-v4 §5.9.1)', () => {
+  const m = butterflyModel(pickButterflyRows(MANY), MANY)
 
   it('sets one shared scale by the larger total side', () => {
-    expect(m.total.sell).toBeCloseTo(11_765_468, 0)
-    expect(m.total.buy).toBeCloseTo(14_305_299, 0)
-    expect(m.max).toBe(m.total.buy)
+    const sell = MANY.reduce((s, p) => s + (p.depth2DownUsd ?? 0), 0)
+    const buy = MANY.reduce((s, p) => s + (p.depth2UpUsd ?? 0), 0)
+    expect(m.total).toEqual({ sell, buy })
+    expect(m.max).toBe(Math.max(sell, buy))
     expect(m.ticks).toEqual([5_000_000, 10_000_000])
   })
 
-  it('draws the $31.5K gap pool narrower than 4 px next to $6.1M on a 500 px side', () => {
-    const track = 500
-    const gap = m.rows.find((r) => r.id === GAP_POOL_ID)
-    const deepest = m.rows[0]
-    expect((gap?.buyW ?? 1) * track).toBeLessThan(4)
-    expect((deepest?.buyW ?? 0) * track).toBeGreaterThan(200)
-    // Every row is a fraction of the same maximum.
-    expect(deepest?.buyW).toBeCloseTo(6_079_641 / m.max, 9)
-  })
-
-  it('stacks the strata outward from the spine in row order', () => {
-    const sell = m.strata.sell
-    expect(sell[0]?.o).toBe(0)
-    for (let i = 1; i < sell.length; i++)
-      expect(sell[i]?.o).toBeCloseTo((sell[i - 1]?.o ?? 0) + (sell[i - 1]?.w ?? 0), 12)
-    const last = sell[sell.length - 1]
-    expect((last?.o ?? 0) + (last?.w ?? 0)).toBeCloseTo(m.total.sell / m.max, 12)
-  })
-
-  it('adds one "other pools" stratum for pools not listed', () => {
-    const rows = DEMO_POOLS.slice(0, 3)
-    const part = butterflyModel(rows, DEMO_POOLS)
-    expect(part.strata.buy).toHaveLength(4)
-    expect(part.total).toEqual(m.total)
-  })
-
-  it('skips the canvas gap after a stratum under 3 px', () => {
-    const boundaries = strataBoundaries(m.strata.sell, 500)
-    // Six strata, five boundaries; the one after the $15.9K gap pool has nothing after it.
-    expect(boundaries).toHaveLength(5)
-    const tiny = strataBoundaries(
-      [
-        { o: 0, w: 0.001 },
-        { o: 0.001, w: 0.5 },
-      ],
-      500,
+  it('splits each total side into the deepest pools and one hatched rest that sum to it', () => {
+    for (const side of ['sell', 'buy'] as const) {
+      const segs = m.segments[side]
+      expect(segs).toHaveLength(TOTAL_SEGMENTS + 1)
+      expect(segs.filter((s) => s.id === null)).toHaveLength(1)
+      expect(segs[segs.length - 1]?.id).toBeNull()
+      expect(sumW(segs) * m.max).toBeCloseTo(m.total[side], 4)
+      // Out from the spine in row order: each segment starts where the last one ended.
+      for (let i = 1; i < segs.length; i++)
+        expect(segs[i]?.o).toBeCloseTo((segs[i - 1]?.o ?? 0) + (segs[i - 1]?.w ?? 0), 12)
+    }
+    expect(m.segments.buy[0]?.id).toBe('aerodrome-slipstream:0xdf54')
+    expect(m.rest.count).toBe(MANY.length - TOTAL_SEGMENTS)
+    const drawn = new Set(m.segments.sell.map((x) => x.id))
+    const rest = MANY.filter((p) => !drawn.has(p.pool.id))
+    expect(rest).toHaveLength(m.rest.count)
+    expect(m.rest.sell).toBeCloseTo(
+      rest.reduce((s, p) => s + (p.depth2DownUsd ?? 0), 0),
+      6,
     )
-    expect(tiny).toEqual([])
+  })
+
+  it('draws no hatched segment when every pool has its own', () => {
+    const few = butterflyModel(DEMO_POOLS, DEMO_POOLS)
+    expect(few.segments.sell).toHaveLength(6)
+    expect(few.segments.sell.every((s) => s.id !== null)).toBe(true)
+    expect(sumW(few.segments.buy) * few.max).toBeCloseTo(few.total.buy, 4)
+    expect(few.rest.count).toBe(0)
+  })
+
+  it('states the deepest pool’s share of all depth in the bracket', () => {
+    const top = MANY[0]
+    const all = m.total.sell + m.total.buy
+    const share = ((top?.depth2DownUsd ?? 0) + (top?.depth2UpUsd ?? 0)) / all
+    expect(m.bracket?.share).toBeCloseTo(share, 12)
+    expect(m.bracket?.sellW).toBe(m.segments.sell[0]?.w)
+    expect(m.bracket?.buyW).toBe(m.segments.buy[0]?.w)
+    expect(bracketText(m.bracket!)).toBe(
+      `${Math.round(share * 100)}${NB}% of it sits in one pool: WETH / USDC, Aerodrome Slipstream 0.05${NB}%`,
+    )
+    expect(butterflyModel(DEMO_POOLS.slice(0, 1), DEMO_POOLS.slice(0, 1)).bracket).toBeNull()
   })
 
   it('reads an unpriced side as nothing, never as 0', () => {
     const pools = [summary('uniswap-v3:0x1', ['A', 'B'], 'uniswap-v3', null, 1000), ...DEMO_POOLS]
     const model = butterflyModel(pools, pools)
-    expect(model.rows[0]?.sellW).toBe(0)
-    expect(model.rows[0]?.sell).toBeNull()
-    expect(rowLinkLabel(model.rows[0]!, 'Base')).toContain('— sell side')
+    const row = model.rows[0]!
+    expect(row.sellW).toBe(0)
+    expect(row.sell).toBeNull()
+    expect(barWidth(row.sellW, row.sell)).toBe('0px')
+    expect(barWidth(0.001, 15_000)).toBe('max(2px, 0.100%)')
+    expect(rowLinkLabel(row, 'Base')).toContain('— on the sell side')
   })
 
   it('lists the 7 deepest pools plus the gap pool (ia-v3 §4.1)', async () => {
@@ -93,155 +112,182 @@ describe('butterfly geometry (CH4)', () => {
     expect(pickButterflyRows(DEMO_POOLS, GAP_POOL_ID)).toHaveLength(6)
   })
 
-  it('summarises the scope and every pool for assistive tech', () => {
-    const label = butterflyLabel(m, 'Base')
+  it('keeps axis labels clear of each other and of the spine’s "0"', () => {
+    const label = (v: number) => `$${v / 1e6}M`
+    expect(axisTicks([5e6, 10e6], 14.3e6, 600, label)).toEqual([5e6, 10e6])
+    // On an 80 px side "$5M" would crowd "$10M": the outer tick stays alone.
+    expect(axisTicks([5e6, 10e6], 14.3e6, 80, label)).toEqual([10e6])
+    expect(axisTicks([5e6], 0, 600, label)).toEqual([])
+  })
+
+  it('stacks a row label that would run off the figure', () => {
+    const row = { pair: 'WETH / USDC', venue: `Uniswap v3${NB}0.3${NB}%`, sellW: 0.2 }
+    expect(labelFits(row, 600, 56)).toBe(true)
+    expect(labelFits({ ...row, sellW: 0.99 }, 600, 56)).toBe(false)
+  })
+
+  it('summarises the scope, the concentration and every row for assistive tech', () => {
+    const label = butterflyLabel(butterflyModel(DEMO_POOLS, DEMO_POOLS), 'Base')
     expect(label).toMatch(/^Base: \$11\.8M on the sell side and \$14\.3M on the buy side/)
-    expect(label).toContain('USDC / AERO on Aerodrome v2, $15.9K sell side, $15.6K buy side')
+    expect(label).toContain('of it sits in one pool: WETH / USDC, Aerodrome Slipstream')
+    expect(label).toContain(
+      `USDC / AERO, Aerodrome v2${NB}0.05${NB}%: $15.9K sell side, $15.6K buy side`,
+    )
   })
 })
 
+// jsdom has no PointerEvent: a MouseEvent that carries `pointerType` stands in.
+class TestPointerEvent extends MouseEvent {
+  pointerType: string
+  constructor(type: string, init: PointerEventInit = {}) {
+    super(type, init)
+    this.pointerType = init.pointerType ?? 'mouse'
+  }
+}
+beforeEach(() => vi.stubGlobal('PointerEvent', TestPointerEvent))
+afterEach(() => vi.unstubAllGlobals())
+
 function renderButterfly(props: Partial<Parameters<typeof DepthButterfly>[0]> = {}) {
+  const pools = props.pools ?? MANY
   return render(
     <MemoryRouter>
-      <DepthButterfly
-        pools={DEMO_POOLS}
-        gap={{ poolId: GAP_POOL_ID, turnoverRatio: 50.8 }}
-        {...props}
-      >
-        <ButterflyTable pools={DEMO_POOLS} gapPoolId={GAP_POOL_ID} />
+      <DepthButterfly pools={pools} gap={{ poolId: GAP_POOL_ID, turnoverRatio: 50.8 }} {...props}>
+        <ButterflyTable pools={pools} gapPoolId={GAP_POOL_ID} />
       </DepthButterfly>
     </MemoryRouter>,
   )
 }
 
-describe('Gap marker in the value lane (DV2-07)', () => {
-  // A one-pool scope whose gap pool's buy side is the scale (buyW = 1), as on a token page.
-  const GAP_ONLY = [summary('aerodrome-v2:0xgap', ['AERO', 'USDC'], 'aerodrome-v2', 15_600, 15_900)]
-  const renderTight = () =>
-    render(
-      <MemoryRouter>
-        <DepthButterfly
-          pools={GAP_ONLY}
-          gap={{ poolId: 'aerodrome-v2:0xgap', turnoverRatio: 50.8 }}
-          scope="AERO"
-        />
-      </MemoryRouter>,
-    )
-
-  it('takes the short leader only when the gap row nearly fills the scale', () => {
-    expect(gapMarkerTight(1)).toBe(true)
-    expect(gapMarkerTight(0.9)).toBe(true)
-    expect(gapMarkerTight(GAP_TIGHT_SHARE)).toBe(false)
-    expect(gapMarkerTight(0.002)).toBe(false)
-  })
-
-  it('marks the gap row tight when its buy bar is the scale (buyW = 1)', () => {
-    expect(butterflyModel(GAP_ONLY, GAP_ONLY).rows[0]?.buyW).toBe(1)
-    const { container } = renderTight()
-    expect(container.querySelector('.bf-gap')?.classList.contains('is-tight')).toBe(true)
-    cleanup()
-    // On Base's scale the $15.9K gap pool is a sliver: the full 44 px leader stays.
-    const { container: base } = renderButterfly()
-    expect(base.querySelector('.bf-gap')?.classList.contains('is-tight')).toBe(false)
-  })
-
-  it('ends the lens when the pointer reaches a tight marker, so the word is there to click', () => {
-    // jsdom has no PointerEvent: a MouseEvent that carries `pointerType` stands in.
-    class TestPointerEvent extends MouseEvent {
-      pointerType: string
-      constructor(type: string, init: PointerEventInit = {}) {
-        super(type, init)
-        this.pointerType = init.pointerType ?? 'mouse'
-      }
-    }
-    vi.stubGlobal('PointerEvent', TestPointerEvent)
-    // A mouse on a fine pointer: the only path that lenses on hover.
-    vi.stubGlobal('matchMedia', (q: string) => ({
-      matches: q.includes('pointer: fine'),
-      media: q,
-      onchange: null,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-      addListener: () => undefined,
-      removeListener: () => undefined,
-      dispatchEvent: () => false,
-    }))
-    try {
-      const { container } = renderTight()
-      const fig = container.querySelector('figure.bfly') as HTMLElement
-      fireEvent.pointerOver(container.querySelector('.bf-side.buy .bf-bar') as HTMLElement, {
-        pointerType: 'mouse',
-      })
-      expect(fig.classList.contains('is-lens')).toBe(true)
-      fireEvent.pointerOver(container.querySelector('.bf-gap-link') as HTMLElement, {
-        pointerType: 'mouse',
-      })
-      expect(fig.classList.contains('is-lens')).toBe(false)
-    } finally {
-      vi.unstubAllGlobals()
-    }
-  })
-})
-
 describe('DepthButterfly', () => {
-  it('labels only the total row, whose two values sum to the answer (ia-v3 §4.1)', () => {
+  const totals = (c: HTMLElement) => [...c.querySelectorAll('.bf-tot')].map((e) => e.textContent)
+  const who = (c: HTMLElement) => c.querySelector('.bf-read[aria-live]')?.textContent
+
+  it('reads the scope and its two side totals in the head', () => {
+    const { container } = renderButterfly({ pools: DEMO_POOLS })
+    expect(who(container)).toBe('All of Base, every tracked pool')
+    expect(totals(container)).toEqual(['$11.8M', '$14.3M'])
+    expect(container.querySelectorAll('.bf-pools .bf-r')).toHaveLength(6)
+  })
+
+  it('draws the total row as per-pool segments, a hatched rest and the bracket', () => {
     const { container } = renderButterfly()
-    const totals = [...container.querySelectorAll('.tot-val')].map((e) => e.textContent)
-    expect(totals).toEqual(['$11.8M', '$14.3M'])
-    expect(screen.getByText('All of Base')).toBeTruthy()
-    expect(screen.getByText('6 pools')).toBeTruthy()
-    expect(screen.getByText('One scale for every pool')).toBeTruthy()
-    expect(container.querySelectorAll('.bfly-row')).toHaveLength(6)
+    const total = screen.getByRole('img', { name: /^All of Base:/ })
+    expect(total.getAttribute('aria-label')).toContain('Hatched: the other 5 pools.')
+    expect(total.querySelectorAll('.bf-h--s .bf-seg')).toHaveLength(8)
+    expect(total.querySelectorAll('.bf-seg.is-rest')).toHaveLength(2)
+    expect(container.querySelector('.bf-call-t')?.textContent).toMatch(
+      /^\d+.% of it sits in one pool: WETH \/ USDC, Aerodrome Slipstream 0\.05.%$/,
+    )
+    expect(container.querySelector('.bf-foot')?.textContent).toContain(
+      'One scale for every pool. The other 5 pools.',
+    )
+    // Bars carry `data-bar` for the first view: the two total sides and both sides of every row.
+    const rows = container.querySelectorAll('.bf-pools .bf-r').length
+    expect(rows).toBe(7)
+    expect(container.querySelectorAll('[data-bar]')).toHaveLength(2 + 2 * rows)
   })
 
   it('links every row to its pool and the gap marker to /gaps', () => {
-    renderButterfly()
+    renderButterfly({ pools: DEMO_POOLS })
     const link = screen.getByRole('link', { name: /^USDC \/ AERO, Aerodrome v2/ })
     expect(link.getAttribute('href')).toBe('/pools/aerodrome-v2%3A0xd59e')
-    expect(link.getAttribute('aria-label')).toContain(`under 1${NB}% of Base’s depth`)
+    expect(link.getAttribute('aria-label')).toContain(`under 1${NB}% of Base`)
     const gap = screen.getByRole('link', {
       name: /Liquidity gap: USDC \/ AERO trades 51× its depth/,
     })
     expect(gap.getAttribute('href')).toBe('/gaps')
   })
 
-  it('lenses a row on focus, instantly, and ends the lens when focus leaves', () => {
-    const { container } = renderButterfly()
-    const fig = container.querySelector('figure.bfly') as HTMLElement
+  it('lenses a row on keyboard focus, instantly: readout, totals and dim; blur restores', () => {
+    const { container } = renderButterfly({ pools: DEMO_POOLS })
+    const fig = container.querySelector('figure.bf') as HTMLElement
     const link = screen.getByRole('link', { name: /^WETH \/ USDC, Uniswap v3/ })
     fireEvent.focus(link)
     expect(fig.classList.contains('is-lens')).toBe(true)
     expect(fig.classList.contains('is-instant')).toBe(true)
-    const rows = container.querySelectorAll('.bfly-row')
+    expect(who(container)).toBe(`WETH / USDC, Uniswap v3${NB}0.05${NB}%: 20${NB}% of Base`)
+    expect(totals(container)).toEqual(['$2.31M', '$2.96M'])
+    const rows = container.querySelectorAll('.bf-pools .bf-r')
     expect(rows[1]?.classList.contains('is-on')).toBe(true)
     expect(rows[0]?.classList.contains('is-on')).toBe(false)
-    expect(container.querySelector('.tot-cap-l')?.textContent).toBe(`this pool: 20${NB}%`)
-    expect(container.querySelectorAll('.tot-lens.on')).toHaveLength(2)
     fireEvent.blur(link, { relatedTarget: document.body })
     expect(fig.classList.contains('is-lens')).toBe(false)
-    expect(container.querySelector('.tot-cap-l')?.textContent).toBe('6 pools')
+    expect(totals(container)).toEqual(['$11.8M', '$14.3M'])
   })
 
-  it('reads a sliver pool as "under 1 %", never "0 %" (N4)', () => {
-    const { container } = renderButterfly()
-    fireEvent.focus(screen.getByRole('link', { name: /^USDC \/ AERO/ }))
-    expect(container.querySelector('.tot-cap-l')?.textContent).toBe(`this pool: under 1${NB}%`)
+  it('lenses on mouse hover with the 150 ms dim, and restores when the pointer leaves', () => {
+    const { container } = renderButterfly({ pools: DEMO_POOLS })
+    const fig = container.querySelector('figure.bf') as HTMLElement
+    fireEvent.pointerOver(container.querySelectorAll('.bf-pools .bf-b')[0] as HTMLElement, {
+      pointerType: 'mouse',
+    })
+    expect(fig.classList.contains('is-lens')).toBe(true)
+    expect(fig.classList.contains('is-instant')).toBe(false)
+    fireEvent.pointerLeave(container.querySelector('.bf-plot') as HTMLElement, {
+      pointerType: 'mouse',
+    })
+    expect(fig.classList.contains('is-lens')).toBe(false)
   })
 
-  it('keeps the intro class only for the first view', () => {
-    const { container } = renderButterfly({ intro: true })
-    expect(container.querySelector('figure.bfly')?.classList.contains('grow')).toBe(true)
+  it('reads a row on the first tap and offers "Open pool"; a second tap on it opens', () => {
+    const { container } = renderButterfly({ pools: DEMO_POOLS })
+    const row = container.querySelectorAll('.bf-pools .bf-r')[2] as HTMLElement
+    const bar = row.querySelector('.bf-b') as HTMLElement
+    fireEvent.pointerDown(bar, { pointerType: 'touch' })
+    fireEvent.click(bar)
+    expect(row.classList.contains('is-on')).toBe(true)
+    const open = screen.getByRole('link', { name: 'Open pool' })
+    expect(open.getAttribute('href')).toBe('/pools/uniswap-v4%3A0x96d4')
+    // Once read, the row's own link takes the tap (butterflyStates.css) and opens the pool.
+    expect(row.querySelector('.bf-link')?.getAttribute('href')).toBe('/pools/uniswap-v4%3A0x96d4')
   })
 
-  it('puts the numbers behind a Show data disclosure (CH9)', () => {
+  it('holds every row’s readout hidden in the readout’s cell, so the first tap moves no row', () => {
+    const { container } = renderButterfly({ pools: DEMO_POOLS })
+    const cell = container.querySelector('.bf-who') as HTMLElement
+    const live = cell.querySelector('.bf-read[aria-live]') as HTMLElement
+    const ghosts = [...cell.querySelectorAll<HTMLElement>('.bf-read.is-ghost')]
+    const rows = [...container.querySelectorAll<HTMLElement>('.bf-pools .bf-r')]
+    expect(ghosts).toHaveLength(rows.length)
+    for (const g of ghosts) expect(g.getAttribute('aria-hidden')).toBe('true')
+    // A touch read shows the row's words and "Open pool": the text its hidden copy already holds.
+    rows.forEach((row, i) => {
+      const bar = row.querySelector('.bf-b') as HTMLElement
+      fireEvent.pointerDown(bar, { pointerType: 'touch' })
+      fireEvent.click(bar)
+      expect(row.classList.contains('is-on')).toBe(true)
+      expect(live.textContent).toBe(ghosts[i]?.textContent)
+      expect(live.textContent).toMatch(/Open pool$/)
+    })
+  })
+
+  it('moves focus between row links with Up and Down', () => {
+    renderButterfly({ pools: DEMO_POOLS })
+    const links = screen.getAllByRole('link').filter((a) => a.classList.contains('bf-link'))
+    links[0]?.focus()
+    fireEvent.keyDown(links[0] as HTMLElement, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(links[1])
+    fireEvent.keyDown(links[1] as HTMLElement, { key: 'ArrowUp' })
+    expect(document.activeElement).toBe(links[0])
+  })
+
+  it('puts the numbers behind Show data, in a block on the band (CH9)', () => {
     renderButterfly()
     const trigger = screen.getByRole('button', { name: 'Show data' })
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(trigger)
+    expect(screen.getByRole('button', { name: 'Hide data' })).toBeTruthy()
     const table = screen.getByRole('table')
+    expect(table.closest('.band-data')).toBeTruthy()
+    const heads = within(table)
+      .getAllByRole('columnheader')
+      .map((h) => h.textContent)
+    expect(heads).toEqual(['Pool', `Sell ±2${NB}%`, `Buy ±2${NB}%`, 'Share of Base'])
+    expect(within(table).getByText('Every other pool').closest('tr')?.textContent).toContain(
+      '5 pools',
+    )
     const total = within(table).getByText('All of Base').closest('tr')
-    expect(total?.textContent).toBe(`All of Base$11.8M$14.3M100${NB}%`)
-    expect(within(table).getByText(`Share of Base`)).toBeTruthy()
+    expect(total?.textContent).toMatch(/^All of Base\$11\.8M\$14\.4M100.%$/)
   })
 
   it('draws only the spine when nothing is scored', () => {
@@ -250,19 +296,19 @@ describe('DepthButterfly', () => {
         <DepthButterfly pools={[]} />
       </MemoryRouter>,
     )
-    expect(container.querySelector('.bfly.is-empty .bfly-spine')).toBeTruthy()
-    expect(container.querySelector('.bf-bar')).toBeNull()
+    expect(container.querySelector('.bf.is-empty .bf-spine')).toBeTruthy()
+    expect(container.querySelector('.bf-b')).toBeNull()
   })
 
-  it('scopes the total to a token on token pages', () => {
+  it('scopes the head, the total row and the summary to a token', () => {
     const pools = DEMO_POOLS.slice(0, 2)
-    render(
+    const { container } = render(
       <MemoryRouter>
         <DepthButterfly pools={pools} scope="WETH" />
       </MemoryRouter>,
     )
-    expect(screen.getByText('All of WETH')).toBeTruthy()
-    expect(screen.getByText('2 pools')).toBeTruthy()
+    expect(who(container)).toBe('All of WETH, every tracked pool')
+    expect(screen.getByRole('img', { name: /^All of WETH:/ })).toBeTruthy()
     expect(screen.getByRole('group').getAttribute('aria-label')).toMatch(/^WETH: \$7\.41M/)
   })
 })

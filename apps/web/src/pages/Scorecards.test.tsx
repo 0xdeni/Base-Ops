@@ -13,6 +13,7 @@ import {
 import type { ApiClient } from '../api/types.js'
 import { poolHref } from '../lib/format.js'
 import { PHONE_QUERY } from '../lib/useMediaQuery.js'
+import { SCORECARD_LEAD } from './Scorecards.js'
 
 const NOW = 1_760_000_000
 const NB = ' '
@@ -63,17 +64,25 @@ async function rows(): Promise<HTMLElement[]> {
   return within(list).getAllByRole('listitem')
 }
 
-describe('/mm scorecards list (ia-v3 §4.5)', () => {
-  it('answers how many mandates are within their KPIs, under one h1 and one lead', async () => {
+describe('/mm scorecards list (ia-v3 §4.5, visual-v4 §6.6)', () => {
+  it('answers how many mandates are within their KPIs, then the band with the lead', async () => {
     renderAt('/mm')
-    expect(screen.getByRole('heading', { level: 1, name: 'Market-maker scorecards' })).toBeTruthy()
-    expect(await screen.findByText('1 of 2 mandates is within its KPIs right now.')).toBeTruthy()
-    expect(
-      screen.getByText(
-        'A scorecard checks the depth a market maker promised against what is on chain at every snapshot.',
-      ),
-    ).toBeTruthy()
+    const h1 = screen.getByRole('heading', { level: 1, name: 'scorecards' })
+    expect(h1.className).toContain('title')
+    const answer = await screen.findByText('1 of 2 mandates is within its KPIs right now.')
+    expect(answer.className).toContain('answer')
+    const band = screen.getByRole('region', { name: 'How scorecards work' })
+    expect(band.className).toContain('band')
+    expect(within(band).getByText(SCORECARD_LEAD)).toBeTruthy()
+    // With mandates the lead names no command; the controls sit on the band.
+    expect(within(band).queryByText('depthwatch mm register')).toBeNull()
+    expect(within(band).getByRole('radiogroup', { name: 'Mandates' })).toBeTruthy()
+    expect(within(band).getByRole('radiogroup', { name: 'View' })).toBeTruthy()
     expect(document.querySelector('.mml-caption')?.textContent).toBe('2 mandates')
+    // The list is one block stacked over the band's lower edge.
+    expect(
+      document.querySelector('.mml-list')?.closest('.blk--over.overlap, .overlap .blk--over'),
+    ).toBeTruthy()
   })
 
   it('lists each mandate as one row link with its status word, pool and 7 d uptime bullet', async () => {
@@ -173,18 +182,22 @@ describe('/mm scorecards list (ia-v3 §4.5)', () => {
 })
 
 describe('/mm states', () => {
-  it('says how to register the first mandate when there is none', async () => {
+  it('says how mandates are added when there is none, with one block to the method', async () => {
     const client = { ...createMockClient({ now: NOW }), scorecards: async () => ({ items: [] }) }
     renderAt('/mm', client)
     expect(await screen.findByText('No market-maker mandates are registered yet.')).toBeTruthy()
-    expect(screen.getByText('depthwatch mm register')).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'How scorecards work' }).getAttribute('href')).toBe(
-      '/methodology#scorecards',
-    )
+    const band = screen.getByRole('region', { name: 'How scorecards work' })
+    expect(within(band).getByText('depthwatch mm register')).toBeTruthy()
+    expect(within(band).getByText('POST /api/mm')).toBeTruthy()
+    const block = screen.getByRole('link', { name: /what a scorecard checks/ })
+    expect(block.getAttribute('href')).toBe('/methodology#scorecards')
+    expect(block.className).toContain('is-dest')
+    expect(block.className).toContain('blk--over')
+    expect(within(block).getByText('How scorecards work')).toBeTruthy()
     expect(screen.queryByRole('radiogroup')).toBeNull()
   })
 
-  it('names no CLI or API on a published snapshot, which has neither', async () => {
+  it('speaks of a published snapshot as one', async () => {
     const client = { ...createMockClient({ now: NOW }), scorecards: async () => ({ items: [] }) }
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
@@ -200,10 +213,10 @@ describe('/mm states', () => {
         </MemoryRouter>
       </Providers>,
     )
-    expect(await screen.findByText('This snapshot holds no market-maker mandates.')).toBeTruthy()
-    expect(screen.queryByText('depthwatch mm register')).toBeNull()
-    expect(screen.queryByText(/POST \/api\/mm/)).toBeNull()
-    expect(screen.getByRole('link', { name: 'How scorecards work' })).toBeTruthy()
+    expect(
+      await screen.findByText('No market-maker mandates are registered in this snapshot.'),
+    ).toBeTruthy()
+    expect(screen.getByRole('link', { name: /what a scorecard checks/ })).toBeTruthy()
   })
 
   it('keeps the page usable when the list fails, with a Retry', async () => {
@@ -220,6 +233,6 @@ describe('/mm states', () => {
       ),
     ).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
-    expect(screen.getByRole('heading', { level: 1, name: 'Market-maker scorecards' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'scorecards' })).toBeTruthy()
   })
 })

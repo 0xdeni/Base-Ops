@@ -1,34 +1,48 @@
-/* Controls (docs/design/visual-v3.md §5.2–§5.4): buttons, icon buttons, the back link, disclosure
-   triggers, the segmented control, search and checkbox. Press, hover and thumb motion live in
-   motion.css (no-motion first). */
+/* Controls (docs/design/visual-v4.md §5.3, §5.4): buttons, icon buttons, the back link,
+   disclosure triggers, the segmented control (and its band variant), search, checkboxes and the
+   DEX filter. Press, hover and thumb motion live in motion.css (no-motion first). */
 
-/* ---------- Buttons (K1) ---------- */
+/* ---------- Buttons: 48 high (40 small), radius 12, 15 px / 750 ---------- */
 .btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--s2);
-  height: 36px;
-  padding: 0 14px;
+  height: 48px;
+  padding: 0 22px;
   border-radius: var(--r-ctl);
   font-size: var(--t-data);
-  font-weight: 500;
-  letter-spacing: 0;
-  line-height: 1.43;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  line-height: 1;
   white-space: nowrap;
   user-select: none;
 }
+.btn.is-sm {
+  height: 40px;
+  padding: 0 14px;
+  font-size: var(--t-ui);
+}
+/* Primary: at most one filled button per view (P11). */
 .btn.primary {
-  background: var(--text-1);
-  color: var(--canvas);
+  background: var(--blue);
+  color: #ffffff;
 }
-.btn.secondary {
-  border: 1px solid var(--control);
-  color: var(--text-1);
+/* On the band: a white button with Blue text and a navy shadow. */
+.btn.on-band {
+  background: #ffffff;
+  color: var(--blue);
+  box-shadow: 0 10px 24px -10px rgb(10 11 13 / 0.55);
 }
-.btn.quiet {
+.btn.ghost {
   color: var(--text-1);
-  padding: 0 8px;
+  box-shadow: inset 0 0 0 1.5px var(--line-2);
+}
+.btn.on-band-ghost,
+.band .btn.ghost {
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.55);
 }
 .btn svg {
   width: 16px;
@@ -46,52 +60,50 @@
   border-right-color: transparent;
   flex: none;
 }
+/* Icon button: 36 × 36 (44 on touch), radius 10, a 1.5 px outline. */
 .icon-btn {
+  position: relative;
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--r-ctl);
-  color: var(--text-2);
-  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-code);
+  color: var(--text-1);
+  box-shadow: inset 0 0 0 1.5px var(--line-2);
   flex: none;
-}
-.icon-btn::after {
-  content: "";
-  position: absolute;
-  inset: -8px;
 }
 .icon-btn svg {
   width: 16px;
   height: 16px;
 }
+.band .icon-btn {
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.55);
+}
 @media (pointer: coarse) {
-  .btn {
-    height: 44px;
-  }
   .icon-btn {
     width: 44px;
     height: 44px;
   }
-  .icon-btn::after {
-    inset: 0;
-  }
+}
+/* The icon-only copy button rides a text line without growing it. */
+.copy-icon {
+  margin-block: -8px;
 }
 
-/* ---------- Back link (K2) ---------- */
+/* ---------- Back link: a 16 px chevron and the list name, 14 px / 700, 32 px high ---------- */
 .back {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   justify-self: start;
-  margin: 0 0 var(--s2) -4px;
-  min-height: 24px;
+  min-height: 32px;
+  margin-left: -4px;
   padding-right: 6px;
-  font-size: var(--t-small);
-  font-weight: 500;
-  line-height: 1.385;
+  border-radius: 6px;
+  font-size: var(--t-ui);
+  font-weight: 700;
   color: var(--text-2);
-  border-radius: var(--r-ctl);
 }
 .back svg {
   width: 16px;
@@ -100,36 +112,29 @@
 @media (pointer: coarse) {
   .back {
     min-height: 44px;
-    margin-block: -10px -2px;
   }
 }
 
-/* ---------- Disclosure trigger and panel (K10) ---------- */
-/* A long label wraps on narrow phones instead of widening the page; the row keeps its 32 px (44 px
-   on touch) minimum. */
+/* ---------- Disclosure trigger and panel ---------- */
+/* 15 px / 700 and a 16 px chevron 8 px after the last word; at least 40 px (44 on touch). */
 .disc-btn {
   position: relative;
-  isolation: isolate;
   display: inline-flex;
   align-items: center;
   max-width: 100%;
-  min-height: 32px;
-  padding: var(--s1) 8px var(--s1) 0;
+  min-height: 40px;
+  padding: 0 2px;
   color: var(--text-1);
   font-size: var(--t-data);
-  font-weight: 500;
-  line-height: 1.43;
+  font-weight: 700;
+  line-height: 1.3;
   text-align: left;
-  border-radius: var(--r-ctl);
 }
-/* A label wraps only when the row is narrower than it, and the chevron rides 6 px after its last
-   word (never at the edge). Only the long phone label ("Show 5 pools under 3×") balances: balance
-   can break a one- or two-word label that fits ("Show / formula"). */
+.band .disc-btn {
+  color: var(--on-band);
+}
 .disc-label {
   text-wrap: pretty;
-}
-.disc-label.is-short {
-  text-wrap: balance;
 }
 .disc-tail {
   white-space: nowrap;
@@ -138,12 +143,16 @@
   display: inline-block;
   width: 16px;
   height: 16px;
-  margin-left: 6px;
+  margin-left: 8px;
   vertical-align: -3px;
-  color: var(--text-2);
 }
+.disc-btn[aria-expanded="true"] .chev {
+  transform: rotate(180deg);
+}
+/* A shorter phone label below 840 px; one- and two-word labels never break. */
 .disc-label.is-short {
   display: none;
+  text-wrap: balance;
 }
 @media (max-width: 52.49em) {
   .disc-label.is-long {
@@ -153,26 +162,10 @@
     display: inline;
   }
 }
-.disc-btn[aria-expanded="true"] .chev {
-  transform: rotate(180deg);
-}
-/* Hover is a layer bleeding 8 px left; the padding never changes. */
-.disc-btn::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 0 -8px;
-  z-index: -1;
-  border-radius: var(--r-ctl);
-  background: var(--hover);
-  opacity: 0;
-}
 @media (pointer: coarse) {
   .disc-btn {
     min-height: 44px;
   }
-}
-.disc-panel {
-  overflow: hidden;
 }
 .disc-panel[hidden] {
   display: none;
@@ -180,7 +173,7 @@
 .disc-inner {
   padding-top: var(--s4);
 }
-/* Phone-only disclosures (About and Mandate lists, L3): always open from 840 px. */
+/* Phone-only disclosures (About and Mandate lists): always open from 840 px. */
 @media (min-width: 52.5em) {
   .ph-disc > .disc-btn {
     display: none;
@@ -193,33 +186,34 @@
   }
 }
 
-/* ---------- Segmented control (K4) ---------- */
+/* ---------- Segmented control: a 3 px-padded track, 34 px items (44 on touch) ---------- */
 .seg {
   position: relative;
-  display: inline-flex;
-  padding: 2px;
-  border-radius: var(--r-ctl);
-  background: var(--well);
-  height: 32px;
   isolation: isolate;
+  display: inline-flex;
   max-width: 100%;
+  padding: 3px;
+  border-radius: var(--r-ctl);
+  background: var(--surface-2);
 }
 .seg-item {
   position: relative;
   z-index: 1;
-  height: 28px;
-  padding: 0 12px;
-  border-radius: var(--r-chip);
-  font-size: var(--t-small);
-  font-weight: 500;
-  line-height: 1.385;
-  color: var(--text-2);
-  white-space: nowrap;
   display: inline-flex;
   align-items: center;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--r-item);
+  font-size: var(--t-ui);
+  font-weight: 700;
+  color: var(--text-2);
+  white-space: nowrap;
 }
 .seg-item[aria-checked="true"] {
   color: var(--text-1);
+}
+.seg-item:focus-visible {
+  outline-offset: 0;
 }
 .seg.is-full {
   display: flex;
@@ -229,14 +223,11 @@
   flex: 1;
   justify-content: center;
 }
-.seg-item:focus-visible {
-  outline-offset: 0;
-}
-/* The thumb is a full-width raised layer clipped to the selected item, so both edges travel and the
-   4 px radius never distorts; its edge is a drop-shadow applied after the clip (§3.6). */
+/* The thumb is one layer clipped to the selected item, so both edges travel and the 9 px radius
+   never distorts; its edge and shadow are a filter drawn after the clip. */
 .seg-thumb {
   position: absolute;
-  inset: 2px;
+  inset: 3px;
   z-index: 0;
   pointer-events: none;
   filter: var(--thumb-edge);
@@ -244,108 +235,73 @@
 .seg-thumb i {
   position: absolute;
   inset: 0;
-  background: var(--raised);
-  clip-path: inset(0 var(--r, 100%) 0 var(--l, 0) round 4px);
+  background: var(--canvas);
+  clip-path: inset(0 var(--r, 100%) 0 var(--l, 0) round 9px);
+}
+/* On the band: a white 14 % track, white items, Blue text on a white thumb. */
+:is(.seg.is-band, .band .seg) {
+  background: rgb(255 255 255 / 0.14);
+}
+:is(.seg.is-band, .band .seg) .seg-item {
+  color: var(--on-band);
+}
+:is(.seg.is-band, .band .seg) .seg-item[aria-checked="true"] {
+  color: var(--blue);
+}
+:is(.seg.is-band, .band .seg) .seg-thumb {
+  filter: drop-shadow(0 6px 8px rgb(10 11 13 / 0.35));
+}
+:is(.seg.is-band, .band .seg) .seg-thumb i {
+  background: #ffffff;
 }
 @media (pointer: coarse) {
-  .seg {
-    height: 44px;
-  }
   .seg-item {
-    height: 40px;
-  }
-}
-
-/* ---------- Inputs (K6) ---------- */
-.search {
-  position: relative;
-  width: 320px;
-  max-width: 100%;
-}
-.search input {
-  width: 100%;
-  height: 36px;
-  padding: 0 12px 0 34px;
-  border-radius: var(--r-ctl);
-  border: 1px solid var(--control);
-  background: var(--raised);
-  color: var(--text-1);
-  font-size: var(--t-data);
-  letter-spacing: 0;
-}
-.search input::placeholder {
-  color: var(--text-3);
-}
-.search input::-webkit-search-cancel-button {
-  cursor: pointer;
-}
-.search svg {
-  position: absolute;
-  left: 11px;
-  top: 10px;
-  width: 16px;
-  height: 16px;
-  color: var(--text-3);
-  pointer-events: none;
-}
-@media (max-width: 52.49em) {
-  .search {
-    width: 100%;
-    flex: 1 1 100%;
-  }
-  .search input {
     height: 44px;
-    font-size: 1rem;
-    padding-left: 38px;
-  }
-  .search svg {
-    top: 14px;
-    left: 13px;
   }
 }
 
+/* ---------- Checkbox ---------- */
 .check {
   display: inline-flex;
   align-items: center;
   gap: var(--s2);
-  font-size: var(--t-small);
-  line-height: 1.385;
-  color: var(--text-2);
-  cursor: pointer;
   min-height: 32px;
-}
-@media (pointer: coarse) {
-  .check {
-    min-height: 44px;
-  }
+  font-size: var(--t-small);
+  font-weight: 600;
+  color: var(--text-1);
+  cursor: pointer;
 }
 .check input {
   appearance: none;
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  border: 1px solid var(--control);
-  border-radius: var(--r-chip);
-  background: var(--raised);
   display: grid;
   place-items: center;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1.5px var(--line-2);
+  background: var(--canvas);
   flex: none;
   cursor: pointer;
 }
 .check input:checked {
   background: var(--text-1);
-  border-color: var(--text-1);
+  box-shadow: none;
 }
 .check input:checked::after {
   content: "";
   width: 8px;
   height: 4px;
   border: solid var(--canvas);
-  border-width: 0 0 1.5px 1.5px;
+  border-width: 0 0 2px 2px;
   transform: translateY(-1px) rotate(-45deg);
 }
-
-/* The Columns popover's checkboxes (§5.8): a column of 32 px rows at the data size. */
+@media (pointer: coarse) {
+  .check {
+    min-height: 44px;
+  }
+}
+/* The Columns popover's checkboxes: one column of rows at the data size. */
 .cols-list {
   display: grid;
   gap: 2px;
@@ -353,11 +309,50 @@
 .cols-list .check {
   gap: var(--s3);
   font-size: var(--t-data);
-  line-height: 1.43;
-  color: var(--text-1);
 }
 
-/* The icon-only copy button sits on a text line without growing it (K8). */
-.copy-icon {
-  margin-block: -4px;
+/* ---------- Search: a white 48 px field on the band, a 16 px icon at left 16 ---------- */
+.search {
+  position: relative;
+  width: 380px;
+  max-width: 100%;
+}
+.search input {
+  width: 100%;
+  height: 48px;
+  padding: 0 16px 0 44px;
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: #ffffff;
+  color: var(--g100);
+  font-size: var(--t-body);
+  font-weight: 500;
+  box-shadow:
+    inset 0 0 0 1.5px var(--line-2),
+    0 10px 24px -12px rgb(10 11 13 / 0.6);
+}
+.band .search input {
+  box-shadow: 0 10px 24px -12px rgb(10 11 13 / 0.6);
+}
+.search input::placeholder {
+  color: var(--g60);
+}
+.search input:focus-visible {
+  outline: 3px solid var(--focus-band);
+  outline-offset: 2px;
+}
+.search svg {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--g60);
+  pointer-events: none;
+}
+@media (max-width: 52.49em) {
+  .search {
+    width: 100%;
+    flex: 1 1 100%;
+  }
 }

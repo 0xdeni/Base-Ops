@@ -1,8 +1,9 @@
 /**
- * The logo (K11, docs/design/visual-v3.md §5.13): a 2 × 14 text-1 spine with three steps on each
- * side in the side colours, the only multicolour glyph, plus the 16 / 600 wordmark.
+ * Depthwatch's mark (docs/design/visual-v4.md §2.3, §5.13): a 2 × 14 spine in `currentColor` with
+ * three steps on each side, the sell steps Cerulean and the buy steps Yellow with a 0.5 px Gray 100
+ * edge in light. 22 px in the app bar, 28 px in the footer. It never sits on a Base Blue square.
  */
-export function Mark({ size = 20 }: { size?: number }) {
+export function Mark({ size = 22 }: { size?: number }) {
   return (
     <svg
       className="mark"
@@ -19,10 +20,11 @@ export function Mark({ size = 20 }: { size?: number }) {
   )
 }
 
-export function Wordmark() {
+/** The mark and "Depthwatch", 10 px apart (21 px / 850 in the app bar, 28 px in the footer). */
+export function Wordmark({ size = 22 }: { size?: number }) {
   return (
     <>
-      <Mark />
+      <Mark size={size} />
       <span className="wordmark">Depthwatch</span>
     </>
   )

@@ -1,9 +1,10 @@
 /**
- * Table parts (TB3, TB4, docs/design/visual-v3.md §5.8): the sortable header cell and the pool
- * cell. Sortable headers are buttons; the sorted column is `text-1` with a 12 px arrow before its
- * label (so a right-aligned label ends over its numbers) and carries `aria-sort`; other arrows show
- * at 0.6 on hover. The pool cell's link is the row's one tab stop,
- * stretched over the row (`row-link` in tables, `rl-link` in row lists).
+ * Table parts (docs/design/visual-v4.md §5.8): the sortable header cell and the pool cell. Header
+ * cells are 13 px / 650 `--text-2` in sentence case; sortable ones are buttons, and the sorted
+ * column is `--text-1` with a 12 px arrow before its label (so a right-aligned label ends over its
+ * numbers) and carries `aria-sort`; other arrows show at 0.6 on hover. The pool cell is the pair at
+ * 17 px / 750, then "Uniswap v3, 0.05 %" at 13 px; its link is the row's one tab stop, stretched
+ * over the row (`row-link` in tables, `rl-link` in row lists).
  */
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'

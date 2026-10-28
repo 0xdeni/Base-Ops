@@ -1,5 +1,6 @@
 /**
- * Inputs (K6, docs/design/visual-v3.md §5.4): the search field with its 16 px icon and a visually
+ * Inputs (docs/design/visual-v4.md §5.4): the search field (white, 48 px, radius 12, 16 px text, a
+ * 16 px icon at left 16, a navy shadow on the band and a 3 px Yellow focus ring) with a visually
  * hidden label, and the checkbox ("Whole-pool depth"). There is no native select: segmented
  * controls on desktop, sheets on phones.
  */

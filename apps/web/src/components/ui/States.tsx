@@ -1,9 +1,9 @@
 /**
- * States (ST1–ST7, docs/design/visual-v3.md §5.12, M10). Loading shows nothing for responses under
- * 300 ms and, once shown, keeps the skeleton at least 400 ms; skeletons are static `well` blocks at
- * the final heights (CLS 0). A refetch keeps the content, dims it after 150 ms and shows a 2 px bar
- * at the section top; it never falls back to a skeleton. Empty, section error and not found say
- * what happened and the next step.
+ * States (ST1–ST7, docs/design/visual-v4.md §5.12, M10). Loading shows nothing for responses under
+ * 300 ms and, once shown, keeps the skeleton at least 400 ms; skeletons are static blocks at the
+ * final sizes (`--surface-2`, white at 14 % on the band), with no shimmer and CLS 0. A refetch keeps
+ * the content, dims it after 150 ms and shows a 2 px bar at the section top; it never falls back to
+ * a skeleton. Empty, section error and not found say what happened and the next step.
  */
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -33,7 +33,7 @@ export function useDelayedPending(pending: boolean, delay = 300, min = 400): boo
   return shown
 }
 
-/** A static `well` block at the final layout's size. */
+/** A static block at the final layout's size. */
 export function Skeleton({
   height,
   width = '100%',
@@ -131,9 +131,9 @@ export interface NotFoundLinks {
 }
 
 /**
- * Not found (ST4, ia-v3 §3.5): h1 "Pool not found", one sentence, the id in mono 16 px below,
- * then a secondary button and a prose link 32 px below. The static copy adds why a shared link
- * can miss.
+ * Not found (ST4, §5.12): on the title section's grid, with no band. The eyebrow "Not found", a
+ * display title (lowercase words, "pool not found"), one sentence, the id in mono, then a ghost
+ * button and a strong link. The static copy adds why a shared link can miss.
  */
 export function NotFoundState({
   title,
@@ -152,15 +152,24 @@ export function NotFoundState({
   const staticBuild = useIsStatic()
   return (
     <div className="wrap page not-found">
-      <h1 className="h1">{title}</h1>
-      <p className="answer answer-block">
+      <p className="eyebrow" data-in>
+        Not found
+      </p>
+      <h1 className="display" data-rise>
+        {title}
+      </h1>
+      <p className="take nf-say" data-in>
         {message}
         {staticBuild ? ' This static copy only holds the data it was exported with.' : null}
       </p>
-      {id ? <p className="mono nf-id">{id}</p> : null}
-      <div className="actions">
+      {id ? (
+        <p className="mono nf-id" data-in>
+          {id}
+        </p>
+      ) : null}
+      <div className="actions" data-in>
         <ButtonLink to={links.primary.to}>{links.primary.label}</ButtonLink>
-        <Link className="plink" to={links.secondary.to}>
+        <Link className="ulink" to={links.secondary.to}>
           {links.secondary.label}
         </Link>
       </div>
@@ -191,18 +200,18 @@ export function ServiceDownState({ onRetry }: { onRetry: () => unknown }) {
           </span>
         </div>
       </header>
-      <main className="wrap page service-down">
+      <main className="wrap service-down">
         {/* The alert wraps the message only: the page stays the main landmark, and the button
             going busy on a failed retry does not announce the page again. */}
         <div role="alert">
-          <h1 className="h1">The data service is not answering.</h1>
-          <p className="answer answer-block">
+          <h1 className="display">The data service is not answering.</h1>
+          <p className="answer">
             Depthwatch cannot show liquidity data until it is back. Wait a minute, then try again.
             If it keeps failing, whoever runs this site needs to start the data service.
           </p>
         </div>
         <div className="actions">
-          <Button onClick={retry} loading={busy} disabled={busy}>
+          <Button variant="primary" onClick={retry} loading={busy} disabled={busy}>
             Try again
           </Button>
         </div>

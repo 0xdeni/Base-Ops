@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import { createMockClient } from '../../api/mock.js'
 import type { GapItem } from '../../api/types.js'
-import { sortGaps } from './gapsModel.js'
+import { readGapsState, restSentence, sortGaps, writeGapsState } from './gapsModel.js'
 import { NOW } from './testing.js'
 
 /** Three real feed items, with `pool.health` replaced and `gap.volume24hUsd` set. */
@@ -63,5 +63,21 @@ describe('sortGaps by health', () => {
     expect(ids(sortGaps([large, small, middle], 'volume', 'asc'))).toEqual(
       ids([small, middle, large]),
     )
+  })
+})
+
+describe('the Gaps URL state', () => {
+  it('keeps rows=all with the list and drops it with the table, and the order the other way', () => {
+    const all = writeGapsState(new URLSearchParams(), { allRows: true })
+    expect(all.toString()).toBe('rows=all')
+    expect(readGapsState(all).allRows).toBe(true)
+    const table = writeGapsState(all, { view: 'table', sort: 'volume' })
+    expect(table.toString()).toBe('view=table&sort=volume')
+    expect(writeGapsState(table, { view: 'list' }).toString()).toBe('')
+  })
+
+  it('words the quiet rows waiting behind the list', () => {
+    expect(restSentence(20)).toBe('20 more pools trade less than 3× their depth.')
+    expect(restSentence(1)).toBe('1 more pool trades less than 3× its depth.')
   })
 })

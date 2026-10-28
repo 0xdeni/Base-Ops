@@ -1,9 +1,12 @@
 /**
- * Glossary term and tooltip (D8, K7, docs/design/visual-v3.md §5.10, §4 row 20). The term is an
- * inline button with a dotted underline (focusable, and a tap shows the definition on touch). Its tooltip opens after 600 ms of mouse hover (140 ms in
- * from scale(0.97) on the trigger side), instantly on focus, and instantly for any term hovered
- * within 400 ms of the last one closing; it closes in 0 ms, is hoverable, and Escape dismisses it.
- * One or two lines, then "How it is measured" linking to the Methodology anchor.
+ * Glossary term and tooltip (D8, docs/design/visual-v4.md §5.10, §4.4). The term is an inline
+ * button with a dotted underline (focusable, and a tap shows the definition on touch), with a
+ * 44 × 44 hit area on a coarse pointer (`touch-hit`, §8.10). The tooltip
+ * is Gray 100 with white text (Gray 80 in dark), radius 12, 10 px above its trigger (below when
+ * there is no room). It opens after 600 ms of mouse hover (140 ms in from scale(0.97) on the
+ * trigger side; opacity only under reduced motion), instantly on focus, and instantly for any term
+ * hovered within 400 ms of the last one closing; it closes in 0 ms, is hoverable, and Escape
+ * dismisses it. One or two lines, then "How it is measured" linking to the Methodology anchor.
  */
 import {
   type ReactNode,
@@ -26,6 +29,9 @@ export function coolGlossary(): void {
   group.warmUntil = 0
 }
 
+/** The tooltip's distance from its trigger (px). */
+export const TOOLTIP_GAP = 10
+
 /** Position of a tooltip of size `tw` × `th` centred above `r`, flipped below near the top. */
 export function placeTooltip(
   r: { left: number; top: number; bottom: number; width: number },
@@ -33,9 +39,9 @@ export function placeTooltip(
   th: number,
   viewport: number,
 ): { left: number; top: number; below: boolean } {
-  let top = r.top - th - 8
+  let top = r.top - th - TOOLTIP_GAP
   const below = top < 8
-  if (below) top = r.bottom + 8
+  if (below) top = r.bottom + TOOLTIP_GAP
   const left = Math.min(Math.max(8, r.left + r.width / 2 - tw / 2), viewport - tw - 8)
   return { left, top, below }
 }
@@ -52,7 +58,7 @@ export function Glossary({
   definition: string
   /** The Methodology anchor ("depth", "spread", "health", "gaps", "scorecards", …). */
   anchor?: string
-  /** Extra classes for the term, e.g. `touch-hit` for a standalone term outside a sentence. */
+  /** Extra classes for the term. */
   className?: string
 }) {
   const id = useId()
@@ -134,7 +140,7 @@ export function Glossary({
       <button
         ref={termRef}
         type="button"
-        className={`gloss${className ? ` ${className}` : ''}`}
+        className={`gloss touch-hit${className ? ` ${className}` : ''}`}
         aria-describedby={open ? id : undefined}
         onClick={(e) => {
           // A tap or click toggles the definition: the touch path to it (K7).

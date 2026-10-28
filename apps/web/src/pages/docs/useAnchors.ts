@@ -1,11 +1,11 @@
 /**
  * In-page anchors on Methodology (ia-v3 §2: `#depth` … `#scorecards`, `#index`). A jump is not a
- * route change (docs/design/visual-v3.md §4 row 6), so it never cross-fades <main>: plain clicks on
+ * route change (docs/design/visual-v4.md §4.2), so it never cross-fades <main>: plain clicks on
  * `a[data-anchor]` are taken in the window's capture phase, before the shell reads the click, then
- * pushed as a hash and scrolled to instantly (`scroll-padding-top` clears the app bar). A keyboard
+ * pushed as a hash and scrolled to instantly (`scroll-padding-top` clears the sticky chrome). A keyboard
  * jump moves focus to the section's heading. A new history entry with a hash scrolls to it; Back
  * and Forward to an entry seen before keep the shell's restored position. The current section is the last one whose top has passed
- * just under the app bar, or the last one at the end of the page.
+ * just under the sticky chrome, or the last one at the end of the page.
  */
 import { type RefObject, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
@@ -23,10 +23,10 @@ export function pickCurrent(
   return current
 }
 
-function appBarHeight(): number {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue('--appbar-h')
-  const h = Number.parseFloat(raw)
-  return Number.isFinite(h) ? h : 56
+/** Where the sticky chrome ends (px from the viewport top): the app bar, with the phone strip. */
+function chromeBottom(): number {
+  const bottom = document.querySelector('.appbar')?.getBoundingClientRect().bottom
+  return bottom !== undefined && Number.isFinite(bottom) && bottom > 0 ? bottom : 64
 }
 
 export function useCurrentSection(ids: readonly string[]): string | null {
@@ -42,7 +42,7 @@ export function useCurrentSection(ids: readonly string[]): string | null {
       const doc = document.documentElement
       const atEnd =
         window.scrollY > 0 && window.innerHeight + window.scrollY >= doc.scrollHeight - 2
-      setCurrent(pickCurrent(tops, appBarHeight() + 48, atEnd))
+      setCurrent(pickCurrent(tops, chromeBottom() + 48, atEnd))
     }
     const schedule = () => {
       if (!raf) raf = requestAnimationFrame(read)

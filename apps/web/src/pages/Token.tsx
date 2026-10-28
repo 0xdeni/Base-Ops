@@ -1,8 +1,10 @@
 /**
- * Token (`/tokens/:address`, ia-v3 §4.7, docs/design/visual-v3.md §6.7): how liquid the token is on
- * Base, where its liquidity sits and where its price comes from. The Pool title block, the answer,
- * the depth butterfly of the token's pools on its own scale (closed by "All of WETH"), three facts,
- * then the pools table (`sort`, `dir`, `cols` in the URL) and About this token.
+ * Token (`/tokens/:address`, ia-v3 §4.7, docs/design/visual-v4.md §6.8): how liquid the token is on
+ * Base, where its liquidity sits and where its price comes from. The title section (back link,
+ * "TOKEN", the symbol with its name, the answer at right), then the band with the depth butterfly
+ * of the token's pools on its own scale (closed by "All of WETH"), the facts as an ink block over
+ * the band's lower edge, the pools table sheet (`sort`, `dir`, `cols`, `rows` in the URL) and
+ * about this token as a panel.
  */
 import { useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -11,8 +13,7 @@ import { useDataNow } from '../api/context.js'
 import { ApiError } from '../api/errors.js'
 import { useGaps, usePoolMetas, useToken } from '../api/hooks.js'
 import type { PoolMetaDto, TokenDetail } from '../api/types.js'
-import { ButterflyTable } from '../components/charts/ChartTables.js'
-import { DepthButterfly } from '../components/charts/DepthButterfly.js'
+import type { ButterflyGap } from '../components/charts/DepthButterfly.js'
 import { MEANINGFUL_GAP_TURNOVER } from '../components/charts/TurnoverGlyph.js'
 import { BackLink } from '../components/ui/BackLink.js'
 import { NotFoundState, SectionError, useDelayedPending } from '../components/ui/States.js'
@@ -20,15 +21,23 @@ import { isPoolId } from '../lib/format.js'
 import type { TableState } from '../lib/poolsTable.js'
 import { cachedToken } from '../routeData.js'
 import { TokenAbout } from './token/TokenAbout.js'
+import { TokenBand } from './token/TokenBand.js'
 import { TokenFacts } from './token/TokenFacts.js'
 import { TokenPools } from './token/TokenPools.js'
 import { TokenSkeleton } from './token/TokenSkeleton.js'
-import { readTableState, tokenQuery, writeTableState } from './token/tokenSort.js'
+import { TokenTitle } from './token/TokenTitle.js'
+import {
+  readAllRows,
+  readTableState,
+  tokenQuery,
+  writeAllRows,
+  writeTableState,
+} from './token/tokenSort.js'
 import { orientPools, tokenAnswer } from './token/tokenText.js'
 import './token/token.css'
 
 /** The biggest meaningful gap (turnover ≥ 3×) among the token's pools, for the "Gap" marker. */
-function useTokenGap(detail: TokenDetail | undefined) {
+function useTokenGap(detail: TokenDetail | undefined): ButterflyGap | null {
   const gaps = useGaps({ limit: 200 })
   if (!detail) return null
   const mine = new Set(detail.pools.map((p) => p.pool.id))
@@ -45,13 +54,17 @@ function useTokenGap(detail: TokenDetail | undefined) {
 function TokenView({
   detail,
   state,
+  allRows,
   busy,
   onState,
+  onAllRows,
 }: {
   detail: TokenDetail
   state: TableState
+  allRows: boolean
   busy: boolean
   onState: (next: TableState) => void
+  onAllRows: (all: boolean) => void
 }) {
   const now = useDataNow()
   const { token } = detail
@@ -60,48 +73,32 @@ function TokenView({
   const known = new Map<string, PoolMetaDto>(detail.pools.map((p) => [p.pool.id, p.pool]))
   const fetched = usePoolMetas(detail.via.filter((s) => isPoolId(s) && !known.has(s)))
   const metas = new Map([...known, ...fetched])
-  const more =
-    pools.length > 8 ? (
-      <button
-        type="button"
-        className="plink token-more"
-        onClick={() => document.getElementById('s-pools')?.scrollIntoView({ block: 'start' })}
-      >
-        Show all {pools.length} pools
-      </button>
-    ) : null
   return (
-    <div className="wrap page">
+    <div className="token">
       <title>{`${token.symbol} – Depthwatch`}</title>
-      <div className="title-block">
-        <BackLink to="/pools" label="Pools" />
-        <h1 className="h1">{token.symbol}</h1>
-        <div className="subline">
-          <span>{token.name}</span>
-        </div>
-      </div>
-      <p className="answer answer-block">{tokenAnswer(detail)}</p>
-      {pools.length ? (
-        <div className="token-fig">
-          <DepthButterfly pools={pools} gap={gap} scope={token.symbol} more={more}>
-            <ButterflyTable pools={pools} gapPoolId={gap?.poolId} scope={token.symbol} />
-            <p className="tbl-note">
-              Sides are {token.symbol}’s: selling {token.symbol} pushes its price down. A pool
-              counts in full on the page of each of its two tokens.
-            </p>
-          </DepthButterfly>
-        </div>
-      ) : null}
+      <TokenTitle
+        token={token}
+        answer={
+          <p className="answer token-answer" data-rise="">
+            {tokenAnswer(detail)}
+          </p>
+        }
+      />
+      <TokenBand symbol={token.symbol} pools={pools} gap={gap} />
       <TokenFacts detail={detail} metas={metas} />
-      <div className="secs">
+      {pools.length ? (
         <TokenPools
           pools={pools}
           symbol={token.symbol}
           state={state}
+          allRows={allRows}
           busy={busy}
           now={now}
           onChange={onState}
+          onAllRows={onAllRows}
         />
+      ) : null}
+      <div className="wrap">
         <TokenAbout detail={detail} metas={metas} now={now} />
       </div>
     </div>
@@ -113,11 +110,14 @@ export function Token() {
   const normalized = address.toLowerCase()
   const [params, setParams] = useSearchParams()
   const state = readTableState(params)
+  const allRows = readAllRows(params)
   const token = useToken(normalized, tokenQuery(state))
   const qc = useQueryClient()
   const showSkeleton = useDelayedPending(token.isPending)
   const onState = (next: TableState) =>
     setParams((prev) => writeTableState(prev, next), { replace: true })
+  const onAllRows = (all: boolean) =>
+    setParams((prev) => writeAllRows(prev, all), { replace: true })
 
   let content: ReactNode
   if (token.data) {
@@ -125,8 +125,10 @@ export function Token() {
       <TokenView
         detail={token.data}
         state={state}
+        allRows={allRows}
         busy={token.isFetching && token.isPlaceholderData}
         onState={onState}
+        onAllRows={onAllRows}
       />
     )
   } else if (
@@ -136,21 +138,19 @@ export function Token() {
   ) {
     content = (
       <NotFoundState
-        title="Token not found"
+        title="token not found"
         message="Depthwatch has not seen this token in any pool it tracks, or the link is wrong."
         id={normalized}
       />
     )
   } else if (token.isError) {
     content = (
-      <div className="wrap page">
-        <div className="title-block">
-          <BackLink to="/pools" label="Pools" />
-        </div>
-        <div className="answer-block">
+      <section className="wrap ttl token-ttl" aria-label="Token">
+        <BackLink to="/pools" label="Pools" />
+        <div className="token-error">
           <SectionError what="this token" onRetry={() => void token.refetch()} />
         </div>
-      </div>
+      </section>
     )
   } else {
     // The symbol and name from a pool already loaded, so the title never waits (ST1).
