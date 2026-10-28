@@ -6,8 +6,9 @@
  *
  * Uniswap v4 pools hold no reserves of their own (singleton PoolManager), so their TVL is unknown
  * (null) and they are ranked by the USD value of their ±2 % depth instead. A Uniswap v4 pool with a
- * hook is not modelled (docs/METRICS.md, `hooked`): its snapshot holds its price but no depth,
- * spread or concentration, and it is no price edge.
+ * hook is not modelled (docs/METRICS.md, `hooked`): it is not ranked (tracked only when requested
+ * or mandated), its snapshot holds its price but no depth, spread or concentration, and it is no
+ * price edge.
  *
  * Market-maker scorecards (docs/design/scorecards.md §5): pools with an active mandate are
  * always tracked, each gets one `MmSample` per active mandate right after its snapshot (same
@@ -86,7 +87,10 @@ export interface RankedPool {
   view: PoolOverview
   pricing: PoolPricing
   tvlUsd: number | null
-  /** TVL when known, else the USD value of the ±2 % depth (Uniswap v4). */
+  /**
+   * TVL when known, else the USD value of the ±2 % depth (Uniswap v4). Null for a hooked Uniswap
+   * v4 pool: its depth is not modelled, so it is never ranked into the tracked set.
+   */
   rankUsd: number | null
 }
 
@@ -107,12 +111,13 @@ export function poolTvlUsd(view: PoolOverview, prices: PriceMap): number | null 
   )
 }
 
-/** Pools ordered by rank (desc), unranked (unpriced) pools last, ties by id. */
+/** Pools ordered by rank (desc), unranked (unpriced or hooked) pools last, ties by id. */
 export function rankPools(views: readonly PoolOverview[], prices: PriceMap): RankedPool[] {
   const ranked = views.map((view): RankedPool => {
     const pricing = pricingFor(view)
     const tvl = poolTvlUsd(view, prices)
-    const rankUsd = tvl ?? depthUsdFor(pricing, prices)
+    // A hooked pool's depth would be the swap walk's guess (docs/METRICS.md, `hooked`): no rank.
+    const rankUsd = isHookedPool(view.pool) ? null : (tvl ?? depthUsdFor(pricing, prices))
     return { view, pricing, tvlUsd: tvl, rankUsd }
   })
   return ranked.sort((a, b) => {
@@ -123,7 +128,10 @@ export function rankPools(views: readonly PoolOverview[], prices: PriceMap): Ran
   })
 }
 
-/** Top `topPools` ranked ids (with a positive rank) plus the explicitly requested ones. */
+/**
+ * Top `topPools` ranked ids (with a positive rank) plus the explicitly requested ones (`--pool`
+ * and mandated pools), which are tracked whatever their rank, a hooked pool included.
+ */
 export function selectTracked(
   ranked: readonly RankedPool[],
   topPools: number,

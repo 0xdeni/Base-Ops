@@ -13,6 +13,8 @@ import {
   NOTE_SPREAD_INFEASIBLE,
   OWNER_COVERAGE_MIN,
   ownerCoverageNote,
+  ownersCoverPool,
+  poolOwnerTop1Share,
   rateDepth,
   thinnerSideUsd,
 } from './health.js'
@@ -210,6 +212,23 @@ describe('computeHealthScore', () => {
     expect(unknown.concentrationBasis).toBe('ranges')
     expect(unknown.notes).toEqual([ownerCoverageNote(null)])
     expect(ownerCoverageNote(null)).toBe('owner data covers an unknown share of in-band liquidity')
+  })
+
+  it('reads owner shares as the pool’s only when owners in the band cover OWNER_COVERAGE_MIN', () => {
+    const owners = { count: 3, top1Share: 0.42, top3Share: 1, hhi: 0.36, coverage: 0.9 }
+    expect(ownersCoverPool(owners)).toBe(true)
+    expect(poolOwnerTop1Share(owners)).toBe(0.42)
+    // One unstaked LP beside a gauge holding 97 % of the band: 100 % of 1 % of the pool.
+    const lone = { count: 1, top1Share: 1, top3Share: 1, hhi: 1, coverage: 0.0102 }
+    expect(ownersCoverPool(lone)).toBe(false)
+    expect(poolOwnerTop1Share(lone)).toBeNull()
+    // Only the gauge's positions in the band: no owner at all.
+    const none = { count: 0, top1Share: 0, top3Share: 0, hhi: 0, coverage: 0 }
+    expect(poolOwnerTop1Share(none)).toBeNull()
+    expect(poolOwnerTop1Share({ ...owners, coverage: 0.899 })).toBeNull()
+    expect(poolOwnerTop1Share({ ...owners, coverage: null })).toBeNull()
+    expect(poolOwnerTop1Share(null)).toBeNull()
+    expect(poolOwnerTop1Share(undefined)).toBeNull()
   })
 
   it('scores a reserve pool without owners neutral, not from its rangeHhi of 1', () => {

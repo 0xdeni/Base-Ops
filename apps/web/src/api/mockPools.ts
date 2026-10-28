@@ -16,7 +16,13 @@ import type {
   SpreadPoint,
   TokenInfo,
 } from '@depthwatch/core'
-import { computeGap, computeHealthScore, isStaleQuote, priceDeviationBps } from '@depthwatch/core'
+import {
+  computeGap,
+  computeHealthScore,
+  isStaleQuote,
+  poolOwnerTop1Share,
+  priceDeviationBps,
+} from '@depthwatch/core'
 import poolsJson from '../mock/pools.json'
 import tokensJson from '../mock/tokens.json'
 import type { DepthLevelDto, PoolMetaDto, PoolSnapshotDto, PoolSummary } from './types.js'
@@ -290,7 +296,8 @@ export function summarize(p: MockPool): PoolSummary {
     },
     gapScore: p.gap.gapScore,
     volume24hUsd: p.volume24hUsd,
-    ownerTop1Share: p.snapshot.concentration?.owners?.top1Share ?? null,
+    // As the API stores it: only a share of owners that describe the pool.
+    ownerTop1Share: poolOwnerTop1Share(p.snapshot.concentration?.owners),
     updatedAt: p.snapshot.timestamp,
   }
 }

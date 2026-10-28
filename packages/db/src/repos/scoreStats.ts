@@ -35,6 +35,8 @@ export interface DexStats {
   rated: number
   /** Sum over scored pools whose newest snapshot is not a stale quote. */
   depth2UsdSum: number
+  /** Scored pools the depth sum covers: a known ±2 % depth and no stale quote. */
+  depthKnownPools: number
   /** Sum over scored pools with a known 24 h volume; null when none has one (unknown is not 0). */
   volume24hUsdSum: number | null
   /** Median health total over rated pools; null when none are rated. */
@@ -66,6 +68,7 @@ export function statsByDex(ctx: SqlContext): DexStats[] {
         scored: 0,
         rated: 0,
         depth2UsdSum: 0,
+        depthKnownPools: 0,
         volume24hUsdSum: null,
         medianHealth: null,
       }
@@ -95,8 +98,13 @@ export function statsByDex(ctx: SqlContext): DexStats[] {
     const dex = colText(row, 'dex')
     const entry = statsFor(dex)
     entry.scored += 1
-    // A stale quote's depth is measured at a price nobody trades: it stays out of the sum.
-    if (colNumber(row, 'stale') !== 1) entry.depth2UsdSum += colNumberOrNull(row, 'depth2') ?? 0
+    // A stale quote's depth is measured at a price nobody trades: it stays out of the sum, and
+    // the pools the sum covers are counted with it.
+    const depth2 = colNumberOrNull(row, 'depth2')
+    if (colNumber(row, 'stale') !== 1 && depth2 !== null) {
+      entry.depth2UsdSum += depth2
+      entry.depthKnownPools += 1
+    }
     // An unknown volume is not 0: the sum stays null until one pool has a known volume.
     const volume = colNumberOrNull(row, 'volume')
     if (volume !== null) entry.volume24hUsdSum = (entry.volume24hUsdSum ?? 0) + volume

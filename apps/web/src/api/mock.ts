@@ -111,16 +111,18 @@ function historySeed(p: MockPool): HistorySeed {
 }
 
 function dexStats(dex: Dex, rows: MockPool[]): DexStatsDto {
+  const counted = rows.filter(
+    (p) => !isStaleQuote(p.snapshot.priceDeviationBps) && p.depth2Usd !== null,
+  )
   return {
     dex,
     pools: DISCOVERED[dex],
     tracked: rows.length,
     scored: rows.length,
     rated: rows.filter((p) => p.score.rated).length,
-    // As the API: a stale quote's depth stays out of the sum.
-    depth2Usd: rows
-      .filter((p) => !isStaleQuote(p.snapshot.priceDeviationBps))
-      .reduce((sum, p) => sum + (p.depth2Usd ?? 0), 0),
+    // As the API: a stale quote's depth stays out of the sum and the count of pools it covers.
+    depth2Usd: counted.reduce((sum, p) => sum + (p.depth2Usd ?? 0), 0),
+    depthKnownPools: counted.length,
     volume24hUsd: sumKnown(rows.map((p) => p.volume24hUsd)),
     medianHealth: ratedMedian(rows),
   }
@@ -170,6 +172,7 @@ export function createMockClient(opts: MockOptions = {}): ApiClient {
         poolCount,
         trackedCount: pools.length,
         latestSnapshotAt: now,
+        latestScoredAt: now,
         snapshotAgeSeconds: 0,
         latestBlock: LATEST_BLOCK,
         // The mock stands in for a live server; the mock badge and footer say it is mock data.
@@ -189,6 +192,7 @@ export function createMockClient(opts: MockOptions = {}): ApiClient {
         scored: byDex.reduce((sum, row) => sum + row.scored, 0),
         rated: byDex.reduce((sum, row) => sum + row.rated, 0),
         depth2Usd: byDex.reduce((sum, row) => sum + row.depth2Usd, 0),
+        depthKnownPools: byDex.reduce((sum, row) => sum + row.depthKnownPools, 0),
         volume24hUsd: sumKnown(byDex.map((row) => row.volume24hUsd)),
         medianHealth: ratedMedian(pools),
       }

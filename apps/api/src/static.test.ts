@@ -164,6 +164,16 @@ describe('static serving', () => {
       expect(gunzipSync(raw).toString('utf8')).toBe(BUNDLE_JS)
     })
 
+    it('revalidates index.html served for a navigation to a missing asset', async () => {
+      const res = await app.request('/assets/app-old.js', {
+        headers: { accept: 'text/html,application/xhtml+xml' },
+      })
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toMatch(/^text\/html/)
+      expect(await res.text()).toBe(INDEX_HTML)
+      expect(res.headers.get('cache-control')).toBe(STATIC_CACHE_CONTROL)
+    })
+
     it('leaves a 404 uncached', async () => {
       const res = await app.request('/assets/missing.js', { headers: { accept: '*/*' } })
       expect(res.status).toBe(404)

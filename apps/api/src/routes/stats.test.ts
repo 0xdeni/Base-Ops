@@ -26,6 +26,8 @@ describe('GET /api/stats', () => {
         scored: 2,
         rated: 1,
         depth2Usd: 1_000_000,
+        // the unpriced BRETT / TOSHI pool has no depth to sum
+        depthKnownPools: 1,
         volume24hUsd: 2_000_000,
         medianHealth: 85, // the unrated 22 is left out
       },
@@ -36,6 +38,7 @@ describe('GET /api/stats', () => {
         scored: 1,
         rated: 1,
         depth2Usd: 12_000,
+        depthKnownPools: 1,
         volume24hUsd: 300_000,
         medianHealth: 41,
       },
@@ -46,6 +49,7 @@ describe('GET /api/stats', () => {
         scored: 1,
         rated: 1,
         depth2Usd: 150_000,
+        depthKnownPools: 1,
         volume24hUsd: 900_000,
         medianHealth: 62,
       },
@@ -56,6 +60,7 @@ describe('GET /api/stats', () => {
         scored: 2,
         rated: 1,
         depth2Usd: 402_000,
+        depthKnownPools: 2,
         volume24hUsd: 19_500,
         medianHealth: 70, // the unrated 48 is left out
       },
@@ -71,6 +76,7 @@ describe('GET /api/stats', () => {
       scored: 6,
       rated: 4,
       depth2Usd: 1_564_000,
+      depthKnownPools: 5,
       volume24hUsd: 3_219_500,
       medianHealth: 66, // (62 + 70) / 2 over the rated [41, 62, 70, 85]; the unrated 22, 48 are out
     })
@@ -99,6 +105,7 @@ describe('GET /api/stats', () => {
           scored: 0,
           rated: 0,
           depth2Usd: 0,
+          depthKnownPools: 0,
           volume24hUsd: null,
           medianHealth: null,
         })
@@ -109,6 +116,7 @@ describe('GET /api/stats', () => {
         scored: 0,
         rated: 0,
         depth2Usd: 0,
+        depthKnownPools: 0,
         volume24hUsd: null,
         medianHealth: null,
       })

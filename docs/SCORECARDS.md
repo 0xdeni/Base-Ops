@@ -105,6 +105,11 @@ tracked pool) and `depthwatch start` in the pass that finds such a mandate, so a
 waits one pass at most. Once a pool is indexed and holds no positions at all, the method is
 `none`: nothing can be attributed and the sample is a breach (rule 1 below).
 
+A Uniswap v4 pool with a hook is not modelled (METRICS.md, "Rated and unrated pools": the hook
+runs its own swap code, so the swap walk would guess its depth and spread). Its mandates are
+attribution failures (`hooked pool: not modelled`) at every pass and get no sample, so they record
+no uptime, no breach and no alert, whatever the pool's positions.
+
 ### Measurement
 
 Each sample carries an `MmAttribution`, computed with exactly the functions METRICS.md defines:
@@ -183,7 +188,8 @@ After the samples of a snapshot are stored, for each mandate that has a webhook:
   attempted again at the following samples of the streak, up to the cap.
 - **Recovered:** the latest delivered alert is a `breach`, the mandate is now within KPI and fewer
   than `MAX_ALERT_ATTEMPTS` recovery attempts have been recorded since that breach. A recovery is
-  never sent for a breach the recipient did not receive.
+  never sent for a breach the recipient did not receive, and always owed for one it did: the
+  retention prune keeps each mandate's newest delivered alert, however old.
 
 The alert is a `POST` of a JSON body to `alertWebhookUrl` with a 5 s timeout; redirects are not
 followed (a 3xx answer is a failed delivery) and the response body is discarded:
@@ -340,7 +346,8 @@ dashboard's `VITE_MOCK=1` mode mirrors the same two.
 
 Summaries are computed from the samples of the last 30 days, so `uptime.d30` is the full history
 the API keeps in view; samples older than 35 days and alerts older than 90 are deleted by
-`depthwatch prune`, which `run` and `start` run once a day. The server keeps the last summary per
+`depthwatch prune`, which `run` and `start` run once a day; each mandate's newest delivered alert
+is kept whatever its age, so the alert rules below hold for a streak of any length. The server keeps the last summary per
 mandate and serves it again until a new sample is stored, the mandate changes or a minute has
 passed. Bigints (`blockNumber`) are decimal strings. A sample on the wire:
 

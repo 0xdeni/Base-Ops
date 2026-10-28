@@ -138,8 +138,10 @@ price nobody trades. With `token0Usd` and `token1Usd` the derived USD prices (se
 
 A stale pool's depth, spread and score are published as measured, since they describe the pool at
 its own price. Its ±2 % depth is left out of the depth sums (`GET /api/stats`, the Home
-headline, a token's `depth2UsdTotal`), a depth sort puts it after the other pools in both
-directions, and the lists and the pool page flag it. A snapshot stored before the deviation was recorded reads `null` (not known),
+headline, a token's `depth2UsdTotal`, the depth butterfly's totals, segments and shares, where
+its row is still drawn) and so are the counts of pools those sums cover (`depthKnownPools`), a
+depth sort puts it after the other pools in both directions, and the lists and the pool page flag
+it. A snapshot stored before the deviation was recorded reads `null` (not known),
 so its pool is not flagged until the next snapshot.
 
 **Worked example** (the live run at Base block 53,069,244). The Uniswap v3 BRETT/USDC 0.3 % pool
@@ -294,7 +296,17 @@ the gauge's positions count as uncovered: they are left out of the owners, their
 
 `owners` is `null` when positions were not indexed for the pool (`depthwatch positions` has not
 run for it, or the DEX has no observable positions). When positions were indexed but none overlap
-the band (or only a custodian's do), `count = 0`, all shares are 0 and `coverage = 0`.
+the band (or only a custodian's do), `count = 0`, all shares are 0 and `coverage = 0`. A snapshot
+stored before `coverage` was recorded reads `coverage = null` (unknown).
+
+**The pool's top LP share.** The owners describe the pool only when `count > 0` and `coverage ≥
+OWNER_COVERAGE_MIN = 0.9` (`ownersCoverPool`); the same rule decides whether the health score
+uses them (see "Concentration (max 20)"). Only then is `top1Share` the pool's `ownerTop1Share`
+(`poolOwnerTop1Share`), the number the pools table lists as Top LP and sorts by (`sort=top`);
+otherwise `ownerTop1Share` is `null`. One unstaked LP beside a gauge that holds 97 % of the band
+has `count = 1`, `top1Share = 1` and `coverage ≈ 0.01`: 100 % of the indexed owners is 1 % of the
+pool, so no top LP share is listed, and the pool page says that indexed LPs hold 1 % of the
+liquidity near the price, the largest 100 % of that.
 
 ### Reserve pools
 
@@ -607,7 +619,9 @@ reserves of their own (the singleton PoolManager holds every pool's tokens), so 
 `null`, and the snapshot ranks them by the USD value of their ±2 % depth instead.
 
 TVL ranks which pools get full depth snapshots; it is not a liquidity metric. Two pools with the
-same TVL can differ by an order of magnitude in ±2 % depth, which is the point of this project.
+same TVL can differ by an order of magnitude in ±2 % depth, which is the point of this project. A
+hooked Uniswap v4 pool is not ranked at all (its depth is not modelled, see `hooked`): it is
+snapshotted only when requested with `--pool` or named by a mandate.
 
 ## USD prices
 
@@ -688,17 +702,17 @@ reproduced by anyone with an RPC endpoint and this page.
 
 ## Where each metric lives
 
-| Metric                   | Module                                              | Function(s)                                                                                                                        |
-| ------------------------ | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Depth                    | `packages/core/src/metrics/depth.ts`                | `computeDepth`, `depthToUsd`                                                                                                       |
-| Effective spread         | `packages/core/src/metrics/spread.ts`               | `computeEffectiveSpread`, `feasibleSpreadBps`, `SPREAD_MAX_LEG_IMPACT_BPS`                                                         |
-| Concentration            | `packages/core/src/metrics/concentration.ts`        | `computeConcentration`, `computeConcentrationForReserves`, `bandSqrtBounds`                                                        |
-| Persistence              | `packages/core/src/metrics/persistence.ts`          | `computePersistence`, `PERSISTENCE_MIN_COVERAGE`                                                                                   |
-| Health score, rating     | `packages/core/src/metrics/health.ts`               | `computeHealthScore`, `healthGrade`, `rateDepth`, `isHookedPool`, `HEALTH_RATING_MIN_SIDE_USD`, `HEALTH_MAX`, `OWNER_COVERAGE_MIN` |
-| Gap score                | `packages/core/src/metrics/gap.ts`                  | `computeGap`, `GAP_FEED_MIN_VOLUME_USD`, `MEANINGFUL_GAP_TURNOVER`, `isMeaningfulGap`                                              |
-| TVL                      | `packages/core/src/metrics/tvl.ts`                  | `tvlUsd`                                                                                                                           |
-| 24 h volume              | `packages/core/src/metrics/volume.ts`               | `volumeWindow`, `scoringVolumeWindow`, `computeVolume24hUsd`                                                                       |
-| USD prices               | `packages/core/src/pricing.ts`                      | `derivePrices` (edge weights in USD at relaxation); edges in `apps/cli/src/pipeline/prices.ts` (`buildPriceEdges`)                 |
-| Stale quotes             | `packages/core/src/metrics/depth.ts`                | `priceDeviationBps`, `isStaleQuote`, `STALE_QUOTE_MIN_DEVIATION_BPS`                                                               |
-| Swap simulation          | `packages/core/src/swap/`                           | `simulateSwapExactIn`, `simulateSwapToPrice`, `midPrice`, `swapFeePips`, `v4SwapFeePips`                                           |
-| Tick and sqrt-price math | `packages/core/src/tickMath.ts`, `sqrtPriceMath.ts` | `getSqrtRatioAtTick`, `getTickAtSqrtRatio`, `sqrtPriceX96ToPrice`, `priceToSqrtPriceX96`                                           |
+| Metric                   | Module                                              | Function(s)                                                                                                                                                                 |
+| ------------------------ | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Depth                    | `packages/core/src/metrics/depth.ts`                | `computeDepth`, `depthToUsd`                                                                                                                                                |
+| Effective spread         | `packages/core/src/metrics/spread.ts`               | `computeEffectiveSpread`, `feasibleSpreadBps`, `SPREAD_MAX_LEG_IMPACT_BPS`                                                                                                  |
+| Concentration            | `packages/core/src/metrics/concentration.ts`        | `computeConcentration`, `computeConcentrationForReserves`, `bandSqrtBounds`                                                                                                 |
+| Persistence              | `packages/core/src/metrics/persistence.ts`          | `computePersistence`, `PERSISTENCE_MIN_COVERAGE`                                                                                                                            |
+| Health score, rating     | `packages/core/src/metrics/health.ts`               | `computeHealthScore`, `healthGrade`, `rateDepth`, `isHookedPool`, `HEALTH_RATING_MIN_SIDE_USD`, `HEALTH_MAX`, `OWNER_COVERAGE_MIN`, `ownersCoverPool`, `poolOwnerTop1Share` |
+| Gap score                | `packages/core/src/metrics/gap.ts`                  | `computeGap`, `GAP_FEED_MIN_VOLUME_USD`, `MEANINGFUL_GAP_TURNOVER`, `isMeaningfulGap`                                                                                       |
+| TVL                      | `packages/core/src/metrics/tvl.ts`                  | `tvlUsd`                                                                                                                                                                    |
+| 24 h volume              | `packages/core/src/metrics/volume.ts`               | `volumeWindow`, `scoringVolumeWindow`, `computeVolume24hUsd`                                                                                                                |
+| USD prices               | `packages/core/src/pricing.ts`                      | `derivePrices` (edge weights in USD at relaxation); edges in `apps/cli/src/pipeline/prices.ts` (`buildPriceEdges`)                                                          |
+| Stale quotes             | `packages/core/src/metrics/depth.ts`                | `priceDeviationBps`, `isStaleQuote`, `STALE_QUOTE_MIN_DEVIATION_BPS`                                                                                                        |
+| Swap simulation          | `packages/core/src/swap/`                           | `simulateSwapExactIn`, `simulateSwapToPrice`, `midPrice`, `swapFeePips`, `v4SwapFeePips`                                                                                    |
+| Tick and sqrt-price math | `packages/core/src/tickMath.ts`, `sqrtPriceMath.ts` | `getSqrtRatioAtTick`, `getTickAtSqrtRatio`, `sqrtPriceX96ToPrice`, `priceToSqrtPriceX96`                                                                                    |

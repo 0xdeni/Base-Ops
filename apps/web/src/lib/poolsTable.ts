@@ -147,7 +147,7 @@ export const UNKNOWN_REASON = {
   spread: 'No spread: a token in this pool has no USD price.',
   volume: `No 24${NB}h volume is measured for this pool yet.`,
   gap: 'No gap score: the 24 h volume or the depth is unknown.',
-  top: 'Owners are not indexed for this pool kind.',
+  top: 'Owners are not indexed for this pool, or the indexed ones cover too little of it.',
   price: 'No snapshot of this pool yet.',
   updated: 'This pool has not been snapshotted yet.',
 } as const

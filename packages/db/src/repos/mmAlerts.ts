@@ -26,6 +26,14 @@ const INSERT = `INSERT INTO mm_alerts (
 /** Newest first: highest timestamp, then highest id (insertion order). */
 const NEWEST_FIRST = 'ORDER BY timestamp DESC, id DESC'
 
+/** Retention delete that keeps every mandate's newest delivered alert (`pruneBefore`). */
+const PRUNE = `DELETE FROM mm_alerts WHERE timestamp < ? AND id NOT IN (
+    SELECT a.id FROM mm_alerts a WHERE a.delivered = 1 AND a.id = (
+      SELECT b.id FROM mm_alerts b WHERE b.mandate_id = a.mandate_id AND b.delivered = 1
+      ORDER BY b.timestamp DESC, b.id DESC LIMIT 1
+    )
+  )`
+
 export function rowToMmAlert(row: Row): MmAlert {
   return {
     mandateId: colText(row, 'mandate_id'),
@@ -104,9 +112,14 @@ export class MmAlertsRepo {
       .map(rowToMmAlert)
   }
 
-  /** Deletes alerts with `timestamp < ts` across all mandates. Returns the number deleted. */
+  /**
+   * Deletes alerts with `timestamp < ts` across all mandates, except each mandate's newest
+   * delivered alert (`latestDeliveredFor`), however old: it is how the alert decision knows that a
+   * breach streak longer than the retention was already reported, and that its recovery is owed.
+   * Returns the number deleted.
+   */
   pruneBefore(ts: number): number {
-    return this.ctx.run('DELETE FROM mm_alerts WHERE timestamp < ?', [ts]).changes
+    return this.ctx.run(PRUNE, [ts]).changes
   }
 
   /** Deletes every alert of a mandate (after the mandate itself was deleted). */

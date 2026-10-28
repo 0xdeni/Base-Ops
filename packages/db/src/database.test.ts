@@ -76,8 +76,8 @@ describe('openDatabase', () => {
   it('creates the schema and records every migration once', () => {
     const db = memory()
     expect(db.migration).toEqual({ from: 0, to: SCHEMA_VERSION })
-    expect(MIGRATIONS.length).toBe(5)
-    expect(SCHEMA_VERSION).toBe(5)
+    expect(MIGRATIONS.length).toBe(6)
+    expect(SCHEMA_VERSION).toBe(6)
     expect(names(db, 'table')).toEqual(EXPECTED_TABLES)
     expect(names(db, 'index')).toEqual(EXPECTED_INDEXES)
     const versions = db.raw
@@ -142,12 +142,12 @@ describe('openDatabase', () => {
       db.syncState.set('a', '1')
       return db.transaction(() => {
         db.syncState.set('b', '2')
-        expect(db.raw.isTransaction).toBe(true)
+        expect(db.inTransaction).toBe(true)
         return 'nested'
       })
     })
     expect(result).toBe('nested')
-    expect(db.raw.isTransaction).toBe(false)
+    expect(db.inTransaction).toBe(false)
     expect(db.syncState.entries()).toEqual([
       ['a', '1'],
       ['b', '2'],
@@ -162,7 +162,7 @@ describe('openDatabase', () => {
         throw new Error('boom')
       }),
     ).toThrow('boom')
-    expect(db.raw.isTransaction).toBe(false)
+    expect(db.inTransaction).toBe(false)
     expect(db.syncState.get('c')).toBeUndefined()
     expect(db.syncState.get('d')).toBeUndefined()
   })

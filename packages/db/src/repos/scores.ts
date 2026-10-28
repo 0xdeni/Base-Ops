@@ -215,6 +215,12 @@ export class ScoresRepo {
     return row ? colNumber(row, 'n') : 0
   }
 
+  /** Unix seconds of the newest score row (`GET /api/health` `latestScoredAt`); null when none. */
+  latestTimestamp(): number | null {
+    const row = this.ctx.get('SELECT MAX(timestamp) AS ts FROM scores')
+    return row ? colNumberOrNull(row, 'ts') : null
+  }
+
   /** Median health total over rated pools (all DEXes); null when none is rated. */
   medianRatedHealth(): number | null {
     return medianRatedHealth(this.ctx)

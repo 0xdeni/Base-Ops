@@ -4,7 +4,7 @@
  * lowercase heading, one finding, one visual and a Details trigger in the head (K10) whose panel,
  * under the visual, holds the numbers behind it (L2).
  */
-import { HEALTH_MAX } from '@depthwatch/core'
+import { HEALTH_MAX, ownersCoverPool } from '@depthwatch/core'
 import { Link } from 'react-router-dom'
 import type { PoolDetail } from '../../api/types.js'
 import { HEALTH_PARTS, HealthBar } from '../../components/charts/HealthBar.js'
@@ -13,9 +13,16 @@ import { SpreadLollipop } from '../../components/charts/SpreadLollipop.js'
 import { Glossary } from '../../components/ui/Glossary.js'
 import { Section } from '../../components/ui/Section.js'
 import { TableScroll } from '../../components/ui/TableScroll.js'
+import { Unknown } from '../../components/ui/Unknown.js'
 import { count, NB, price, scoreExact, shareOf, usd } from '../../lib/format.js'
 import { unratedDetail } from '../../lib/rating.js'
-import { costTakeaway, healthTakeaway, spreadCellText, whoTakeaway } from './poolText.js'
+import {
+  costTakeaway,
+  healthTakeaway,
+  ownersNote,
+  spreadCellText,
+  whoTakeaway,
+} from './poolText.js'
 
 const HHI_DEFINITION =
   'Herfindahl index: 1 means one holder or one range has everything; near 0 means it is spread out.'
@@ -147,13 +154,19 @@ export function CostSection({ detail }: { detail: PoolDetail }) {
 export function WhoSection({ detail }: { detail: PoolDetail }) {
   const c = detail.latest?.concentration ?? null
   const fullRange = detail.pool.kind !== 'concentrated'
+  // Owner shares are drawn only where they describe the pool; otherwise the active range is.
+  const owners = c?.owners ?? null
+  const covering = ownersCoverPool(owners)
+  const listed = owners !== null && owners.count > 0 ? owners : null
+  const indexed = covering ? '' : 'indexed '
+  const note = c ? ownersNote(owners) : null
   const visual = !c ? (
     <p className="muted">Concentration appears after the first snapshot.</p>
-  ) : c.owners ? (
+  ) : covering ? (
     <ShareBar
-      top1Share={c.owners.top1Share}
-      top3Share={c.owners.top3Share}
-      owners={c.owners.count}
+      top1Share={owners.top1Share}
+      top3Share={owners.top3Share}
+      owners={owners.count}
       bandPct={c.bandPct}
     />
   ) : (
@@ -190,23 +203,33 @@ export function WhoSection({ detail }: { detail: PoolDetail }) {
                       <dt>Active range share</dt>
                       <dd className="num">{shareOf(c.activeRangeShare)}</dd>
                     </div>
-                    {c.owners ? (
+                    {listed ? (
                       <>
                         <div>
-                          <dt>Top LP</dt>
-                          <dd className="num">{shareOf(c.owners.top1Share)}</dd>
+                          <dt>Top {indexed}LP</dt>
+                          <dd className="num">{shareOf(listed.top1Share)}</dd>
                         </div>
                         <div>
-                          <dt>Top 3 LPs</dt>
-                          <dd className="num">{shareOf(c.owners.top3Share)}</dd>
+                          <dt>Top 3 {indexed}LPs</dt>
+                          <dd className="num">{shareOf(listed.top3Share)}</dd>
                         </div>
                         <div>
                           <dt>Owner HHI</dt>
-                          <dd className="num">{c.owners.hhi.toFixed(2)}</dd>
+                          <dd className="num">{listed.hhi.toFixed(2)}</dd>
                         </div>
                         <div>
                           <dt>Owners in band</dt>
-                          <dd className="num">{count(c.owners.count)}</dd>
+                          <dd className="num">{count(listed.count)}</dd>
+                        </div>
+                        <div>
+                          <dt>Coverage</dt>
+                          <dd className="num">
+                            {listed.coverage === null ? (
+                              <Unknown reason="This snapshot was stored before coverage was recorded." />
+                            ) : (
+                              shareOf(listed.coverage)
+                            )}
+                          </dd>
                         </div>
                       </>
                     ) : null}
@@ -216,11 +239,7 @@ export function WhoSection({ detail }: { detail: PoolDetail }) {
                       A full-range pool: all its liquidity is one range by construction.
                     </p>
                   ) : null}
-                  {c.owners ? null : (
-                    <p className="tbl-note">
-                      Owners are not indexed for this pool, so health uses the range HHI.
-                    </p>
-                  )}
+                  {note ? <p className="tbl-note">{note}</p> : null}
                 </>
               ),
             }

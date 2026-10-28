@@ -105,7 +105,8 @@ Each step reads what the previous one stored, so any step can be rerun on its ow
    `computeConcentrationForReserves`), `tvlUsd`. The output is one `PoolSnapshot` per pool.
 7. **snapshots**. Inserted with the block number and block timestamp. Three denormalised columns
    (`depth2_usd`, `spread10k_bps`, `owner_top1_share`) are filled from the JSON so that the
-   dashboard's sorts are plain SQL. A read does not trust `spread10k_bps`: a row stored before the
+   dashboard's sorts are plain SQL; `owner_top1_share` only where the owners cover the pool (core's
+   `poolOwnerTop1Share`, NULL otherwise). A read does not trust `spread10k_bps`: a row stored before the
    price impact cap holds the uncapped number, so the repositories take the $10k spread, and every
    point of `spreads_json`, through core's `feasibleSpreadBps` rule.
 8. **volume** (`depthwatch volume`). `Swap` events for tracked pools over the last 24 h (or
@@ -175,7 +176,9 @@ delivered right after, and the API summarises the samples (once per mandate, new
      `Gauge.balanceOf` when `Voter.gauges(pool)` is set, at the snapshot block →
      `buildMmReserveState`;
    - then `computeMmAttribution` (depth at `bandPct`, spread at `spreadNotionalUsd`, on the
-     market-maker-only state and on the whole pool) → `evaluateKpis` → the sample.
+     market-maker-only state and on the whole pool) → `evaluateKpis` → the sample;
+   - a hooked Uniswap v4 pool is not modelled: each of its mandates is an attribution failure,
+     never a sample.
 3. **Storage.** The samples are inserted in the same transaction as the snapshots and the
    `prices` rebuild, so a snapshot and its samples share one block and either both exist or
    neither does. An attribution failure is logged per mandate and does not fail the snapshot.
@@ -583,7 +586,8 @@ a snapshot row is about 1.4 KB (`depth_json`, `depth_usd_json` and `spreads_json
 it), so 200 tracked pools every 5 minutes (`run` at its default interval) add about 80 MB a day,
 about 2.5 GB a month, and every 30 minutes (`start`) a sixth of that. `depthwatch prune` deletes
 snapshots and hourly volume older than `DEPTHWATCH_KEEP_DAYS` (default 30; snapshots keep at least
-8 days), scorecard samples older than 35 days, alerts older than 90, and the volume cursors of
+8 days), scorecard samples older than 35 days, alerts older than 90 (each mandate's newest
+delivered alert is kept), and the volume cursors of
 pools no longer tracked; a tracked pool's `volume:<pool>:fromTs` moves up to the cutoff so a later
 `volume --hours` never trusts a pruned hour as covered. Snapshots are deleted in batches of 10,000
 rows, each its own short transaction, so the API keeps answering between them under `start`;

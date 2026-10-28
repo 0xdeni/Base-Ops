@@ -1,7 +1,7 @@
 /**
  * The Home band (docs/design/visual-v4.md §6.2): full-bleed Base Blue from the app bar down. The
- * eyebrow, then one heading made of the figure ("$49.9M" at `--t-mega`) and its sentence ("sits
- * within 2 % of the price across 492 pools on Base." at `--t-say`) sharing a baseline; under them
+ * eyebrow, then one heading made of the figure ("$49.8M" at `--t-mega`) and its sentence ("sits
+ * within 2 % of the price across 327 pools on Base." at `--t-say`, the pools the figure sums) sharing a baseline; under them
  * the lead at left and the actions at right ("Browse pools", the white button on the band, and
  * "How it's measured"). Then the focal depth butterfly of Base on the band, with its "Show data"
  * table (CH9). On phones everything stacks in that order and the butterfly's top half stays in
@@ -64,7 +64,7 @@ function HeroText({ stats, waiting }: { stats: UseQueryResult<StatsResponse>; wa
                 {homeFigure(t.depth2Usd)}
               </span>{' '}
               <span className="say" data-rise="">
-                {homeSay(t.scored)}
+                {homeSay(t.depthKnownPools)}
               </span>
             </>
           )}

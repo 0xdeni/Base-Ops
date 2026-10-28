@@ -251,6 +251,7 @@ describe('ScoresRepo', () => {
       scored: 1,
       rated: 1,
       depth2UsdSum: 1_000_000,
+      depthKnownPools: 1,
       volume24hUsdSum: 500_000,
       medianHealth: 85,
     })
@@ -261,6 +262,8 @@ describe('ScoresRepo', () => {
       scored: 1,
       rated: 1,
       depth2UsdSum: 0,
+      // C has no known depth: nothing to sum
+      depthKnownPools: 0,
       // C's volume is unknown and it is the only v4 pool: the sum is unknown, not 0
       volume24hUsdSum: null,
       medianHealth: 30,

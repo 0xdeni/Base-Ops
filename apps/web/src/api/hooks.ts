@@ -17,10 +17,14 @@ import type {
 export const HEALTH_REFETCH_MS = 60_000
 
 /**
- * `GET /api/health`, polled once a minute. When a poll finds a newer snapshot (`latestSnapshotAt`
- * moved), every other query is marked stale and the mounted ones refetch in place, so an open page
- * never shows a newer "Updated … ago" over rows from an older snapshot. The mock and the static
- * build never take a new snapshot, so they skip it.
+ * `GET /api/health`, polled once a minute. When a poll finds new data, every other query is marked
+ * stale and the mounted ones refetch in place, so an open page never shows a newer "Updated … ago"
+ * over rows from an older pass. New data is a newer snapshot (`latestSnapshotAt`) or a newer score
+ * (`latestScoredAt`): a pass stores its snapshots first and its scores (health, gap, 24 h volume)
+ * at its end, so a poll between the two refetches once more after the scores land. The HTTP
+ * client revalidates every fetch (`cache: 'no-cache'`), so a refetch is never answered from a
+ * copy the browser holds from before. The mock and the static build never take a new snapshot,
+ * so they skip it.
  */
 export function useHealth() {
   const api = useApi()
@@ -33,7 +37,7 @@ export function useHealth() {
     queryFn: () => api.health(),
     refetchInterval: HEALTH_REFETCH_MS,
   })
-  const at = query.data?.latestSnapshotAt
+  const at = query.data && `${query.data.latestSnapshotAt}:${query.data.latestScoredAt}`
   const seen = useRef(at)
   useEffect(() => {
     if (at === undefined) return

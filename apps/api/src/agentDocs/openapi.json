@@ -497,6 +497,7 @@
           "poolCount",
           "trackedCount",
           "latestSnapshotAt",
+          "latestScoredAt",
           "snapshotAgeSeconds",
           "latestBlock",
           "source"
@@ -511,6 +512,10 @@
           "latestSnapshotAt": {
             "type": ["integer", "null"],
             "description": "Unix seconds of the newest snapshot."
+          },
+          "latestScoredAt": {
+            "type": ["integer", "null"],
+            "description": "Unix seconds of the newest score: a pass writes its snapshots first and its scores at its end, so data that read scores (health, gap, 24 h volume) are new once this moves. null before the first score."
           },
           "snapshotAgeSeconds": {
             "type": ["integer", "null"],
@@ -532,6 +537,7 @@
           "scored",
           "rated",
           "depth2Usd",
+          "depthKnownPools",
           "volume24hUsd",
           "medianHealth"
         ],
@@ -546,6 +552,10 @@
           "depth2Usd": {
             "type": "number",
             "description": "Sum of ±2 % depth (USD) over scored pools, stale quotes (staleQuote) left out."
+          },
+          "depthKnownPools": {
+            "type": "integer",
+            "description": "Scored pools with a known ±2 % depth and no stale quote: the pools depth2Usd sums."
           },
           "volume24hUsd": {
             "type": ["number", "null"],
@@ -566,6 +576,7 @@
           "scored",
           "rated",
           "depth2Usd",
+          "depthKnownPools",
           "volume24hUsd",
           "medianHealth"
         ],
@@ -578,6 +589,10 @@
           "depth2Usd": {
             "type": "number",
             "description": "Sum of ±2 % depth (USD) over the DEX's scored pools, stale quotes (staleQuote) left out."
+          },
+          "depthKnownPools": {
+            "type": "integer",
+            "description": "The DEX's scored pools with a known ±2 % depth and no stale quote: the pools depth2Usd sums."
           },
           "volume24hUsd": { "type": ["number", "null"] },
           "medianHealth": { "$ref": "#/components/schemas/NullableNumber" }
@@ -711,7 +726,7 @@
           "volume24hUsd": { "$ref": "#/components/schemas/NullableNumber" },
           "ownerTop1Share": {
             "$ref": "#/components/schemas/NullableNumber",
-            "description": "Share of the indexed owners' in-band liquidity held by the largest owner, 0..1; how much of the pool those owners cover is the newest snapshot's concentration.owners.coverage."
+            "description": "The largest owner's share of the newest snapshot's in-band liquidity, 0..1, where the indexed owners describe the pool: some hold liquidity in the band (concentration.owners.count > 0) and together they cover at least 90 % of it (concentration.owners.coverage ≥ 0.9). Null otherwise: owners not indexed, none in the band, or covering less (a lone unstaked LP beside a gauge holding most of a Slipstream pool would otherwise read 100 %)."
           },
           "updatedAt": {
             "type": ["integer", "null"],
@@ -799,10 +814,10 @@
           "top3Share": { "type": "number" },
           "hhi": { "type": "number" },
           "coverage": {
-            "type": "number",
+            "type": ["number", "null"],
             "minimum": 0,
             "maximum": 1,
-            "description": "Σ owner weights / the pool's whole in-band weight: how much of the pool the indexed owners account for. A Slipstream gauge's staked positions count as uncovered."
+            "description": "Σ owner weights / the pool's whole in-band weight: how much of the pool the indexed owners account for. A Slipstream gauge's staked positions count as uncovered. Null (unknown) in a snapshot stored before coverage was recorded."
           }
         }
       },
