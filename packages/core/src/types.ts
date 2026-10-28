@@ -122,7 +122,11 @@ export interface SwapResult {
   amountOut: bigint
   /** Portion of amountIn taken as fee: the LP fee, plus the protocol fee on Uniswap v4. */
   feePaid: bigint
-  /** True when the full amountIn was consumed (or target price reached) without exhausting liquidity. */
+  /**
+   * Exact input: true when the full amountIn was consumed. Swap to price: true when the target
+   * price was reached; a zero-liquidity range inside the known ticks is crossed at no cost, as on
+   * chain, so only the edge of the known tick range (or a pool that cannot move) leaves it false.
+   */
   complete: boolean
   /** Concentrated pools only. */
   sqrtPriceAfterX96?: bigint
@@ -134,7 +138,11 @@ export interface DepthSide {
   amountIn: bigint
   /** Raw amount of the output token received along the way. */
   amountOut: bigint
-  /** False when liquidity ran out before the target price was reached (amounts are then totals to exhaustion). */
+  /**
+   * False when the walk ended at the edge of the known tick range before the target price, or the
+   * pool cannot move (amounts are then totals to that point). A target past a zero-liquidity
+   * range inside the known ticks is reached, at the amounts of the last range with liquidity.
+   */
   reached: boolean
 }
 
@@ -335,5 +343,5 @@ export interface DerivedPrice {
 
 /** Price levels (percent) and spread notionals (USD) computed for every snapshot. */
 export const DEPTH_LEVELS_PCT: readonly number[] = [1, 2, 5]
-export const SPREAD_NOTIONALS_USD: readonly number[] = [1_000, 10_000, 100_000]
+export const SPREAD_NOTIONALS_USD: readonly number[] = [1_000, 10_000, 100_000, 1_000_000]
 export const CONCENTRATION_BAND_PCT = 5

@@ -1175,8 +1175,9 @@ carries the counts from core:
 
 #### 5.9.8 Compact glyphs
 
-- **Cost to trade** (Pool): rows of 40 px per notional ($1K, $10K, $100K, 12 px labels in a 56 px
-  column); a 2 px `--line` track; a 4 px `--text-1` stem from 0 to the value; a 16 px square dot
+- **Cost to trade** (Pool): rows of 40 px per notional ($1K, $10K, $100K, $1M; snapshots stored
+  before the $1M point have three rows), 12 px labels in a 56 px column; a 2 px `--line` track; a
+  4 px `--text-1` stem from 0 to the value; a 16 px square dot
   (radius 4); the value 16 px after it (16 px / 800). Not fillable: a hollow ring at 0 and "Can't
   absorb $100K". Axis: 0 and three nice ticks in bps.
 - **Health bar** (Pool): four segments sized 35 : 25 : 20 : 20 with 4 px gaps, 16 px tall,

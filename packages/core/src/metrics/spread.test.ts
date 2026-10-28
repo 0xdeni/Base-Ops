@@ -39,9 +39,34 @@ describe('computeEffectiveSpread', () => {
     expect(mid1k.spreadBps).toBeLessThan(big.spreadBps)
   })
 
-  it('uses the default notionals', () => {
+  it('uses the default notionals, $1K to $1M', () => {
     const points = computeEffectiveSpread(wethUsdc, weth, usdc, mid, 1)
-    expect(points.map((p) => p.notionalUsd)).toEqual([1_000, 10_000, 100_000])
+    expect(points.map((p) => p.notionalUsd)).toEqual([1_000, 10_000, 100_000, 1_000_000])
+  })
+
+  it('makes the $1M point infeasible when its legs walk past the known ticks, never extrapolating', () => {
+    // About $25K within 1 % on each side, ticks known for about ±10 % (as a snapshot reads them).
+    const window = buildConcentratedState({
+      positions: [{ tickLower: -199_080, tickUpper: -197_040, liquidity: 10n ** 17n }],
+      tick: -198_080,
+      feePips: 500,
+      tickSpacing: 60,
+    })
+    const m = midPrice(window, 18, 6)
+    const [oneK, tenK, hundredK, oneM] = computeEffectiveSpread(window, weth, usdc, m, 1)
+    for (const p of [oneK, tenK, hundredK]) expect(p?.feasible).toBe(true)
+    expect(hundredK?.spreadBps).toBeLessThan(10_000)
+    expect(oneM).toEqual({
+      notionalUsd: 1_000_000,
+      spreadBps: null,
+      feasible: false,
+      buyAvgPrice: null,
+      sellAvgPrice: null,
+    })
+    // The buy leg stops at the upper bound with most of the $1M unspent.
+    const buy = simulateSwapExactIn(window, 'oneForZero', 1_000_000n * 10n ** 6n)
+    expect(buy.complete).toBe(false)
+    expect(buy.amountIn < 300_000n * 10n ** 6n).toBe(true)
   })
 
   it('is null when a USD price is missing', () => {

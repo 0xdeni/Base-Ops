@@ -1,10 +1,11 @@
 # Metric definitions
 
 This page is the single definition of every number Depthwatch publishes. Each metric is
-implemented once, in `packages/core`, and `packages/core/src/metrics/workedExamples.test.ts`
-reproduces the worked examples below to the digit (raw amounts to the wei, USD and bps figures to
-the two decimals printed here). If the dashboard, the API and this page ever disagree, this page
-and the core tests are what gets fixed first.
+implemented once, in `packages/core`, and `packages/core/src/metrics/workedExamples.test.ts` (with
+`workedExamples.spread.test.ts` for the effective spread) reproduces the worked examples below to
+the digit (raw amounts to the wei, USD and bps figures to the two decimals printed here). If the
+dashboard, the API and this page ever disagree, this page and the core tests are what gets fixed
+first.
 
 ## Conventions
 
@@ -48,9 +49,9 @@ and the core tests are what gets fixed first.
   unknown input is scored 0 (depth, spread) or at the neutral midpoint with a note (concentration,
   persistence), as detailed under the health score. A pool whose depth is too thin, one-sided or
   unpriced is not graded at all.
-- **Levels.** Depth is computed at 1, 2 and 5 % (`DEPTH_LEVELS_PCT`); spread at $1,000, $10,000
-  and $100,000 (`SPREAD_NOTIONALS_USD`). The ±2 % total and the $10k spread are the headline
-  numbers used for sorting and scoring.
+- **Levels.** Depth is computed at 1, 2 and 5 % (`DEPTH_LEVELS_PCT`); spread at $1,000, $10,000,
+  $100,000 and $1,000,000 (`SPREAD_NOTIONALS_USD`). The ±2 % total and the $10k spread are the
+  headline numbers used for sorting and scoring.
 
 ## Depth at ±p %
 
@@ -61,8 +62,12 @@ and the core tests are what gets fixed first.
   required (gross, fee included); `up.amountOut` the token0 received on the way.
 - `down = simulateSwapToPrice(state, mid × (1 − p/100), decimals)`, input token0. `down.amountIn` is the
   token0 required; `down.amountOut` the token1 received.
-- `reached` is true when the target price was hit. It is false when liquidity ran out first or
-  the walk hit the edge of the known tick range; the amounts are then the totals to that point,
+- `reached` is true when the simulated swap moves the price to the target. A stretch with no
+  liquidity inside the known tick range is crossed at no cost, as the contract's swap step
+  crosses it, so a target past it is reached with the amounts of the last price that had
+  liquidity: a ±5 % amount equal to the ±2 % amount means nothing sits between the two prices.
+  `reached` is false when the walk hit the edge of the known tick range before the target, or when
+  the pool cannot move (see the edge cases below); the amounts are then the totals to that point,
   not the depth.
 
 USD: `upUsd = human(up.amountIn) × token1Usd`, `downUsd = human(down.amountIn) × token0Usd`;
@@ -111,6 +116,13 @@ $1.2M on each side, so `depth2Usd = $2.4M`.
 ## Effective spread at N USD
 
 **Question.** What does a round trip of N dollars cost, fees and price impact included?
+
+**Notionals.** $1,000, $10,000, $100,000 and $1,000,000 (`SPREAD_NOTIONALS_USD`). The ladder runs
+to $1M because the cheapest pool for a small trade is often not the cheapest for a large one (see
+the last worked example below). The $1M legs walk the same ticks as the others, the ones the
+snapshot already read; a leg that would move a concentrated pool's price past them is incomplete,
+so that point is infeasible rather than extrapolated. Snapshots stored before the $1,000,000 point
+was added carry the first three points and are not rewritten.
 
 **Definition.** For each notional N:
 - Buy leg: `amount1In = raw(N / token1Usd)` of token1, `simulateSwapExactIn(state, 'oneForZero',
@@ -165,9 +177,9 @@ rather than as a number.
 - `spreadBps = (2,517.52 − 2,482.60) / 2,500 × 10,000 = 139.69` bps.
 
 At $1,000 the same pool shows 68.06 bps (about twice the fee plus a little impact); at $100,000
-it shows 842.45 bps. The ladder across notionals is the depth story told in price terms. The legs
-of the $10,000 spread cost 70.09 bps (buy: `2,517.52 / 2,500 − 1`) and 69.60 bps (sell: `1 −
-2,482.60 / 2,500`), which add up to the 139.69 above.
+it shows 842.45 bps and at $1,000,000 6,902.55 bps (worked below). The ladder across notionals is
+the depth story told in price terms. The legs of the $10,000 spread cost 70.09 bps (buy: `2,517.52
+/ 2,500 − 1`) and 69.60 bps (sell: `1 − 2,482.60 / 2,500`), which add up to the 139.69 above.
 
 **Worked example: the cap.** The same pool with 1 WETH and 2,500 USDC (TVL $5,000), N = $10,000.
 - Buy: 10,000 USDC in, 9,970 after the fee; out = `1 × 9,970 / (2,500 + 9,970) = 0.79952` WETH;
@@ -180,6 +192,25 @@ of the $10,000 spread cost 70.09 bps (buy: `2,517.52 / 2,500 − 1`) and 69.60 b
 With ten times the reserves (10 WETH, 25,000 USDC, TVL $50,000) the same trade is feasible: the buy
 costs 4,030.09 bps (`buyAvg = 3,507.52`), the sell 2,872.46 bps (`sellAvg = 1,781.88`) and
 `spreadBps = 6,902.55`.
+
+**Worked example: $1,000,000.** The first pool (1,000 WETH, 2,500,000 USDC, TVL $5,000,000) still
+absorbs a $1M round trip.
+- Buy: 1,000,000 USDC in, 997,000 after the fee; out = `1,000 × 997,000 / (2,500,000 + 997,000) =
+  285.10` WETH; `buyAvg = 3,507.52`, a buy impact of 4,030.09 bps.
+- Sell: 400 WETH in, 398.8 after the fee; out = `2,500,000 × 398.8 / 1,398.8 = 712,753.79` USDC;
+  `sellAvg = 1,781.88`, a sell impact of 2,872.46 bps.
+- `spreadBps = 6,902.55`: the same legs as the $50,000 pool's $10,000 trade above, since a
+  constant-product leg depends only on N against the reserves.
+
+A pool of 200 WETH and 500,000 USDC with a 0.05 % fee (TVL $1,000,000) is cheaper at $1,000 (49.94
+bps against 68.06) but can't absorb $1M.
+- Buy: 1,000,000 USDC in, 999,500 after the fee; out = `200 × 999,500 / (500,000 + 999,500) =
+  133.31` WETH; `buyAvg = 7,501.25`, a buy impact of 20,005.00 bps.
+- Sell: 400 WETH in, 399.8 after the fee; out = `500,000 × 399.8 / 599.8 = 333,277.76` USDC;
+  `sellAvg = 833.19`, a sell impact of 6,667.22 bps.
+- Both legs are above 5,000 bps: `spreadBps = null`, `feasible = false`, and the dashboard shows
+  "Can't absorb $1M". Its ladder reads 49.94, 405.89 and 3,675.14 bps, then nothing: which pool is
+  cheaper depends on the size of the trade.
 
 ## LP concentration
 
@@ -453,6 +484,11 @@ Turnover of 1× (a day's volume equals the ±2 % depth) → 0; 10× → 50; 100�
 **Feed.** `GET /api/gaps` lists pools with `volume24hUsd ≥ 10,000` sorted by `gapScore`
 descending. The volume floor keeps dust pools with a single trade out of the feed.
 
+**Turnover is not fee income.** What a day's volume pays the pool's LPs is about `volume24hUsd ×
+feePips / 10^6`, so a 0.01 % pool full of arbitrage flow can top the feed while earning less per
+dollar of liquidity than a 0.30 % pool further down. The feed shows where trading outruns the
+depth near the price, not where added liquidity earns the most fees.
+
 **Worked example.** `volume24hUsd = $500,000`, `depth2Usd = $20,000` → `turnover = 25` →
 `log10 25 / 2 = 0.699` → **69.90**. `$20,000 / $20,000` → 0. `$2,000,000 / $20,000` → 100.
 `$5,000 / $20,000` → 0. Depth 0 → `null`.
@@ -524,9 +560,11 @@ is not deep.
 
 For a **protocol team**, the same numbers answer whether their token is tradeable at size, whether
 a market maker is delivering what was agreed, and where to direct incentives: the gaps feed is a
-ranked list of pools where volume exists but depth does not, which is where added liquidity earns
-the most fees and does the most good. The health score exists so that a list of thousands of
-pools can be sorted; the components exist so that nobody has to trust the score.
+ranked list of pools where a day's volume outruns the ±2 % depth, so that added depth carries the
+most trading per dollar. It ranks turnover, not fee income, which also depends on the fee tier
+(see [Gap score and the gaps feed](#gap-score-and-the-gaps-feed)). The health score exists so
+that a list of thousands of pools can be sorted; the components exist so that nobody has to trust
+the score.
 
 All of this is computed from public pool state with the contracts' own math, so any reading can be
 reproduced by anyone with an RPC endpoint and this page.

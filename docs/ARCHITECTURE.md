@@ -97,7 +97,7 @@ Each step reads what the previous one stored, so any step can be rerun on its ow
    `tickLowerBound` / `tickUpperBound` so the simulator knows where its knowledge ends. Reserve
    pools are complete after `getReserves`.
 6. **metrics**. Pure calls into core: `computeDepth` at 1 / 2 / 5 %, `depthToUsd`,
-   `computeEffectiveSpread` at $1k / $10k / $100k, `computeConcentration` (or
+   `computeEffectiveSpread` at $1k / $10k / $100k / $1M, `computeConcentration` (or
    `computeConcentrationForReserves`), `tvlUsd`. The output is one `PoolSnapshot` per pool.
 7. **snapshots**. Inserted with the block number and block timestamp. Three denormalised columns
    (`depth2_usd`, `spread10k_bps`, `owner_top1_share`) are filled from the JSON so that the

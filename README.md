@@ -3,11 +3,11 @@
 An open liquidity observatory for Base mainnet. Depthwatch indexes every Uniswap v3, Uniswap v4 and
 Aerodrome (v2 AMM and Slipstream concentrated) pool on Base and publishes, per pool, how much
 capital it takes to move the price by 1, 2 and 5 percent in each direction, the effective spread a
-trader pays on a $1k / $10k / $100k round trip with fees included, how concentrated the liquidity
-is by tick range and by owner, how stable that depth has been over the last 24 hours and 7 days,
-and a single 0–100 Liquidity Health Score, graded A–F for the pools deep enough to be rated (both
-sides of the ±2 % depth known, the thinner holding at least $5,000; the others show "not rated" and
-why). A "liquidity gaps" feed lists pools that have real
+trader pays on a $1k / $10k / $100k / $1M round trip with fees included, how concentrated the
+liquidity is by tick range and by owner, how stable that depth has been over the last 24 hours and
+7 days, and a single 0–100 Liquidity Health Score, graded A–F for the pools deep enough to be
+rated (both sides of the ±2 % depth known, the thinner holding at least $5,000; the others show
+"not rated" and why). A "liquidity gaps" feed lists pools that have real
 trading volume but thin depth. Price trackers show price and pool TVL; Depthwatch measures
 executable depth, which is what market makers quote against and what protocol teams need when they
 evaluate one. There is no token, no custody and no trading capital: it is indexing, analytics and a
@@ -33,7 +33,7 @@ Every metric is defined once, in [docs/METRICS.md](docs/METRICS.md), and impleme
 | Metric                 | Question it answers                                                       | Unit                                |
 | ---------------------- | ------------------------------------------------------------------------- | ----------------------------------- |
 | Depth at ±1 / 2 / 5 %  | How much token1 (up) or token0 (down) moves the price by p %?             | raw token amounts and USD           |
-| Effective spread       | What does a round trip of $1k / $10k / $100k cost, fees included?         | basis points                        |
+| Effective spread       | What does a round trip of $1k / $10k / $100k / $1M cost, fees included?   | basis points                        |
 | LP concentration       | Is in-band liquidity one range or many; how much does the top owner hold? | HHI 0..1, shares 0..1               |
 | Liquidity persistence  | Over 24 h / 7 d, how much of the depth was there whenever we looked?      | stability 0..1, uptime 0..1         |
 | Liquidity Health Score | 35 depth + 25 spread + 20 concentration + 20 persistence                  | 0–100; grade A–F if rated           |

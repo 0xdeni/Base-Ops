@@ -3,7 +3,7 @@
 Depthwatch is an open liquidity observatory for **Base mainnet only**. It indexes every Uniswap v3,
 Uniswap v4 and Aerodrome (v2 AMM + Slipstream concentrated) pool, and publishes per pool:
 - **Depth at ±1 / 2 / 5 %**: how much capital it takes to move the price by that much, each side.
-- **Effective spread** at $1k / $10k / $100k round-trip notional, fees included.
+- **Effective spread** at $1k / $10k / $100k / $1M round-trip notional, fees included.
 - **LP concentration**: structural (tick-range HHI) and ownership (top-1 / top-3 share, HHI over owners).
 - **Liquidity persistence** over 24 h / 7 d from stored snapshots.
 - A **Liquidity Health Score** (0–100; a grade A–F for _rated_ pools, those whose thinner ±2 % side holds at least
@@ -110,8 +110,11 @@ buildConcentratedState(opts: { positions: Array<{tickLower, tickUpper, liquidity
   it would differ from on-chain amounts by a few wei.
 - A 100 % fee (Uniswap v4 `MAX_LP_FEE = 1_000_000`) is valid: exact-in turns the whole input into fee without
   moving the price (v4 `SwapMath`); swap-to-price reports `complete = false` with zero amounts.
-- Walk stops at the target price, when amountIn is exhausted, when liquidity hits 0 with no further ticks inside
-  the known bounds, or at the bound; `complete` is false in the last two cases.
+- Walk stops at the target price, when amountIn is exhausted, or at the bound; `complete` is false at the bound.
+  A range with zero liquidity inside the known bounds is crossed at no cost, as the contract's `computeSwapStep`
+  crosses it: an exact-input walk consumes nothing there and goes on (to the bound, if no liquidity follows), and a
+  swap-to-price walk reaches a target past it (`complete = true`, the amounts those of the last range with
+  liquidity). Depth's `reached` is this `complete` (docs/METRICS.md, Depth).
 - Ticks beyond `tickLowerBound`/`tickUpperBound` are unknown: never extrapolate.
 
 ### Constant product (Aerodrome v2 volatile)

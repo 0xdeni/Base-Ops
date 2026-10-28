@@ -2,11 +2,11 @@
  * Methodology's copy (ia-v3 §4.8, docs/design/visual-v4.md §6.9): the metric blocks and one
  * section per anchor, each a plain explanation of at most 150 words (in the fixed vocabulary of
  * principles CP9, without "we"), an optional schematic and the exact formula from
- * docs/METRICS.md and docs/SCORECARDS.md. Section titles are lowercase words (acronyms and
- * symbols keep their case). Formulas use only glyphs the self-hosted mono subset carries (no √,
- * Σ or ∈).
+ * docs/METRICS.md and docs/SCORECARDS.md, then the USD price convention the dollar figures rest
+ * on. Section titles are lowercase words (acronyms and symbols keep their case). Formulas use only
+ * glyphs the self-hosted mono subset carries (no √, Σ or ∈).
  */
-import { GAP_FEED_MIN_VOLUME_USD } from '@depthwatch/core'
+import { GAP_FEED_MIN_VOLUME_USD, SPREAD_NOTIONALS_USD } from '@depthwatch/core'
 import type { ReactNode } from 'react'
 import { NB, usd } from '../../lib/format.js'
 import { DepthSchematic, KpiSchematic, PersistenceSchematic } from './figures.js'
@@ -27,6 +27,12 @@ export interface MetricSection {
 
 const u = (n: number | string, unit: string) => `${n}${NB}${unit}`
 
+/** "$1K, $10K, $100K or $1M": core's spread notionals as a list in words. */
+function notionals(last: 'or' | 'and'): string {
+  const all = SPREAD_NOTIONALS_USD.map((n) => usd(n))
+  return all.length < 2 ? all.join('') : `${all.slice(0, -1).join(', ')} ${last} ${all.at(-1)}`
+}
+
 export const SECTIONS: readonly MetricSection[] = [
   {
     id: 'depth',
@@ -39,7 +45,7 @@ export const SECTIONS: readonly MetricSection[] = [
           {`Depth answers one question: how many dollars does it take to move a pool’s price by 1, 2 or ${u(5, '%')}? Each reading simulates the swap on the pool’s real state, tick by tick with the contract’s own rounding, once in each direction.`}
         </p>
         <p>
-          {`The buy side is the money spent buying the first token to lift the price; the sell side is the first token sold to push it down. Both sides added at ±${u(2, '%')} give the headline number used for sorting and scoring. When liquidity runs out before the target, the side is marked exhausted, and the amount is what it took to empty it.`}
+          {`The buy side is the money spent buying the first token to lift the price; the sell side is the first token sold to push it down. Both sides added at ±${u(2, '%')} give the headline number used for sorting and scoring. A stretch with no liquidity costs nothing to cross, as on chain, so when the ±${u(5, '%')} amount equals the ±${u(2, '%')} amount, nothing sits between the two prices. When the target lies past the liquidity the snapshot read, the side is marked “Liquidity runs out”, and the amount is what it took to get that far.`}
         </p>
       </>
     ),
@@ -55,24 +61,17 @@ export const SECTIONS: readonly MetricSection[] = [
   {
     id: 'spread',
     short: 'Spread',
-    definition: 'What a round trip of $1K, $10K or $100K costs, fees included.',
+    definition: `What a round trip of ${notionals('or')} costs, fees included.`,
     title: 'effective spread',
     body: (
       <p>
-        Effective spread is what a round trip costs: buy N dollars of the first token, sell N
-        dollars of it back, and compare the two average prices with the mid price. The swap fee and
-        price impact are both included (the LP fee, plus on Uniswap v4 the protocol fee, which the
-        fee shown for a pool does not include), so even an infinitely deep pool shows about twice
-        its swap fee. It is measured at $1K, $10K and $100K; the spread at $10K is the headline. If
-        either leg cannot be filled from known liquidity, or one leg pays more than half of its
-        value in price impact, the pool can’t absorb that trade and shows no spread, which is a
-        signal in itself. A spread that is shown is therefore never above 10,000 bps.
+        {`Effective spread is what a round trip costs: buy N dollars of the first token, sell N dollars of it back, and compare the two average prices with the mid price. The swap fee and price impact are both included (the LP fee, plus on Uniswap v4 the protocol fee, which the fee shown for a pool does not include), so even an infinitely deep pool shows about twice its swap fee. It is measured at ${notionals('and')}, because the cheapest pool for a small trade is often not the cheapest for a large one; the spread at $10K is the headline. If either leg cannot be filled from known liquidity, or one leg pays more than half of its value in price impact, the pool can’t absorb that trade and shows no spread. A spread that is shown is therefore never above 10,000 bps.`}
       </p>
     ),
     formula: [
       'buyAvg    = N of token1 in / token0 out',
       'sellAvg   = token1 out / N of token0 in',
-      'spreadBps = (buyAvg − sellAvg) / mid × 10 000      for N in {$1K, $10K, $100K}',
+      `spreadBps = (buyAvg − sellAvg) / mid × 10 000      for N in {${SPREAD_NOTIONALS_USD.map((n) => usd(n)).join(', ')}}`,
       '            = (buyAvg / mid − 1) + (1 − sellAvg / mid), each leg at most 50 %',
     ].join('\n'),
   },
@@ -154,7 +153,7 @@ export const SECTIONS: readonly MetricSection[] = [
     title: 'gap score',
     body: (
       <p>
-        {`A gap is a pool where a day’s trading is many times the money sitting near its price: real demand, thin liquidity. That is where added liquidity earns the most fees and does the most good. Turnover is the day’s volume over the depth ±${u(2, '%')}; the gap score maps 1× to 0, 10× to 50 and 100× or more to 100. The gaps list only includes pools with at least ${usd(GAP_FEED_MIN_VOLUME_USD)} of ${u(24, 'h')} volume, so dust pools with a single trade stay out.`}
+        {`A gap is a pool where a day’s trading is many times the money sitting near its price: real demand, thin liquidity. Turnover is the day’s volume over the depth ±${u(2, '%')}; the gap score maps 1× to 0, 10× to 50 and 100× or more to 100. It ranks turnover, not fee income: what that volume pays liquidity providers also depends on the pool’s fee tier, so a low-fee pool full of arbitrage can top the list while earning less than one further down. The gaps list only includes pools with at least ${usd(GAP_FEED_MIN_VOLUME_USD)} of ${u(24, 'h')} volume, so dust pools with a single trade stay out.`}
       </p>
     ),
     figure: <GapScale />,
@@ -191,6 +190,29 @@ export const SECTIONS: readonly MetricSection[] = [
   },
 ]
 
+/**
+ * The convention under every dollar figure (docs/METRICS.md, USD prices): a section after the
+ * metrics, listed in "On this page" but not a metric block.
+ */
+export const PRICES: MetricSection = {
+  id: 'usd-prices',
+  short: 'USD prices',
+  definition: 'Dollar values read from the pools, from stablecoins taken at $1.',
+  title: 'USD prices',
+  body: (
+    <p>
+      {`Every dollar figure comes from the pools themselves. Four stablecoins are the anchors: USDC, USDbC, DAI and USDT count as $1 by convention, whatever their own pools say. Every other token is priced through pools, along the route from an anchor whose weakest pool is the deepest, where a pool counts with the thinner of its two sides within ±${u(2, '%')}. Native ETH is tied to WETH one for one. A token that no route reaches has no USD price, and every dollar figure that needs it is unknown. This is a valuation convention for depth and volume, not an oracle: a stablecoin trading slightly off its peg still counts as $1.`}
+    </p>
+  ),
+  formula: [
+    'anchors = USDC, USDbC, DAI and USDT at $1, by convention',
+    'edge    = a pool with a usable mid, at its price (token1 per token0)',
+    `weight  = min(up × token1Usd, down × token0Usd) at ±${u(2, '%')}, the thinner side`,
+    'route   = from an anchor, the path whose weakest edge weighs the most',
+    'usd     = the anchor’s $1 times the pool prices along the route',
+  ].join('\n'),
+}
+
 /** The closing section (ia-v3 §4.8 "End"). */
 export const REPRODUCE = {
   id: 'reproduce',
@@ -201,5 +223,6 @@ export const REPRODUCE = {
 /** Every anchor on the page, in order, for "On this page". */
 export const OUTLINE: ReadonlyArray<{ id: string; label: string }> = [
   ...SECTIONS.map((s) => ({ id: s.id, label: s.short })),
+  { id: PRICES.id, label: PRICES.short },
   { id: REPRODUCE.id, label: REPRODUCE.short },
 ]

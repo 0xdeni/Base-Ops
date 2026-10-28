@@ -554,7 +554,7 @@
         "properties": {
           "amountIn": { "$ref": "#/components/schemas/DecimalString", "description": "Raw input amount, fee included (token1 for up, token0 for down)." },
           "amountOut": { "$ref": "#/components/schemas/DecimalString", "description": "Raw output amount received on the way." },
-          "reached": { "type": "boolean", "description": "False when liquidity or the known tick range ended first; the amounts are then totals to that point." }
+          "reached": { "type": "boolean", "description": "False when the known tick range ended before the target price (or the pool cannot move); the amounts are then totals to that point. A stretch with no liquidity inside the known range is crossed at no cost, as on chain, so the target is reached." }
         }
       },
       "DepthLevel": {
@@ -580,7 +580,7 @@
         "type": "object",
         "required": ["notionalUsd", "spreadBps", "feasible", "buyAvgPrice", "sellAvgPrice"],
         "properties": {
-          "notionalUsd": { "type": "number", "description": "1000, 10000 or 100000." },
+          "notionalUsd": { "type": "number", "description": "1000, 10000, 100000 or 1000000 (snapshots stored before the 1000000 point have the first three)." },
           "spreadBps": { "$ref": "#/components/schemas/NullableNumber", "description": "(buyAvgPrice − sellAvgPrice) / mid × 10 000; null when infeasible: a leg is incomplete or yields nothing, or its average price is more than 5,000 bps from mid. A feasible spread is at most 10,000." },
           "feasible": { "type": "boolean" },
           "buyAvgPrice": { "$ref": "#/components/schemas/NullableNumber" },

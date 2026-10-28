@@ -245,7 +245,10 @@ describe('exit codes of a pass that failed', () => {
         return fake.fetch(input, init)
       }
       vi.stubGlobal('fetch', fetch)
-      expect((await run(['discover', '--db', file], env)).code).toBe(EXIT_OK)
+      // Wide log chunks: the default 2,000-block chunks over the fixture's whole chain would spend
+      // most of the test's time budget on discovery alone.
+      const discover = await run(['discover', '--db', file, '--log-chunk', '1000000'], env)
+      expect(discover.code).toBe(EXIT_OK)
 
       const stderr: string[] = []
       const logs: string[] = []

@@ -155,11 +155,13 @@ describe('Token page: the price route', () => {
     expect(row.textContent).toContain('oracle:chainlink')
   })
 
-  it('says an anchor is not routed', async () => {
+  it('says an anchor is not routed and is taken at $1 by convention', async () => {
     renderToken({ via: [] })
     await loaded()
     expect(within(facts()).getByText('Anchor')).toBeTruthy()
-    expect(routeRow().textContent).toMatch(/^Anchor/)
+    expect(within(facts()).getByText('$1 by convention, not routed')).toBeTruthy()
+    expect(routeRow().textContent).toMatch(/^Anchor: a stablecoin taken at \$1 by convention/)
+    expect(routeRow().textContent).toContain('Other tokens are priced through the pools')
   })
 })
 
