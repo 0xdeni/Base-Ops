@@ -41,7 +41,7 @@ makers in one pool, or one agreement renegotiated under a new id).
 | `notes`                  | Free text, at most 2,000 characters                                                                                                                                                                                                                       | `null`  |
 
 Validation (`parseMandate` in core) reports every problem at once: the id pattern; non-empty
-`name` and `marketMaker` of at most 120 characters each; a `poolId` of one of the four DEXes with
+`name` and `marketMaker` of at most 120 characters each; a `poolId` of one of the six DEXes with
 a 40-hex-digit pool address (64 hex digits for a Uniswap v4 pool id), in any case and stored
 lowercase, so it matches the observatory's pool ids; one to 50 valid addresses (any case is
 accepted, stored lowercase, duplicates dropped); `minDepthUsd > 0`; `0 < bandPct < 100`;
