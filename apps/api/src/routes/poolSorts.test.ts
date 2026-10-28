@@ -60,6 +60,25 @@ describe('GET /api/pools and /api/tokens/:address by spread and top LP share', (
     expect(asc.map((row) => row.top)).toEqual([0.32, 0.55, 0.8, 0.9])
   })
 
+  it('lists no top LP share for owners that cover too little of the pool', async () => {
+    const p = seed.pools
+    const latest = db.snapshots.latestForPool(p.aeroUsdcSlip.id)
+    if (!latest?.concentration) throw new Error('the seed has no concentration for the pool')
+    // One unstaked LP beside a gauge holding 97 % of the band: 100 % of the indexed owners.
+    db.snapshots.insert({
+      ...latest,
+      blockNumber: latest.blockNumber + 1n,
+      timestamp: latest.timestamp + 1,
+      concentration: {
+        ...latest.concentration,
+        owners: { count: 1, top1Share: 1, top3Share: 1, hhi: 1, coverage: 0.0102 },
+      },
+    })
+    const desc = await pools('?sort=top')
+    expect(desc.map((row) => row.top)).toEqual([0.8, 0.55, 0.32, null, null, null])
+    expect(desc.find((row) => row.id === p.aeroUsdcSlip.id)?.top).toBeNull()
+  })
+
   it("sorts a token's pools by spread and top LP share", async () => {
     const p = seed.pools
     const weth = seed.tokens.WETH.address

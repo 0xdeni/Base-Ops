@@ -197,8 +197,9 @@ export interface OwnerConcentration {
   /**
    * Σ owner weights / the pool's whole in-band weight, 0..1 (clamped): how much of the pool the
    * indexed owners account for. A custodian's positions (a Slipstream gauge) count as uncovered.
+   * Null (unknown) only in a snapshot stored before coverage was recorded.
    */
-  coverage: number
+  coverage: number | null
 }
 
 export interface ConcentrationMetrics {

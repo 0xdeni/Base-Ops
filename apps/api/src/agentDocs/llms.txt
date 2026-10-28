@@ -13,7 +13,7 @@ Links below are relative to this file. On a Depthwatch server they resolve to `/
 
 ## API
 
-- [Health](./api/health): database counts, newest snapshot and its age in seconds, data source (`demo` or `live`); `?maxAge=<seconds>` answers 503 when the newest snapshot is older or missing
+- [Health](./api/health): database counts, newest snapshot and its age in seconds, newest score, data source (`demo` or `live`); `?maxAge=<seconds>` answers 503 when the newest snapshot is older or missing
 - [Pools](./api/pools): scored pools with their ±2 % depth per side, ranked by health, depth, volume, gap score or TVL; filter by DEX, token or pool text, minimum volume and rated or unrated
 - [Gaps](./api/gaps): pools with real 24 h volume on thin ±2 % depth, highest gap score first
 - [Stats](./api/stats): pools, depth and volume totals per DEX

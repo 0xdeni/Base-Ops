@@ -1297,9 +1297,10 @@ the winning study, v4 cut Home by 19 % on desktop and 25 % on phones, Pool by 28
 
 ### 6.2 Home (`/`)
 
-**Focal:** the depth butterfly of Base on the band. **Answer:** "$49.9M sits within 2 % of the
-price across 492 pools on Base." (the scored pools the figure sums, so it never reads as every pool
-on Base). **First facts:** 24 h volume, median health, biggest gap.
+**Focal:** the depth butterfly of Base on the band. **Answer:** "$49.8M sits within 2 % of the
+price across 327 pools on Base." (the pools the figure sums, `depthKnownPools`: scored, with a
+known depth and no stale quote, so it never reads as every pool on Base). The butterfly's totals
+leave the stale quotes out the same way and still draw their rows. **First facts:** 24 h volume, median health, biggest gap.
 
 | Element (1440)      |        y | Height | Element (390)        |          y |
 | ------------------- | -------: | -----: | -------------------- | ---------: |

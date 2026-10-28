@@ -6,8 +6,8 @@
  * reads (pool data change at the pipeline's cadence, minutes apart), 60 s for a pool's history
  * (the most expensive read, which changes at the same cadence), never stated for `/api/health`
  * (a probe must see the server as it is), a year for the hashed `/assets/*` build outputs (a new
- * build is a new path) and `no-cache` for `index.html` and the other dashboard files, which
- * clients revalidate by `ETag`.
+ * build is a new path; `index.html` answered there as the SPA fallback is not one) and
+ * `no-cache` for `index.html` and the other dashboard files, which clients revalidate by `ETag`.
  */
 import type { MiddlewareHandler } from 'hono'
 import { compress } from 'hono/compress'
@@ -46,9 +46,15 @@ export function apiCacheControl(): MiddlewareHandler {
   }
 }
 
-/** The `Cache-Control` of the dashboard file served for request path `path`. */
-export function staticCacheControl(path: string): string {
-  return path.startsWith(ASSETS_PREFIX) ? ASSET_CACHE_CONTROL : STATIC_CACHE_CONTROL
+/**
+ * The `Cache-Control` of the dashboard response to request path `path` with content type
+ * `contentType`. Only a build output under `/assets/` is immutable: `index.html` served there as
+ * the SPA fallback (a navigation to a chunk a later build removed) is revalidated like any other
+ * page, so no cache keeps HTML under that URL for a year.
+ */
+export function staticCacheControl(path: string, contentType = ''): string {
+  const html = contentType.toLowerCase().startsWith('text/html')
+  return path.startsWith(ASSETS_PREFIX) && !html ? ASSET_CACHE_CONTROL : STATIC_CACHE_CONTROL
 }
 
 /** Sets `staticCacheControl` on a successful dashboard response (file or SPA fallback). */
@@ -57,7 +63,8 @@ export function staticCacheHeaders(): MiddlewareHandler {
     await next()
     if (!isRead(c.req.method) || !c.res.ok) return
     if (!c.res.headers.has('Cache-Control')) {
-      c.header('Cache-Control', staticCacheControl(c.req.path))
+      const type = c.res.headers.get('content-type') ?? ''
+      c.header('Cache-Control', staticCacheControl(c.req.path, type))
     }
   }
 }

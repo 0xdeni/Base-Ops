@@ -223,7 +223,7 @@ describe('positionsStep storing a published pool', () => {
       const forPool = db.positions.forPool.bind(db.positions)
       const inTransaction: boolean[] = []
       vi.spyOn(db.positions, 'forPool').mockImplementation((poolId) => {
-        inTransaction.push(db.raw.isTransaction)
+        inTransaction.push(db.inTransaction)
         return forPool(poolId)
       })
 

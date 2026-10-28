@@ -111,4 +111,11 @@ describe('staticCacheControl', () => {
     for (const path of ['/', '/index.html', '/pools/x', '/favicon.svg', '/assets', '/xassets/a.js'])
       expect(staticCacheControl(path), path).toBe('no-cache')
   })
+
+  it('is no-cache for the SPA fallback answered under /assets/', () => {
+    expect(staticCacheControl('/assets/app-old.js', 'text/html; charset=UTF-8')).toBe('no-cache')
+    expect(staticCacheControl('/assets/app.js', 'text/javascript; charset=utf-8')).toBe(
+      'public, max-age=31536000, immutable',
+    )
+  })
 })

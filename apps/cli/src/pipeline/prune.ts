@@ -10,13 +10,15 @@
  *   (`volume:<pool>:fromTs`) moves up to that cutoff, so a later `volume --hours` never trusts a
  *   pruned hour as covered;
  * - scorecard samples older than MM_SAMPLES_DAYS (the summaries read 30 days), alerts older than
- *   MM_ALERTS_DAYS;
+ *   MM_ALERTS_DAYS except each mandate's newest delivered alert (`mmAlerts.pruneBefore`), which
+ *   the alert decision reads however long a breach streak lasts;
  * - the `volume:<pool>:*` cursors of pools that are no longer tracked (tracked again, the pool
  *   reads the whole window, as a newly tracked one does).
  *
  * Snapshots are deleted in batches of `batch` rows, each its own transaction, so a day's rows never
- * hold the write lock for long (under `start` the API answers between batches); the stop signal
- * ends the loop between batches, and the rows left wait for the next run. The rest goes in one
+ * hold the write lock for long. The loop yields to the event loop after each full batch, so under
+ * `start` the API answers between batches and a stop signal that arrives meanwhile ends the loop
+ * before the next one; the rows left wait for the next run. The rest goes in one
  * transaction together with `prune:lastRunAt`, which gates the daily prune of `run` and `start`
  * (`pruneDue`). The run ends with a WAL checkpoint (`Database.checkpoint`): the deletes fold into
  * the main file, whose freed pages later writes reuse, so the file stops growing.
@@ -102,6 +104,9 @@ export async function pruneStep(
     result.batches++
     result.snapshots += deleted
     if (deleted < batch) break
+    // node:sqlite is synchronous: without this yield the event loop would not run until the last
+    // batch, so `start` could neither answer a request nor see the stop signal in between.
+    await new Promise<void>((resolve) => setImmediate(resolve))
   }
 
   throwIfStopped(ctx)

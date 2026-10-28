@@ -20,6 +20,7 @@ import {
   type HealthGrade,
   type HealthInputs,
   type HealthScore,
+  type OwnerConcentration,
   type PoolMeta,
   type UnratedReason,
 } from '../types.js'
@@ -43,6 +44,28 @@ export const HEALTH_RATING_MIN_SIDE_USD = 5_000
  * the pool, and the range HHI is used instead.
  */
 export const OWNER_COVERAGE_MIN = 0.9
+
+/**
+ * Whether owner shares describe the pool (docs/METRICS.md, "Owner concentration"): owners hold
+ * liquidity in the band (`count > 0`) and cover at least OWNER_COVERAGE_MIN of it. Otherwise
+ * `top1Share` is a share of the indexed part only: of nothing when `count` is 0, and possibly
+ * 100 % for a lone unstaked LP beside a gauge that holds most of the pool.
+ */
+export function ownersCoverPool(
+  owners: OwnerConcentration | null | undefined,
+): owners is OwnerConcentration & { coverage: number } {
+  if (owners == null || !(owners.count > 0)) return false
+  const { coverage } = owners
+  return coverage !== null && Number.isFinite(coverage) && coverage >= OWNER_COVERAGE_MIN
+}
+
+/**
+ * The largest owner's share of the pool's in-band liquidity where the owners describe the pool
+ * (`ownersCoverPool`), else null: the value the snapshot stores and lists as `ownerTop1Share`.
+ */
+export function poolOwnerTop1Share(owners: OwnerConcentration | null | undefined): number | null {
+  return ownersCoverPool(owners) ? owners.top1Share : null
+}
 
 /** "owner data covers 40 % of in-band liquidity" (rounded down, so 89.9 % never reads as 90 %). */
 export function ownerCoverageNote(coverage: number | null): string {

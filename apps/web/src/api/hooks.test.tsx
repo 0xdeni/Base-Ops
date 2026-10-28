@@ -1,7 +1,8 @@
 /**
- * The health poll follows new snapshots: when `latestSnapshotAt` moves, the page's other queries
- * refetch in place, so an open tab never shows a newer "Updated … ago" over older numbers. The
- * mock and the static build never take a new snapshot and keep their data.
+ * The health poll follows new data: when `latestSnapshotAt` or `latestScoredAt` moves, the page's
+ * other queries refetch in place, so an open tab never shows a newer "Updated … ago" over older
+ * numbers, nor keeps the previous pass's scores when a poll lands between a pass's snapshot and
+ * its score. The mock and the static build never take a new snapshot and keep their data.
  */
 import { QueryClient } from '@tanstack/react-query'
 import { act, cleanup, render, screen } from '@testing-library/react'
@@ -28,10 +29,14 @@ afterEach(() => {
 /** The mock world whose snapshot time and Base depth the test moves, counting stats calls. */
 function server() {
   const mock = createMockClient({ now: NOW })
-  const state = { at: NOW, depth: 1_000_000, statsCalls: 0 }
+  const state = { at: NOW, scoredAt: NOW, depth: 1_000_000, statsCalls: 0 }
   const client: ApiClient = {
     ...mock,
-    health: async () => ({ ...(await mock.health()), latestSnapshotAt: state.at }),
+    health: async () => ({
+      ...(await mock.health()),
+      latestSnapshotAt: state.at,
+      latestScoredAt: state.scoredAt,
+    }),
     stats: async () => {
       state.statsCalls += 1
       const stats = await mock.stats()
@@ -82,6 +87,23 @@ describe('useHealth: new snapshots refresh the page', () => {
     state.depth = 2_500_000
     await nextPoll()
     await vi.waitFor(async () => expect(await hero()).toBe(usd(2_500_000)))
+  })
+
+  it('refetches again once the scores of the pass land after its snapshot', async () => {
+    const { client, state } = server()
+    renderHome(client)
+    await vi.waitFor(async () => expect(await hero()).toBe(usd(1_000_000)))
+    // The snapshot is stored; the score step has not run yet, so the stats are the old ones.
+    state.at = NOW + 300
+    await nextPoll()
+    const calls = state.statsCalls
+    expect(await hero()).toBe(usd(1_000_000))
+    // The score step commits: the next poll sees it and the page reads the new totals.
+    state.scoredAt = NOW + 330
+    state.depth = 2_500_000
+    await nextPoll()
+    await vi.waitFor(async () => expect(await hero()).toBe(usd(2_500_000)))
+    expect(state.statsCalls).toBe(calls + 1)
   })
 
   it('leaves the data alone while the snapshot is the same', async () => {

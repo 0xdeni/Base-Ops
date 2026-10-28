@@ -29,12 +29,15 @@ describe('Home: the band', () => {
     const client = renderHome()
     const { totals } = await client.stats()
     const h1 = await screen.findByRole('heading', { level: 1 })
-    await waitFor(() => expect(h1.textContent).toBe(homeAnswer(totals.depth2Usd, totals.scored)))
+    await waitFor(() =>
+      expect(h1.textContent).toBe(homeAnswer(totals.depth2Usd, totals.depthKnownPools)),
+    )
     expect(h1.querySelector('.mega')?.textContent).toBe(usd(totals.depth2Usd))
-    // The sentence counts the scored pools the figure sums, never "every pool on Base".
-    expect(h1.querySelector('.say')?.textContent).toBe(homeSay(totals.scored))
-    expect(homeSay(totals.scored)).toBe(
-      `sits within 2${NB}% of the price across ${totals.scored} pools on Base.`,
+    // The sentence counts the pools the figure sums (no stale quote, a known depth), never
+    // "every pool on Base".
+    expect(h1.querySelector('.say')?.textContent).toBe(homeSay(totals.depthKnownPools))
+    expect(homeSay(totals.depthKnownPools)).toBe(
+      `sits within 2${NB}% of the price across ${totals.depthKnownPools} pools on Base.`,
     )
     const band = h1.closest('section')
     expect(band?.classList.contains('band')).toBe(true)

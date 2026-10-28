@@ -56,6 +56,8 @@ export interface Database {
   readonly mmAlerts: MmAlertsRepo
   /** Runs `fn` in `BEGIN IMMEDIATE … COMMIT`, rolling back on throw; nested calls join the outer one. */
   transaction<T>(fn: () => T): T
+  /** True while a `transaction` call runs on this connection. */
+  readonly inTransaction: boolean
   /**
    * Refreshes the planner statistics (`ANALYZE`, sampling at most `ANALYSIS_LIMIT` rows per
    * index) after a bulk write of pools, so the dex-filtered feeds and `statsByDex` search the
@@ -184,6 +186,10 @@ class SqliteDatabase implements Database {
 
   transaction<T>(fn: () => T): T {
     return this.ctx.transaction(fn)
+  }
+
+  get inTransaction(): boolean {
+    return this.ctx.inTransaction
   }
 
   analyze(): void {

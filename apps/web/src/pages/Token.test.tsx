@@ -335,8 +335,15 @@ describe('token helpers', () => {
       depth2UsdTotal: 40_000_000,
       depthKnownPools: 1_200,
     } as unknown as TokenDetail
+    // The total sums the 1,200 pools with a known depth and no stale quote, and says so.
     expect(tokenAnswer(detail)).toBe(
+      `$40M sits within 2${NB}% of the price across 1,200 of WETH’s 1,250 scored pools.`,
+    )
+    expect(tokenAnswer({ ...detail, depthKnownPools: 1_250 })).toBe(
       `$40M sits within 2${NB}% of the price across WETH’s 1,250 scored pools.`,
+    )
+    expect(tokenAnswer({ ...detail, total: 3, depthKnownPools: 1 })).toBe(
+      `$40M sits within 2${NB}% of the price in 1 of WETH’s 3 scored pools.`,
     )
     expect(poolsTakeaway(loaded, 'WETH', detail)).toBe(
       `A / B on Uniswap v3 holds 25${NB}% of WETH’s depth.`,

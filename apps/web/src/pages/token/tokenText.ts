@@ -31,7 +31,11 @@ export function orientPools(pools: readonly PoolSummary[], address: string): Poo
 /** The token's totals the answer and the takeaway read: the API's, over every scored pool. */
 export type TokenTotals = Pick<TokenDetail, 'total' | 'depth2UsdTotal'>
 
-/** "$16.5M sits within 2 % of the price across WETH’s 2 scored pools." */
+/**
+ * "$16.5M sits within 2 % of the price across WETH’s 2 scored pools." The pools named are the
+ * ones the total sums (`depthKnownPools`: a known depth, no stale quote); when that leaves some of
+ * the token's scored pools out, it says so: "across 2 of WETH’s 3 scored pools".
+ */
 export function tokenAnswer(detail: TokenDetail): string {
   const sym = detail.token.symbol
   const n = detail.total
@@ -39,7 +43,15 @@ export function tokenAnswer(detail: TokenDetail): string {
   if (detail.usd === null)
     return `${sym} has no USD price yet, so depth is shown in pool terms only.`
   if (detail.depth2UsdTotal === null) return `Depth around ${sym}’s price is not known yet.`
-  const where = n === 1 ? `in ${sym}’s one scored pool` : `across ${sym}’s ${count(n)} scored pools`
+  const summed = detail.depthKnownPools
+  let where: string
+  if (summed === n)
+    where = n === 1 ? `in ${sym}’s one scored pool` : `across ${sym}’s ${count(n)} scored pools`
+  else
+    where =
+      summed === 1
+        ? `in 1 of ${sym}’s ${count(n)} scored pools`
+        : `across ${count(summed)} of ${sym}’s ${count(n)} scored pools`
   return `${usd(detail.depth2UsdTotal)} sits within 2${NB}% of the price ${where}.`
 }
 

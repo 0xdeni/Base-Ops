@@ -112,9 +112,24 @@ export function rowToSnapshot(row: Row): PoolSnapshot {
     spreads: (JSON.parse(colText(row, 'spreads_json')) as SpreadPoint[]).map((point) =>
       capSpreadPoint(point, price),
     ),
-    concentration: colJsonOrNull<ConcentrationMetrics>(row, 'concentration_json'),
+    concentration: withOwnerCoverage(
+      colJsonOrNull<ConcentrationMetrics>(row, 'concentration_json'),
+    ),
     priceDeviationBps: colNumberOrNull(row, 'price_deviation_bps'),
   }
+}
+
+/**
+ * A stored concentration as the current type: owners stored before `coverage` was recorded read
+ * `coverage: null` (unknown), never a missing field.
+ */
+export function withOwnerCoverage(
+  concentration: ConcentrationMetrics | null,
+): ConcentrationMetrics | null {
+  const owners = concentration?.owners
+  // Typed as always present: the JSON of a row stored before it has no `coverage` key at all.
+  if (!concentration || !owners || owners.coverage !== undefined) return concentration
+  return { ...concentration, owners: { ...owners, coverage: null } }
 }
 
 export function rowToSnapshotSummary(row: Row): SnapshotSummary {

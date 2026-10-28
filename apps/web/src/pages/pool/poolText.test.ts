@@ -9,6 +9,7 @@ import {
   healthTakeaway,
   neutralReason,
   overTimeCaption,
+  ownersNote,
   poolAnswer,
   spanWords,
   spreadAt,
@@ -90,6 +91,28 @@ describe('healthTakeaway', () => {
     )
   })
 
+  it('names one LP as the weak part only when the owners cover the pool', () => {
+    const health: HealthScore = {
+      total: 70,
+      grade: 'B',
+      rated: true,
+      unratedReason: null,
+      // A score stored before the basis was recorded.
+      concentrationBasis: null,
+      components: { depth: 30, spread: 20, concentration: 2, persistence: 18 },
+      notes: [],
+    }
+    const band = { bandPct: 5, rangeHhi: 0.9, activeRangeShare: 0.4 }
+    const lone = { count: 1, top1Share: 1, top3Share: 1, hhi: 1, coverage: 0.0102 }
+    expect(healthTakeaway(health, { ...band, owners: lone }, 'concentrated')).toBe(
+      `Concentration is the weak part: 40${NB}% sits in one range.`,
+    )
+    const covering = { ...lone, count: 3, top1Share: 0.9, coverage: 0.95 }
+    expect(healthTakeaway(health, { ...band, owners: covering }, 'concentrated')).toBe(
+      `Concentration is the weak part: one LP holds 90${NB}%.`,
+    )
+  })
+
   it('gives core’s reason when it scored the weakest part neutral', () => {
     const short = computeHealthScore({
       ...inputs,
@@ -153,6 +176,37 @@ describe('who provides it', () => {
       `LP owners are not indexed for this pool. The active range holds 1${NB}% of the liquidity within ±5${NB}%.`,
     )
     expect(whoTakeaway(c, 'constant-product')).toBe('A full-range pool: every LP shares one range.')
+  })
+
+  const owners = (count: number, top1Share: number, coverage: number | null) => ({
+    ...c,
+    owners: { count, top1Share, top3Share: Math.min(1, top1Share * 2), hhi: 0.3, coverage },
+  })
+
+  it('names one LP only when the indexed owners cover the pool', () => {
+    expect(whoTakeaway(owners(4, 0.53, 0.95), 'concentrated')).toBe(
+      `One LP holds 53${NB}% of the liquidity near the price.`,
+    )
+  })
+
+  it('says what indexed LPs that cover too little hold, and the largest one’s part of that', () => {
+    // One unstaked LP beside a gauge holding 97 % of the band.
+    expect(whoTakeaway(owners(1, 1, 0.0102), 'concentrated')).toBe(
+      `Indexed LPs hold 1${NB}% of the liquidity near the price; the largest holds 100${NB}% of that.`,
+    )
+    expect(whoTakeaway(owners(3, 0.42, null), 'concentrated')).toBe(
+      `Indexed LPs hold an unknown share of the liquidity near the price; the largest holds 42${NB}% of that.`,
+    )
+    expect(ownersNote(owners(1, 1, 0.0102).owners)).toBe(
+      `Indexed owners cover 1${NB}% of the liquidity in the band, so health uses the range HHI; the LP shares above are of that part.`,
+    )
+    expect(ownersNote(owners(4, 0.53, 0.95).owners)).toBeNull()
+  })
+
+  it('reads the active range when no indexed owner is in the band (only a gauge’s positions)', () => {
+    expect(whoTakeaway(owners(0, 0, 0), 'concentrated')).toBe(
+      `No indexed LP owner holds liquidity near the price. The active range holds 1${NB}% of the liquidity within ±5${NB}%.`,
+    )
   })
 })
 

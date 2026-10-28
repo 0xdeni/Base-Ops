@@ -1,7 +1,8 @@
 /**
  * `buildSnapshot` on one pool's state: a hooked Uniswap v4 pool keeps its price but gets no depth,
  * spread or concentration (docs/METRICS.md, `hooked`), and every snapshot records how far its
- * price is from its tokens' USD cross (`priceDeviationBps`, "Stale quotes").
+ * price is from its tokens' USD cross (`priceDeviationBps`, "Stale quotes"). `rankPools` never
+ * ranks a hooked pool, so it is tracked only when requested or mandated.
  */
 import type { PoolOverview } from '@depthwatch/chain'
 import {
@@ -14,7 +15,7 @@ import {
 } from '@depthwatch/core'
 import { describe, expect, it } from 'vitest'
 import { computePrices } from './prices.js'
-import { buildSnapshot } from './snapshot.js'
+import { buildSnapshot, rankPools, selectTracked } from './snapshot.js'
 
 const token = (address: string, symbol: string, decimals: number): TokenInfo => ({
   address: address as Address,
@@ -25,6 +26,7 @@ const token = (address: string, symbol: string, decimals: number): TokenInfo => 
 const WETH = token('0x4200000000000000000000000000000000000006', 'WETH', 18)
 const USDC = token('0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', 'USDC', 6)
 const POOL_ID = `0x${'cd'.repeat(32)}` as const
+const HOOK: Address = '0x00000000000000000000000000000000000000c0'
 
 function v4Pool(hooks: Address | null): PoolMeta {
   return {
@@ -43,13 +45,15 @@ function v4Pool(hooks: Address | null): PoolMeta {
   }
 }
 
-/** A WETH/USDC pool at `price` with liquidity in ±20 % of it. */
-function poolAt(pool: PoolMeta, price: number) {
+/** A WETH/USDC pool at `price` with `scale` × 10^17 liquidity in ±20 % of it. */
+function poolAt(pool: PoolMeta, price: number, scale = 1n) {
   const sqrtPriceX96 = priceToSqrtPriceX96(price, 18, 6)
   const tick = getTickAtSqrtRatio(sqrtPriceX96)
   const aligned = Math.floor(tick / 10) * 10
   const state = buildConcentratedState({
-    positions: [{ tickLower: aligned - 2_000, tickUpper: aligned + 2_000, liquidity: 10n ** 17n }],
+    positions: [
+      { tickLower: aligned - 2_000, tickUpper: aligned + 2_000, liquidity: 10n ** 17n * scale },
+    ],
     tick,
     feePips: 500,
     tickSpacing: 10,
@@ -88,7 +92,7 @@ describe('buildSnapshot', () => {
   })
 
   it('stores a hooked v4 pool with its price and no depth, spread or concentration', () => {
-    const { view, state } = poolAt(v4Pool('0x00000000000000000000000000000000000000c0'), 2500)
+    const { view, state } = poolAt(v4Pool(HOOK), 2500)
     const snapshot = buildSnapshot(view.pool, view, state, PRICES, null, 5)
     expect(snapshot.price).toBeCloseTo(2500, 6)
     expect(snapshot.token0Usd).toBeCloseTo(2500, 6)
@@ -103,5 +107,42 @@ describe('buildSnapshot', () => {
     expect(snapshot.priceDeviationBps).toBeLessThan(1_001)
     const unpriced = buildSnapshot(view.pool, view, state, new Map(), null, 5)
     expect(unpriced.priceDeviationBps).toBeNull()
+  })
+})
+
+describe('rankPools and selectTracked', () => {
+  const plain = poolAt(
+    { ...v4Pool(null), id: 'uniswap-v4:plain', poolId: `0x${'01'.repeat(32)}` },
+    2500,
+  )
+  const hooked = poolAt(
+    { ...v4Pool(HOOK), id: 'uniswap-v4:hooked', poolId: `0x${'02'.repeat(32)}` },
+    2500,
+    100n,
+  )
+
+  it('ranks the deeper pool first when neither has a hook', () => {
+    const unhooked = { ...hooked.view, pool: { ...hooked.view.pool, hooks: null } }
+    const ranked = rankPools([plain.view, unhooked], PRICES)
+    expect(ranked.map((r) => r.view.pool.id)).toEqual(['uniswap-v4:hooked', 'uniswap-v4:plain'])
+  })
+
+  it('never ranks a hooked pool: the modelled pool takes the slot', () => {
+    const ranked = rankPools([hooked.view, plain.view], PRICES)
+    expect(ranked.map((r) => [r.view.pool.id, r.rankUsd === null])).toEqual([
+      ['uniswap-v4:plain', false],
+      ['uniswap-v4:hooked', true],
+    ])
+    expect(ranked[0]?.rankUsd).toBeGreaterThan(0)
+    expect(selectTracked(ranked, 1, [])).toEqual(['uniswap-v4:plain'])
+    expect(selectTracked(ranked, 2, [])).toEqual(['uniswap-v4:plain'])
+  })
+
+  it('still tracks a hooked pool that is requested or mandated', () => {
+    const ranked = rankPools([hooked.view, plain.view], PRICES)
+    expect(selectTracked(ranked, 1, ['uniswap-v4:hooked'])).toEqual([
+      'uniswap-v4:hooked',
+      'uniswap-v4:plain',
+    ])
   })
 })

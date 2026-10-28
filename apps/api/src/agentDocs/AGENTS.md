@@ -33,6 +33,7 @@ curl -s "$DW/api/health"
   "poolCount": 6,
   "trackedCount": 6,
   "latestSnapshotAt": 1792713600,
+  "latestScoredAt": 1792713600,
   "snapshotAgeSeconds": 0,
   "latestBlock": "52950000",
   "source": "demo"
@@ -114,7 +115,9 @@ indexed; `GET /api/stats` counts the pools found, tracked and scored.
   indexed for the pool). The shares are out of the indexed owners; `coverage` (0..1) is how much
   of the pool's in-band liquidity those owners account for, and a Slipstream gauge holding
   staked positions is not counted as an owner. A `top1Share` near 1 with a `coverage` near 1
-  means one owner controls most of the depth and can withdraw it at once.
+  means one owner controls most of the depth and can withdraw it at once; with a low `coverage`
+  it is a share of a small part of the pool only. `coverage` is `null` (unknown) in a snapshot
+  stored before it was recorded.
 - **Persistence**, over 24 h and 7 d of stored snapshots: `stability` = p10 / median of the
   ±2 % depth samples (0..1); `uptime` = share of samples with depth ≥ half the median (0..1);
   both `null` (unknown) with fewer than 3 samples or when the oldest and newest sample are less
@@ -145,7 +148,8 @@ indexed; `GET /api/stats` counts the pools found, tracked and scored.
   `latest.timestamp` / `latest.blockNumber` (pool detail) are the pool's newest snapshot;
   `scoredAt` is when its score was computed; `latestSnapshotAt` / `latestBlock` in
   `GET /api/health` are the newest snapshot of any pool and `snapshotAgeSeconds` its age by the
-  server's clock. Compare them with the current time before relying on a number.
+  server's clock, and `latestScoredAt` is the newest score (a pass writes it after its
+  snapshots). Compare them with the current time before relying on a number.
 - **`null` means not known (yet), never zero.**
 - **Which pools appear**: the pipeline tracks the top pools by TVL (200 unless the operator set
   `--top` / `DEPTHWATCH_TOP_POOLS`; Uniswap v4 pools are ranked by ±2 % depth instead), plus
@@ -164,7 +168,8 @@ value is a 400, not clamped. `/openapi.json` has the full response schemas.
 ### `GET /api/health`
 
 Database counts and the newest snapshot. Fields: `ok`, `poolCount` (discovered pools),
-`trackedCount`, `latestSnapshotAt` (unix seconds or `null`), `snapshotAgeSeconds` (the server's
+`trackedCount`, `latestSnapshotAt` (unix seconds or `null`), `latestScoredAt` (unix seconds of
+the newest score or `null`), `snapshotAgeSeconds` (the server's
 clock minus `latestSnapshotAt`; `null` before the first snapshot), `latestBlock` (decimal string
 or `null`), `source` (`demo` | `live`). Answers 503 with `ok: false`, zero counts and `error` when
 the database cannot be read.
@@ -181,7 +186,8 @@ for an hour (`depthwatch start` snapshots every 30 minutes by default).
 Totals per DEX and overall. `byDex` has one row per DEX in the fixed order `uniswap-v3`,
 `uniswap-v4`, `aerodrome-v2`, `aerodrome-slipstream` (zeros for a DEX without pools): `dex`,
 `pools` (discovered), `tracked`, `scored`, `rated` (scored pools that are rated), `depth2Usd`
-(sum of ±2 % depth over scored pools, stale quotes left out), `volume24hUsd` (sum over scored pools with a known volume; `null` when none has one), `medianHealth`
+(sum of ±2 % depth over scored pools, stale quotes left out), `depthKnownPools` (the scored
+pools that sum covers: a known depth and no stale quote), `volume24hUsd` (sum over scored pools with a known volume; `null` when none has one), `medianHealth`
 (median health total over rated pools only, `null` when none is rated). `totals` has the same
 fields without `dex`, its `medianHealth` taken over all rated pools.
 
@@ -207,8 +213,9 @@ number of matching pools ignoring `limit` / `offset`.
 `price`, `tvlUsd`, `depth2Usd`, `depth2UpUsd` (USD of token1 that lifts the price 2 %, the buy
 side), `depth2DownUsd` (USD of token0 that pushes it down 2 %, the sell side), `spread10kBps`,
 `priceDeviationBps`, `staleQuote`, `health` (`total`, `grade`, `rated`, `unratedReason`,
-`concentrationBasis`), `gapScore`, `volume24hUsd`, `ownerTop1Share`, `updatedAt`. `health` is
-always present; `grade` is `null` for an unrated pool, and sorting by health puts unrated pools
+`concentrationBasis`), `gapScore`, `volume24hUsd`, `ownerTop1Share` (the largest LP's share of
+the pool, `null` unless indexed owners hold liquidity in the band and cover at least 90 % of it),
+`updatedAt`. `health` is always present; `grade` is `null` for an unrated pool, and sorting by health puts unrated pools
 after the rated ones in both directions; sorting by depth puts stale quotes after the others. The
 two sides come from the newest snapshot's ±2 % level; a side is `null` when its token has no USD
 price, and when the known tick range ends before 2 % it is the total up to that point
@@ -514,7 +521,9 @@ The `message` wording comes from the validator and may change; match on status a
 - The server has no rate limiting, no API keys and no response cache of its own; an operator may
   put a proxy in front that adds either. Every request reads the database directly.
 - Pool data only change when the pipeline writes a new snapshot or score, so polling faster than
-  the snapshot interval returns the same numbers; compare `latestSnapshotAt` to detect new data.
+  the snapshot interval returns the same numbers; compare `latestSnapshotAt` and `latestScoredAt`
+  to detect new data (a pass stores its snapshots first and its scores, the health, gap and
+  24 h volume, at its end).
   Scorecards are computed over windows that end at the server's clock; the server keeps the last
   summary per mandate and serves it again until the mandate changes, a new sample is stored or a
   minute has passed, so two requests within a minute see the same numbers.
@@ -525,7 +534,8 @@ The `message` wording comes from the validator and may change; match on status a
   `/api/pools/:id/history` (`public, max-age=60`: a week of points is the most expensive read),
   `/api/mm/:id/badge.svg` (`public, max-age=300`) and `GET /api/health`, which sends none so a
   probe always sees the server as it is. The dashboard's hashed `/assets/*` files are
-  `public, max-age=31536000, immutable`; `index.html` and the other files are `no-cache`.
+  `public, max-age=31536000, immutable`; `index.html` and the other files are `no-cache`, and so
+  is `index.html` when it answers a page load of a missing `/assets/*` path.
 - `/api/*` allows any origin (`Access-Control-Allow-Origin: *`) for `GET`, `HEAD` and `OPTIONS`,
   with preflight responses cached for 600 s. The documents at the root carry no CORS headers.
 

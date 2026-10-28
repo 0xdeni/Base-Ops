@@ -192,7 +192,8 @@ Snapshots are the bulk of the file: about 1.4 KB per pool per pass, so 200 track
 30 minutes add about 13 MB a day (every 5 minutes with `run`, about 80 MB). Once a day, at the
 end of a pass, the server deletes snapshots and hourly volume older than `DEPTHWATCH_KEEP_DAYS`
 (default 30 days; snapshots keep at least 8, the dashboard's 7-day windows plus a day), scorecard
-samples older than 35 days and alerts older than 90, then checkpoints the WAL; the same runs on
+samples older than 35 days and alerts older than 90 (each mandate's newest delivered alert is
+kept), then checkpoints the WAL; the same runs on
 demand as `depthwatch prune` (`docker compose exec -u node depthwatch depthwatch prune`,
 database only, safe beside `start`). At the defaults the file settles around 400 MB for 200
 pools (`run` at 5 minutes: around 2.5 GB), plus the WAL's size between checkpoints. SQLite reuses

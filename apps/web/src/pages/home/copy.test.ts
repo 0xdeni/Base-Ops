@@ -20,8 +20,9 @@ import { gradeCounts, NEST_PX, nestSides } from './HomeFacts.js'
 
 describe('Home copy', () => {
   it('states the answer as one sentence that counts the pools it sums', () => {
-    expect(homeAnswer(49_900_000, 492)).toBe(
-      `$49.9M sits within 2${NB}% of the price across 492 pools on Base.`,
+    // 492 scored pools, 165 of them stale quotes: the figure sums the other 327.
+    expect(homeAnswer(49_800_000, 327)).toBe(
+      `$49.8M sits within 2${NB}% of the price across 327 pools on Base.`,
     )
     expect(homeSay(1)).toBe(`sits within 2${NB}% of the price across 1 pool on Base.`)
     expect(homeSay(1_284)).toBe(`sits within 2${NB}% of the price across 1,284 pools on Base.`)

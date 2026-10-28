@@ -17,6 +17,8 @@
  * (`pruneBefore`) seek instead of scanning the tables.
  * Version 5 adds `snapshots.price_deviation_bps` (`PoolSnapshot.priceDeviationBps`, docs/METRICS.md
  * "Stale quotes"), NULL in the rows stored before it; reads and sorts use it as stored.
+ * Version 6 clears `snapshots.owner_top1_share` where the stored owners do not describe the pool
+ * (summary.ts, `ownerTop1Share`), so stored rows and new ones mean the same.
  *
  * Several processes may open one file at once: a database at the current version is read without
  * a write lock; otherwise `BEGIN IMMEDIATE` comes first and `schema_version` is created and read
@@ -24,6 +26,7 @@
  * one, waiting on its lock, then reads the version it recorded and applies nothing.
  */
 import type { DatabaseSync } from 'node:sqlite'
+import { rollback } from './context.js'
 import { toCount } from './sql.js'
 
 export const MIGRATIONS: readonly string[] = [
@@ -197,6 +200,16 @@ export const MIGRATIONS: readonly string[] = [
   `
   ALTER TABLE snapshots ADD COLUMN price_deviation_bps REAL;
   `,
+  // Version 6: `owner_top1_share` holds the largest owner's share only where the owners describe
+  // the pool (core's `poolOwnerTop1Share`: owners in the band covering at least 0.9, which is
+  // OWNER_COVERAGE_MIN, of its in-band liquidity), as every insert since stores it.
+  `
+  UPDATE snapshots SET owner_top1_share = NULL
+    WHERE owner_top1_share IS NOT NULL AND NOT (
+      COALESCE(json_extract(concentration_json, '$.owners.count'), 0) > 0
+      AND COALESCE(json_extract(concentration_json, '$.owners.coverage'), 0) >= 0.9
+    );
+  `,
 ]
 
 export const SCHEMA_VERSION = MIGRATIONS.length
@@ -253,7 +266,9 @@ export function applyMigrations(db: DatabaseSync, now: () => number): MigrationR
     db.exec('COMMIT')
     return { from, to: SCHEMA_VERSION }
   } catch (error) {
-    if (db.isTransaction) db.exec('ROLLBACK')
+    // Everything here runs after BEGIN: roll back (`rollback` does not need
+    // `DatabaseSync#isTransaction`, which Node only has from 22.16).
+    rollback(db)
     throw error
   }
 }

@@ -12,19 +12,20 @@ export const homeFigure = (depth2Usd: number): string => usd(depth2Usd)
 
 /**
  * The sentence after the figure, set beside it as one heading. It names the pools the figure sums
- * (`stats.totals.scored`), so the headline never reads as every pool on Base.
+ * (`stats.totals.depthKnownPools`: scored, with a known depth and no stale quote), so the headline
+ * never reads as every pool on Base nor counts a pool its sum leaves out.
  */
-export function homeSay(scored: number): string {
-  const pools = scored === 1 ? '1 pool' : `${count(scored)} pools`
+export function homeSay(summed: number): string {
+  const pools = summed === 1 ? '1 pool' : `${count(summed)} pools`
   return `sits within 2${NB}% of the price across ${pools} on Base.`
 }
 
 /**
- * The display answer as one sentence (P3): "$49.9M sits within 2 % of the price across 492 pools
+ * The display answer as one sentence (P3): "$49.8M sits within 2 % of the price across 327 pools
  * on Base."
  */
-export function homeAnswer(depth2Usd: number, scored: number): string {
-  return `${homeFigure(depth2Usd)} ${homeSay(scored)}`
+export function homeAnswer(depth2Usd: number, summed: number): string {
+  return `${homeFigure(depth2Usd)} ${homeSay(summed)}`
 }
 
 /** The answer before the first score exists. */

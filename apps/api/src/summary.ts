@@ -51,6 +51,7 @@ export function toDexStats(stats: DexStats): DexStatsDto {
     scored: stats.scored,
     rated: stats.rated,
     depth2Usd: stats.depth2UsdSum,
+    depthKnownPools: stats.depthKnownPools,
     volume24hUsd: stats.volume24hUsdSum,
     medianHealth: stats.medianHealth,
   }

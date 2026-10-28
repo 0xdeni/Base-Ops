@@ -149,7 +149,7 @@ returns the number stored, `seriesFor(mandateId, fromTs, toTs?)` ascending,
 `latestFor(mandateId)`, `latestForMany(ids)`, `lastWithinKpiAt(mandateId)`, `pruneBefore(ts)`,
 `countFor(mandateId)`), `mmAlerts` (`insert`, `latestFor(mandateId)`,
 `latestDeliveredFor(mandateId)`, `countAttempts(mandateId, kind, afterTs?)`,
-`listFor(mandateId, limit)`). bigints as TEXT,
+`listFor(mandateId, limit)`, `pruneBefore(ts)`: keeps each mandate's newest delivered alert). bigints as TEXT,
 JSON via core helpers (`attribution_json` holds `MmAttribution`, no bigints).
 
 ## 5. Pipeline (`apps/cli`)
@@ -165,9 +165,10 @@ JSON via core helpers (`attribution_json` holds `MmAttribution`, no bigints).
   For each active mandate of the pool: concentrated → `positions` (from the db, as the snapshot
   uses) → `resolveStakedOwners` for Slipstream when any position owner equals the pool's gauge →
   `filterPositionsByOwners` → `buildMmConcentratedState`; aerodrome-v2 → `readLpHoldings` →
-  `buildMmReserveState`; a concentrated pool whose positions are not published
-  (`positions:<pool>:lastBlock` unset) → attribution failure, no sample; `positions === null` on
-  an indexed pool → method `'none'`.
+  `buildMmReserveState`; a hooked Uniswap v4 pool (`isHookedPool`: not modelled) → attribution
+  failure `hooked pool: not modelled` for every mandate, no sample; a concentrated pool whose
+  positions are not published (`positions:<pool>:lastBlock` unset) → attribution failure, no
+  sample; `positions === null` on an indexed pool → method `'none'`.
   Then `computeMmAttribution` → `evaluateKpis` → `MmSample`.
   Called from `snapshotStep` right after `buildSnapshot` for pools that have mandates; the samples
   are inserted in the same transaction as the snapshots. Attribution failures are logged per

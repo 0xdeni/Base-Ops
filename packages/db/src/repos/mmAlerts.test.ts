@@ -132,4 +132,17 @@ describe('MmAlertsRepo', () => {
     expect(db.mmAlerts.countFor(M1)).toBe(0)
     expect(db.mmAlerts.count()).toBe(1)
   })
+
+  it("keeps each mandate's newest delivered alert when pruning, however old", () => {
+    db.mmAlerts.insert(fixtureMmAlert({ mandateId: M1, timestamp: 8, delivered: true }))
+    db.mmAlerts.insert(fixtureMmAlert({ mandateId: M1, timestamp: 10, delivered: true }))
+    db.mmAlerts.insert(fixtureMmAlert({ mandateId: M1, timestamp: 14, delivered: false }))
+    db.mmAlerts.insert(fixtureMmAlert({ mandateId: M2, timestamp: 5, delivered: false }))
+    db.mmAlerts.insert(fixtureMmAlert({ mandateId: M2, timestamp: 200, delivered: true }))
+    expect(db.mmAlerts.pruneBefore(100)).toBe(3)
+    expect(db.mmAlerts.listFor(M1, 10).map((a) => a.timestamp)).toEqual([10])
+    expect(db.mmAlerts.latestDeliveredFor(M1)?.timestamp).toBe(10)
+    expect(db.mmAlerts.listFor(M2, 10).map((a) => a.timestamp)).toEqual([200])
+    expect(db.mmAlerts.pruneBefore(300)).toBe(0)
+  })
 })

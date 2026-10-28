@@ -6,7 +6,12 @@
  * under today's rule.
  */
 import type { DatabaseSync } from 'node:sqlite'
-import { feasibleSpreadBps, type PoolSnapshot, type SpreadPoint } from '@depthwatch/core'
+import {
+  feasibleSpreadBps,
+  type PoolSnapshot,
+  poolOwnerTop1Share,
+  type SpreadPoint,
+} from '@depthwatch/core'
 
 export interface SnapshotSummaryFields {
   /** `depthUsd[pct = 2].totalUsd` */
@@ -16,7 +21,12 @@ export interface SnapshotSummaryFields {
    * before the price impact cap whose legs are above it (docs/METRICS.md, "Effective spread").
    */
   spread10kBps: number | null
-  /** `concentration.owners.top1Share` */
+  /**
+   * `concentration.owners.top1Share` where the owners describe the pool (core's
+   * `poolOwnerTop1Share`: owners in the band covering at least OWNER_COVERAGE_MIN of it); null
+   * without owners, with none in the band, or with too little coverage, so the Top LP column and
+   * the `top` sort never list a share of a part of the pool.
+   */
   ownerTop1Share: number | null
 }
 
@@ -66,7 +76,7 @@ export function snapshotSummaryFields(snapshot: PoolSnapshot): SnapshotSummaryFi
   return {
     depth2Usd: depth2?.totalUsd ?? null,
     spread10kBps: feasibleSpreadBps(spread10k, snapshot.price),
-    ownerTop1Share: snapshot.concentration?.owners?.top1Share ?? null,
+    ownerTop1Share: poolOwnerTop1Share(snapshot.concentration?.owners),
   }
 }
 

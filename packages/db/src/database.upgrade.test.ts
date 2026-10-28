@@ -6,7 +6,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { jsonStringify } from '@depthwatch/core'
+import { jsonStringify, type OwnerConcentration } from '@depthwatch/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { type Database, openDatabase } from './database.js'
 import {
@@ -75,6 +75,7 @@ describe('openDatabase on a file of an older schema', () => {
       { version: 3, applied_at: NOW + 5 },
       { version: 4, applied_at: NOW + 5 },
       { version: 5, applied_at: NOW + 5 },
+      { version: 6, applied_at: NOW + 5 },
     ])
     expect(upgraded.tokens.get(fixtureToken().address)).toEqual(fixtureToken())
     upgraded.mandates.upsert(fixtureMandate())
@@ -229,6 +230,45 @@ describe('openDatabase on a file of an older schema', () => {
       timestamp: snapshot.timestamp + 1,
     })
     expect(upgraded.snapshots.latestForPool(snapshot.poolId)?.priceDeviationBps).toBe(0)
+  })
+
+  it('upgrades a version-5 database: owner shares that do not describe the pool are cleared', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'depthwatch-db-'))
+    tempDirs.push(dir)
+    const path = join(dir, 'v5.sqlite')
+
+    const fresh = openDatabase(path, { now: () => NOW })
+    const base = fixtureSnapshot({ ownerTop1Share: 0.4 })
+    const at = (n: number, owners: OwnerConcentration | null) => ({
+      ...base,
+      blockNumber: base.blockNumber + BigInt(n),
+      timestamp: base.timestamp + n,
+      concentration: base.concentration && { ...base.concentration, owners },
+    })
+    const covering = base.concentration?.owners ?? null
+    fresh.snapshots.insertMany([
+      at(0, covering),
+      // One unstaked LP beside a gauge holding 97 % of the band.
+      at(1, { count: 1, top1Share: 1, top3Share: 1, hhi: 1, coverage: 0.0102 }),
+      // Only the gauge's positions in the band.
+      at(2, { count: 0, top1Share: 0, top3Share: 0, hhi: 0, coverage: 0 }),
+      at(3, null),
+    ])
+    // As a version-5 build stored them: the share of the indexed owners, whatever their coverage.
+    fresh.raw.exec(
+      `UPDATE snapshots SET owner_top1_share = json_extract(concentration_json, '$.owners.top1Share')`,
+    )
+    fresh.raw.prepare('DELETE FROM schema_version WHERE version > 5').run()
+    fresh.close()
+
+    const upgraded = openDatabase(path, { now: () => NOW + 4 })
+    open.push(upgraded)
+    expect(upgraded.migration).toEqual({ from: 5, to: SCHEMA_VERSION })
+    const stored = upgraded.raw
+      .prepare('SELECT owner_top1_share AS top FROM snapshots ORDER BY timestamp')
+      .all()
+      .map((row) => row.top)
+    expect(stored).toEqual([0.4, null, null, null])
   })
 
   it('refuses a database written by a newer schema', () => {

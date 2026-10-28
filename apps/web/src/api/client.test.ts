@@ -132,6 +132,20 @@ describe('createHttpClient', () => {
     })
   })
 
+  it('revalidates every request instead of reusing a copy the browser cached', async () => {
+    const modes: Array<RequestCache | undefined> = []
+    const client = createHttpClient({
+      fetchFn: async (_input, init) => {
+        modes.push(init?.cache)
+        return jsonResponse({ items: [], total: 0 })
+      },
+    })
+    await client.health()
+    await client.pools()
+    await client.badge('demo-aero-usdc-aero')
+    expect(modes).toEqual(['no-cache', 'no-cache', 'no-cache'])
+  })
+
   it('strips a trailing slash from the base URL', async () => {
     const calls: string[] = []
     const client = createHttpClient({
@@ -155,6 +169,7 @@ describe('createHttpClient', () => {
           scored: 2,
           rated: 1,
           depth2Usd: 10,
+          depthKnownPools: 2,
           volume24hUsd: 20,
           medianHealth: 55,
         },
@@ -165,6 +180,7 @@ describe('createHttpClient', () => {
         scored: 2,
         rated: 1,
         depth2Usd: 10,
+        depthKnownPools: 2,
         volume24hUsd: 20,
         medianHealth: 55,
       },

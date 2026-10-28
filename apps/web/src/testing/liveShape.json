@@ -8,6 +8,7 @@
     "poolCount": 580,
     "trackedCount": 60,
     "latestSnapshotAt": 1792927835,
+    "latestScoredAt": 1792927889,
     "snapshotAgeSeconds": 82,
     "latestBlock": "53069244",
     "source": "live"
@@ -21,6 +22,7 @@
         "scored": 19,
         "rated": 8,
         "depth2Usd": 37935095.54907393,
+        "depthKnownPools": 19,
         "volume24hUsd": 115333090.6945583,
         "medianHealth": 73.75
       },
@@ -31,6 +33,7 @@
         "scored": 10,
         "rated": 5,
         "depth2Usd": 1521468.818107687,
+        "depthKnownPools": 10,
         "volume24hUsd": 5076373.120835962,
         "medianHealth": 70.76
       },
@@ -41,6 +44,7 @@
         "scored": 8,
         "rated": 2,
         "depth2Usd": 91020.86720653975,
+        "depthKnownPools": 8,
         "volume24hUsd": 629013.1976740971,
         "medianHealth": 40.925
       },
@@ -51,6 +55,7 @@
         "scored": 23,
         "rated": 8,
         "depth2Usd": 3482987.8997603906,
+        "depthKnownPools": 23,
         "volume24hUsd": 31361970.88366205,
         "medianHealth": 77.03
       }
@@ -61,6 +66,7 @@
       "scored": 60,
       "rated": 23,
       "depth2Usd": 43030573.13414854,
+      "depthKnownPools": 60,
       "volume24hUsd": 152400447.8967304,
       "medianHealth": 72.1
     }

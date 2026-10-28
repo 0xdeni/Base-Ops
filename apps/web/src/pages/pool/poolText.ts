@@ -4,7 +4,13 @@
  * the stored values (P3, P8); nothing here is a metric, and every number goes through
  * `lib/format.ts`.
  */
-import { HEALTH_MAX, type HealthComponents, type HealthScore, isHookedPool } from '@depthwatch/core'
+import {
+  HEALTH_MAX,
+  type HealthComponents,
+  type HealthScore,
+  isHookedPool,
+  ownersCoverPool,
+} from '@depthwatch/core'
 import type {
   ConcentrationMetrics,
   PersistenceMetrics,
@@ -92,7 +98,7 @@ export function healthTakeaway(
   if (why) return `${PART_NAME[weakest]} is the weak part: ${why}.`
   if (weakest === 'concentration' && concentration) {
     // Owners the score did not use (they cover too little of the pool) are not the reason.
-    if (concentration.owners && health.concentrationBasis !== 'ranges')
+    if (ownersCoverPool(concentration.owners) && health.concentrationBasis !== 'ranges')
       return `Concentration is the weak part: one LP holds ${shareOf(concentration.owners.top1Share)}.`
     if (kind !== 'concentrated')
       return 'Concentration is the weak part: all liquidity is one full range.'
@@ -136,15 +142,39 @@ export function spreadCellText(s: SpreadPoint): string {
 }
 
 /**
- * "One LP holds 53 % of the liquidity near the price." Without indexed owners it says so and reads
+ * "One LP holds 53 % of the liquidity near the price." when the indexed owners cover the pool
+ * (core's `ownersCoverPool`). Owners that cover less are a part of the pool: it says how much they
+ * hold and the largest one's share of that. With no owner in the band, or none indexed, it reads
  * the active range instead; a full-range pool has one range by construction.
  */
 export function whoTakeaway(concentration: ConcentrationMetrics | null, kind: string): string {
   if (!concentration) return 'No concentration data in the latest snapshot.'
-  if (concentration.owners)
-    return `One LP holds ${shareOf(concentration.owners.top1Share)} of the liquidity near the price.`
+  const { owners } = concentration
+  if (ownersCoverPool(owners))
+    return `One LP holds ${shareOf(owners.top1Share)} of the liquidity near the price.`
+  if (owners && owners.count > 0)
+    return `Indexed LPs hold ${coverageWords(owners.coverage)} of the liquidity near the price; the largest holds ${shareOf(owners.top1Share)} of that.`
   if (kind !== 'concentrated') return 'A full-range pool: every LP shares one range.'
-  return `LP owners are not indexed for this pool. The active range holds ${shareOf(concentration.activeRangeShare)} of the liquidity within ±${concentration.bandPct}${NB}%.`
+  const range = `The active range holds ${shareOf(concentration.activeRangeShare)} of the liquidity within ±${concentration.bandPct}${NB}%.`
+  if (owners) return `No indexed LP owner holds liquidity near the price. ${range}`
+  return `LP owners are not indexed for this pool. ${range}`
+}
+
+/**
+ * The note under the who-provides-it details when the owner shares do not describe the pool, and
+ * so are not what health reads; null when they do.
+ */
+export function ownersNote(owners: ConcentrationMetrics['owners']): string | null {
+  if (ownersCoverPool(owners)) return null
+  if (!owners) return 'Owners are not indexed for this pool, so health uses the range HHI.'
+  if (owners.count === 0)
+    return 'No indexed owner holds liquidity in the band, so health uses the range HHI.'
+  return `Indexed owners cover ${coverageWords(owners.coverage)} of the liquidity in the band, so health uses the range HHI; the LP shares above are of that part.`
+}
+
+/** The indexed owners' coverage in words: "1 %", or "an unknown share" for a snapshot without it. */
+export function coverageWords(coverage: number | null): string {
+  return coverage === null ? 'an unknown share' : shareOf(coverage)
 }
 
 /** The persistence takeaway's two values for a window (they change with the window control). */

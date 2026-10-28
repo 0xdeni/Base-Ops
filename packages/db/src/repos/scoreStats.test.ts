@@ -64,6 +64,8 @@ describe('stale quotes in the score queries', () => {
     const [row] = db.scores.statsByDex()
     expect(row).toMatchObject({ dex: 'uniswap-v3', scored: 4, rated: 4 })
     expect(row?.depth2UsdSum).toBe(1_000_000 + 2_000 + 5_000)
+    // The pools that sum covers: every scored pool but the stale quote.
+    expect(row?.depthKnownPools).toBe(3)
   })
 
   it('sorts a stale quote after the other pools on depth, in both directions', () => {

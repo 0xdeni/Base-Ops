@@ -179,6 +179,22 @@ describe('pruneStep', () => {
     expect(db.snapshots.count()).toBe(4)
     expect(db.syncState.get(syncKeys.pruneLastRun())).toBeUndefined()
   })
+
+  it('yields between batches, so a stop that arrives while it runs ends the loop', async () => {
+    const controller = new AbortController()
+    const { db, ctx } = context(controller.signal)
+    snapshotsAt(db, [40, 39])
+    // Queued before the prune starts: it can only run when the loop yields after its first batch.
+    let ticks = 0
+    setImmediate(() => {
+      ticks++
+      controller.abort(new Error('stop'))
+    })
+    await expect(pruneStep(ctx, { batch: 1 })).rejects.toThrow('stop')
+    expect(ticks).toBe(1)
+    expect(db.snapshots.count()).toBe(3)
+    expect(db.syncState.get(syncKeys.pruneLastRun())).toBeUndefined()
+  })
 })
 
 describe('pruneDue', () => {

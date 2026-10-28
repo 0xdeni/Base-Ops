@@ -72,7 +72,8 @@ export function scorePool(
   const health = computeHealthScore({
     ...snapshotDepthSides(latest),
     spread10kBps: summary.spread10kBps,
-    ownerTop1Share: summary.ownerTop1Share,
+    // The owners as stored, so a share that covers too little of the pool still adds its note.
+    ownerTop1Share: latest.concentration?.owners?.top1Share ?? null,
     ownerCoverage: latest.concentration?.owners?.coverage ?? null,
     rangeHhi: latest.concentration?.rangeHhi ?? null,
     poolKind: pool.kind,

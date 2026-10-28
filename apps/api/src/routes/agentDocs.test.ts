@@ -197,6 +197,32 @@ describe('agent documents', () => {
       for (const path of paths) expect(await conforms(api, path, 200), path).toEqual([])
     })
 
+    it('a newest snapshot stored before owner coverage was recorded', async () => {
+      const { db: old, seed: world } = createSeededDatabase()
+      try {
+        const pool = world.pools.wethAeroSlip
+        const latest = old.snapshots.latestForPool(pool.id)
+        if (!latest) throw new Error('the seed has no snapshot for the Slipstream pool')
+        const next = { ...latest, blockNumber: latest.blockNumber + 1n, timestamp: world.now }
+        old.snapshots.insert(next)
+        old.raw
+          .prepare(
+            `UPDATE snapshots SET concentration_json = json_remove(concentration_json, '$.owners.coverage')
+              WHERE pool_id = ? AND block_number = ?`,
+          )
+          .run(pool.id, String(next.blockNumber))
+        const served = createApp(old, { now: () => world.now })
+        const path = `/api/pools/${pool.id}`
+        expect(await conforms(served, path, 200), path).toEqual([])
+        const body = (await (await served.request(path)).json()) as {
+          latest: { concentration: { owners: { coverage: number | null } } }
+        }
+        expect(body.latest.concentration.owners.coverage).toBeNull()
+      } finally {
+        old.close()
+      }
+    })
+
     it('an empty database (nulls everywhere)', async () => {
       for (const path of ['/api/health', '/api/stats', '/api/pools', '/api/gaps', '/api/mm']) {
         expect(await conforms(app, path, 200), path).toEqual([])

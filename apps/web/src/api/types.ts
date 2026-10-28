@@ -81,6 +81,12 @@ export interface HealthResponse {
   trackedCount: number
   /** Unix seconds of the newest snapshot; null before the first snapshot. */
   latestSnapshotAt: number | null
+  /**
+   * Unix seconds of the newest score; null before the first one. A pass stores its snapshots
+   * first and its scores last, so the data that read scores (health, gap, 24 h volume) are new
+   * once this moves, not when `latestSnapshotAt` does.
+   */
+  latestScoredAt: number | null
   /** The server's clock minus `latestSnapshotAt`; null before the first snapshot. */
   snapshotAgeSeconds: number | null
   /** Block number of the newest snapshot as a decimal string; null before the first snapshot. */
@@ -111,6 +117,8 @@ export interface DexStatsDto {
   rated: number
   /** Sum of ±2 % depth (USD) over scored pools, stale quotes (`PoolSummary.staleQuote`) left out. */
   depth2Usd: number
+  /** Scored pools with a known ±2 % depth and no stale quote: the ones `depth2Usd` sums. */
+  depthKnownPools: number
   /** Sum over scored pools with a known volume; null when none has one. */
   volume24hUsd: number | null
   /** Median health total over rated pools only; null when none is rated. */
@@ -227,6 +235,11 @@ export interface PoolSummary {
   health: PoolHealthSummary
   gapScore: number | null
   volume24hUsd: number | null
+  /**
+   * The largest LP's share of the newest snapshot's in-band liquidity, where its owners describe
+   * the pool (core's `poolOwnerTop1Share`: owners in the band covering at least 90 % of it); null
+   * otherwise (owners not indexed, none in the band, or covering less).
+   */
   ownerTop1Share: number | null
   /** Unix seconds of the latest snapshot; null when the pool was never snapshotted. */
   updatedAt: number | null
