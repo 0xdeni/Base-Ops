@@ -1,73 +1,146 @@
-/* Token page parts (docs/design/visual-v3.md §6.7: the Pool title block with the Home butterfly).
-   Rhythm as on Pool: answer to figure 32 (24 on phones), Show data to facts 32, facts to the first
-   section 64 (32 on phones). Classes are page-prefixed. */
+/* Token (docs/design/visual-v4.md §6.8): the title section, the band with the butterfly scoped to
+   the token, the facts row over the band, the pools table sheet and the about panel. Page-local
+   classes carry the `token-` prefix; the band, blocks, facts, tables and charts come from styles/
+   and components/. Rhythm as on Pool: back link, 8 to the eyebrow, 12 to the title, 12 to the name,
+   24 to the band; the facts row overlaps the band; 24 to the sheet, 24 to the panel. */
 
-.token-fig {
-  margin-top: var(--s6);
-  min-width: 0;
-}
-.token-facts {
-  margin-top: var(--s6);
-}
-/* The route is a name, not a measurement: set at the h2 size on the KPI line box, so the numbers
-   stay the loudest values and every label still starts on one line. */
-.token-facts .fact:nth-child(3) dd {
-  font-size: var(--t-h2);
-  line-height: 1.25;
-  letter-spacing: -0.016em;
-  min-height: calc(var(--t-kpi) * 1.05);
-  align-items: flex-end;
-  white-space: normal;
-}
-.token-more {
-  font-size: var(--t-data);
-  font-weight: 500;
-  min-height: 24px;
-}
-
-/* The caption opens the section body: level with the heading on desktop, close under the
-   takeaway on phones. */
-.tbl-caption.token-caption {
+/* ---------- Title section ---------- */
+.token-eb {
   margin-top: var(--s2);
 }
-.token-cols {
-  margin-left: -8px;
+.token-ttl-main {
+  min-width: 0;
+}
+.token-title {
+  overflow-wrap: anywhere;
+}
+.token-name {
+  margin-top: var(--s3);
+  font-size: var(--t-pair);
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--text-2);
+}
+.token-error {
+  margin-top: var(--s5);
 }
 
-/* Loading (ST1). */
-.token-skel-answer {
+/* ---------- The band ---------- */
+.token-band .bf {
+  margin-top: var(--s5);
+}
+.token-band-empty {
   margin-top: var(--s4);
 }
-.token-skel-bars {
-  display: grid;
-  gap: 26px;
-  margin-top: 76px;
-}
-.token-skel-bars > span {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 168px;
-}
-.token-skel-bars .is-sell {
-  justify-self: end;
+@media (max-width: 52.49em) {
+  .token-ph-hide {
+    display: none;
+  }
 }
 
+/* ---------- Facts row: the route is a name, not a measurement ---------- */
+/* Set at the h2 size on the value's line box, so the numbers stay the loudest values. */
+.token-facts .fact:nth-child(3) dd {
+  font-size: var(--t-h2);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.token-route {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+  text-decoration-color: var(--on-ink-2);
+}
+@media (hover: hover) and (pointer: fine) {
+  .token-route:hover {
+    text-decoration-color: currentColor;
+  }
+}
+
+/* ---------- The pools table sheet ---------- */
+.token-pools {
+  margin-top: var(--s5);
+}
+.token-sheet-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s2) var(--s4);
+  align-items: start;
+  padding: var(--s6) var(--s6) var(--s4);
+}
+.token-sheet-head .h2 {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+}
+.token-sheet-head .takeaway {
+  grid-column: 1 / -1;
+  max-width: 60ch;
+}
+.token-sheet-ctl {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  align-self: center;
+}
+.token-sheet > .tbl-caption {
+  border-top: 1px solid var(--line);
+}
 @media (max-width: 52.49em) {
-  .token-fig {
-    margin-top: var(--s5);
+  .token-sheet-head {
+    padding: var(--s5) var(--s4) var(--s4);
   }
-  /* The route's pool name needs the full width under the price and the pool count. */
-  .token-facts .fact:nth-child(3) {
-    grid-column: 1 / -1;
-  }
-  .token-skel-bars > span {
-    gap: var(--s2);
-  }
-  .tbl-caption.token-caption {
-    margin-top: 0;
-  }
-  /* A bordered button keeps the gutter (the -8 px end margin is for quiet triggers). */
-  .token-sec-pools .sec-head .sec-ctl {
-    margin-right: 0;
+}
+
+/* ---------- Loading (ST1): the final sizes ---------- */
+.token-skel-text {
+  display: grid;
+}
+.token-skel-line {
+  display: block;
+  height: 1lh;
+  padding-block: 0.14em;
+}
+.token-skel-band {
+  gap: 0;
+}
+.token-skel-head {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  margin-top: 56px;
+  padding-bottom: 12px;
+}
+.token-skel-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  align-items: center;
+  height: 28px;
+}
+.token-skel-row.is-total {
+  height: 52px;
+  margin-bottom: 44px;
+}
+.token-skel-band .is-sell {
+  justify-self: end;
+}
+.token-skel-facts {
+  display: grid;
+  gap: var(--s5);
+}
+.token-skel-facts > span {
+  display: grid;
+  gap: var(--s2);
+}
+.token-skel-facts .skel {
+  background: var(--g80);
+}
+@media (min-width: 64em) {
+  .token-skel-facts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--s6);
   }
 }

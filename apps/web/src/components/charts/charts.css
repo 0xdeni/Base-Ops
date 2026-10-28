@@ -1,6 +1,6 @@
-/* Shared chart parts (docs/design/visual-v3.md §3.3 "Chart text", §5.9, CH1, CH6): axis text in
-   12 px / 500 `text-3`, sans with tabular figures, never mono; direct labels 14 px / 500 `text-1`
-   with a 4 px canvas halo; legends as inline words with 8 px swatches; the focus ring of a chart. */
+/* Shared chart parts (docs/design/visual-v4.md §5.9, §5.10, CH1, CH6): axis text in 12 px / 500
+   sans with tabular figures, never mono; swatches, the hatch swatch and legends; the foot row with
+   "Show data"; the table block on the band; the chart tooltip; the focus ring of a chart. */
 
 .chart-svg {
   display: block;
@@ -14,35 +14,12 @@
   font-family: var(--sans);
   font-size: var(--t-caption);
   font-weight: 500;
-  letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
-  fill: var(--text-3);
-}
-.chart-text.is-strong {
   fill: var(--text-2);
 }
-.chart-label {
-  font-family: var(--sans);
-  font-size: var(--t-data);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
+.chart-text.is-strong {
+  font-weight: 650;
   fill: var(--text-1);
-  paint-order: stroke;
-  stroke: var(--canvas);
-  stroke-width: 4px;
-  stroke-linejoin: round;
-}
-.halo-well {
-  paint-order: stroke;
-  stroke: var(--well);
-  stroke-width: 6px;
-  stroke-linejoin: round;
-}
-.halo-canvas {
-  paint-order: stroke;
-  stroke: var(--canvas);
-  stroke-width: 4px;
-  stroke-linejoin: round;
 }
 .chart-focus:focus-visible {
   outline: 2px solid var(--focus);
@@ -50,34 +27,61 @@
   border-radius: 4px;
 }
 
-/* Swatches (8 px, radius 2) and legends (13 px `text-2`, 24 px apart). */
+/* Swatches: 10 px rounded squares in a side's colour; Yellow on white carries its ink edge. */
 .sw {
   display: inline-block;
   flex: none;
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
   border-radius: 2px;
-  margin-right: var(--s2);
+  vertical-align: -1px;
 }
 .sw.sell {
   background: var(--sell);
 }
 .sw.buy {
   background: var(--buy);
+  box-shadow: inset 0 0 0 1px var(--buy-edge);
 }
-.sw.band {
-  background: var(--bad-mark);
-  opacity: 0.35;
+.sw.sell-band {
+  background: var(--sell-band);
 }
-.tip .sw {
-  margin-right: 0;
+.sw.buy-band {
+  background: var(--buy-band);
+}
+.sw.ink {
+  background: var(--text-1);
+}
+.sw.t2 {
+  background: var(--text-2);
+}
+.sw.breach {
+  background: rgb(252 64 31 / 0.22);
+  box-shadow: inset 0 0 0 1px var(--bad);
+}
+.sw.bad {
+  background: var(--bad);
+}
+.sw.hollow {
+  box-shadow: inset 0 0 0 2px var(--line-2);
+}
+/* The hatch swatch: "the rest" and shortfalls, in the colour of the text around it. */
+.hatch {
+  display: inline-block;
+  width: 18px;
+  height: 10px;
+  margin-right: 8px;
+  vertical-align: -1px;
+  background: repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 5px);
 }
 .legend {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s2) var(--s5);
+  gap: 6px 20px;
+  margin-top: 14px;
   font-size: var(--t-small);
-  line-height: 1.385;
+  line-height: 1.35;
   color: var(--text-2);
 }
 .legend > span {
@@ -85,18 +89,124 @@
   align-items: center;
 }
 
-/* The foot row under a figure: Show data (and a scrub caption). */
+/* The foot row: "Show data" at left, the caption at right; the table opens under the row. */
 .chart-foot {
-  margin-top: var(--s3);
+  margin-top: 12px;
+}
+.chart-foot-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+}
+.chart-foot-row > .chart-cap:only-child {
+  margin-left: auto;
+}
+.chart-cap {
+  margin: 0;
+  font-size: var(--t-caption);
+  line-height: 1.35;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.chart-foot.on-band .chart-cap {
+  color: var(--on-band-2);
+}
+.chart-foot.on-band .disc-btn {
+  color: var(--on-band);
+}
+.chart-foot.on-band :focus-visible {
+  outline-color: var(--focus-band);
+}
+/* On the band a dense table sits in a surface block: white in light, black in dark. */
+.band-data {
+  margin-top: 16px;
+  padding: 24px;
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--text-1);
+  box-shadow: var(--edge), var(--sh-band), var(--hl);
+}
+.chart-foot.on-band .band-data :focus-visible {
+  outline-color: var(--focus);
+}
+/* Inside the block the band's light secondary text would vanish: it reads `--text-2` again. */
+.band .band-data :is(.eyebrow, .meta, .cap, .caption, .t2, .muted, .faint, .take, .takeaway) {
+  color: var(--text-2);
+}
+@media (min-width: 37.5em) {
+  .band-data {
+    padding: 32px;
+  }
+}
+/* From 840 px the block is as wide as its table, so the rows read as one compact unit; phones
+   keep the full width and the gutter-bleeding scroll wrapper. */
+@media (min-width: 52.5em) {
+  .band-data {
+    width: fit-content;
+    max-width: 100%;
+  }
+  .band-data :where(.tbl) {
+    width: auto;
+  }
 }
 .chart-note {
+  margin: 0;
   font-size: var(--t-data);
-  line-height: 1.43;
+  line-height: 1.4;
   color: var(--text-2);
 }
 
+/* The chart tooltip (§5.10): Gray 100 with white text (Gray 80 in dark), plane 3. */
+.tip.chart-tip {
+  position: fixed;
+  z-index: 45;
+  min-width: 180px;
+  max-width: 300px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--g100);
+  color: var(--g0);
+  box-shadow: var(--sh-3);
+  font-size: var(--t-small);
+  line-height: 1.4;
+  pointer-events: none;
+}
+:root[data-theme="dark"] .tip.chart-tip {
+  background: var(--g80);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tip.chart-tip {
+    background: var(--g80);
+  }
+}
+.tip.chart-tip .tt-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+  font-weight: 800;
+}
+.tip.chart-tip .tt-h .sw {
+  margin-right: 0;
+}
+.tip.chart-tip .tt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.tip.chart-tip .tt-k {
+  color: var(--g30);
+}
+.tip.chart-tip .num {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 @media (forced-colors: active) {
-  .sw {
+  .sw,
+  .hatch {
     forced-color-adjust: none;
   }
 }

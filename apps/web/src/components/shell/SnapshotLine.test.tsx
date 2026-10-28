@@ -1,7 +1,8 @@
 /**
- * The shell over a published live snapshot (docs/design/web-v2.md §4, visual-v3.md §5.1): the
- * snapshot line in the demo line's slot, freshness as an absolute time, the footer's source, and
- * no "… ago" on the pages; without a snapshot the demo and live shells stay as they were.
+ * The shell over a published live snapshot (docs/design/web-v2.md §4, visual-v4.md §5.1): the
+ * snapshot line in the demo line's slot, freshness as the block with an absolute time in its name,
+ * the footer's source, and no "… ago" on the pages; without a snapshot the demo and live shells
+ * stay as they were.
  */
 import { QueryClient } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
@@ -88,12 +89,12 @@ describe('snapshot line', () => {
 })
 
 describe('freshness and footer of a snapshot', () => {
-  it('gives the absolute snapshot time with a hollow dot, never "Updated … ago"', async () => {
+  it('shows the circle and the block, with the absolute snapshot time, never "Updated … ago"', async () => {
     renderAt('/methodology', { snapshot: SNAPSHOT })
     const fresh = await screen.findByRole('button', {
       name: `Data freshness: as of 9${NB}Oct, 08:40${NB}UTC`,
     })
-    expect(fresh.textContent).toBe(`As of 9${NB}Oct, 08:40${NB}UTC`)
+    expect(fresh.textContent).toMatch(/^Block \d{1,3}(,\d{3})+$/)
     expect(fresh.querySelector('.fresh-dot')?.classList.contains('is-snapshot')).toBe(true)
     expect(fresh.getAttribute('title')).toMatch(/^Block [\d,]+, [\d,]+ of [\d,]+ pools tracked, /)
     fireEvent.click(fresh, { detail: 0 })
@@ -111,15 +112,15 @@ describe('freshness and footer of a snapshot', () => {
       `9${NB}Oct${NB}2025, 09:00${NB}UTC`,
     ])
     expect(
-      within(screen.getByRole('contentinfo')).getByText('Data: Base mainnet snapshot'),
+      within(screen.getByRole('contentinfo')).getByText('Data: a Base mainnet snapshot'),
     ).toBeTruthy()
   })
 
-  it('dates the pools caption instead of aging it', async () => {
+  it('dates the pools caption, with its year, instead of aging it', async () => {
     renderAt('/pools', { snapshot: SNAPSHOT })
     await screen.findByRole('table', { name: 'Pools' })
     const main = screen.getByRole('main')
-    expect(main.textContent).toMatch(/[Uu]pdated \d+\u00a0\w{3}, \d\d:\d\d\u00a0UTC/)
+    expect(main.textContent).toMatch(/[Uu]pdated \d+\u00a0\w{3}\u00a0\d{4}, \d\d:\d\d\u00a0UTC/)
     expect(main.textContent).not.toMatch(/\bago\b/)
   })
 
@@ -133,7 +134,7 @@ describe('freshness and footer of a snapshot', () => {
       await screen.findByRole('button', { name: `Data freshness: updated 1${NB}min ago` }),
     ).toBeTruthy()
     expect(
-      within(screen.getByRole('contentinfo')).getByText('Data: synthetic demo world'),
+      within(screen.getByRole('contentinfo')).getByText('Data: a synthetic demo world'),
     ).toBeTruthy()
   })
 })

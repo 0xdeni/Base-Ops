@@ -1,15 +1,18 @@
 /**
- * The tooltip of snapshot charts (CH2, docs/design/visual-v3.md §5.9 "Tooltip", §4 row 21): min
- * 150 px, padding 8 / 10, radius 10, `overlay` with `--shadow-pop`, 13 px, `pointer-events: none`.
- * It follows the pointer 1:1 and snaps to measured points; it never animates. It sits 16 px beside
- * its point, on the side away from the direct label (`prefer`), flips when it would overflow, and
+ * The chart tooltip (CH2, docs/design/visual-v4.md §5.10): at most 300 px, padding 10 / 12, radius
+ * 12, Gray 100 with white text (Gray 80 in dark), 13 px, plane 3, `pointer-events: none`; rows of
+ * a label and a tabular value. It follows the pointer 1:1 and snaps to measured points; it never
+ * animates. It sits 18 px beside its point on the `prefer` side, flips when it would overflow, and
  * is vertically centred on the point. Rendered in a portal, outside <main>.
  */
 import { type ReactNode, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
+/** The gap between a point and its tooltip. */
+export const TIP_GAP = 18
+
 /**
- * Viewport position of a `tw` × `th` tooltip beside the point (`x`, `y`, viewport px): 16 px to the
+ * Viewport position of a `tw` × `th` tooltip beside the point (`x`, `y`, viewport px): 18 px to the
  * `prefer` side, the other side when that would leave the viewport, centred vertically, 8 px from
  * every viewport edge.
  */
@@ -21,8 +24,8 @@ export function placeChartTip(
   viewport: { width: number; height: number },
   prefer: 'left' | 'right' = 'right',
 ): { left: number; top: number } {
-  const right = x + 16
-  const left = x - tw - 16
+  const right = x + TIP_GAP
+  const left = x - tw - TIP_GAP
   let tx = prefer === 'left' ? left : right
   if (tx < 8) tx = right
   if (tx + tw > viewport.width - 8) tx = left
@@ -49,7 +52,7 @@ export function ChartTooltip({
   x: number
   y: number
   prefer?: 'left' | 'right'
-  /** The side colour of the 8 px swatch in the header. */
+  /** The side colour of the swatch in the header. */
   swatch?: 'sell' | 'buy'
   title: ReactNode
   rows: readonly ChartTipRow[]
@@ -71,7 +74,7 @@ export function ChartTooltip({
   })
   if (typeof document === 'undefined') return null
   return createPortal(
-    <div ref={ref} className="tip is-chart" aria-hidden="true">
+    <div ref={ref} className="tip is-chart chart-tip" aria-hidden="true">
       <div className="tt-h">
         {swatch ? <span className={`sw ${swatch}`} /> : null}
         {title}

@@ -1,7 +1,7 @@
 /**
- * Not found (`*`, ia-v3 §3.5, docs/design/visual-v3.md §5.12, §6.9): the h1 says what was not
- * found, one sentence, the requested path in mono, then "Browse pools" and "See liquidity gaps",
- * in both routers; the v2 shim is lifted while it is mounted.
+ * Not found (`*`, ia-v3 §3.5, docs/design/visual-v4.md §5.12, §6.10): no band; the eyebrow, the
+ * lowercase display title, one sentence, the requested path in mono, then "Browse pools" (ghost)
+ * and "See liquidity gaps" (strong link), in both routers.
  */
 import { QueryClient } from '@tanstack/react-query'
 import { cleanup, render, screen, within } from '@testing-library/react'
@@ -31,23 +31,26 @@ describe('Not found', () => {
     renderAt('/pool/uniswap-v3:0xabc')
     const main = screen.getByRole('main')
     const h1 = within(main).getByRole('heading', { level: 1 })
-    expect(h1.textContent).toBe('Page not found')
+    expect(h1.textContent).toBe('page not found')
+    expect(h1.className).toContain('display')
     expect(within(main).getAllByRole('heading', { level: 1 })).toHaveLength(1)
-    const answer = within(main).getByText(
-      'Depthwatch does not track this page, or the link is wrong.',
-    )
-    expect(answer.className).toContain('answer')
+    expect(main.querySelector('.eyebrow')?.textContent).toBe('Not found')
+    expect(
+      within(main).getByText('Depthwatch does not track this page, or the link is wrong.'),
+    ).toBeTruthy()
     const id = within(main).getByText('/pool/uniswap-v3:0xabc')
     expect(id.className).toContain('mono')
     const browse = within(main).getByRole('link', { name: 'Browse pools' })
     expect(browse.getAttribute('href')).toBe('/pools')
-    expect(browse.className).toContain('secondary')
+    expect(browse.className).toContain('ghost')
     const gaps = within(main).getByRole('link', { name: 'See liquidity gaps' })
     expect(gaps.getAttribute('href')).toBe('/gaps')
-    expect(gaps.className).toContain('plink')
+    expect(gaps.className).toContain('ulink')
+    // No band: the page has no focal element but the sentence.
+    expect(main.querySelector('.band')).toBeNull()
   })
 
-  it('renders on the v3 page grid', () => {
+  it('renders on the page grid', () => {
     renderAt('/nowhere')
     expect(screen.getByRole('heading', { level: 1 }).closest('.wrap.page')).toBeTruthy()
   })
@@ -57,7 +60,7 @@ describe('Not found', () => {
     render(<App client={createMockClient({ now: 1_760_000_000 })} mock={false} staticBuild />)
     const main = screen.getByRole('main')
     expect((await within(main).findByRole('heading', { level: 1 })).textContent).toBe(
-      'Page not found',
+      'page not found',
     )
     expect(main.textContent).toContain('This static copy only holds the data it was exported with.')
     expect(within(main).getByRole('link', { name: 'Browse pools' }).getAttribute('href')).toBe(

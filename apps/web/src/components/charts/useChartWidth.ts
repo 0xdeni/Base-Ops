@@ -1,7 +1,7 @@
 /**
- * Chart plumbing shared by the hand-drawn charts (docs/design/visual-v3.md §5.9): the measured
- * width of a container (ResizeObserver; charts redraw on resize, never scale), the device pixel
- * ratio the halftone lattice snaps to, and SVG-safe ids for patterns, masks and clips.
+ * Chart plumbing shared by the hand-drawn charts (docs/design/visual-v4.md §5.9): the measured
+ * width of a container (ResizeObserver; charts redraw on resize, never scale), SVG-safe ids for
+ * clips, and custom properties for inline styles.
  */
 import { type CSSProperties, type RefObject, useId, useLayoutEffect, useState } from 'react'
 
@@ -23,13 +23,6 @@ export function useChartWidth(ref: RefObject<HTMLElement | null>, fallback = 720
     return () => ro.disconnect()
   }, [ref])
   return width > 0 ? width : fallback
-}
-
-/** `window.devicePixelRatio`, 1 where there is no window. */
-export function devicePixelRatio(): number {
-  if (typeof window === 'undefined') return 1
-  const dpr = window.devicePixelRatio
-  return dpr > 0 && Number.isFinite(dpr) ? dpr : 1
 }
 
 /** A `useId` safe inside `url(#…)` references (React's ids carry punctuation). */

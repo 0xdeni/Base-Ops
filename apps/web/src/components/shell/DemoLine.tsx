@@ -1,7 +1,8 @@
 /**
- * The demo line (ia-v3 §3.1, docs/design/visual-v3.md §5.1): one 28 px line in `well` that never
- * wraps, shown only for the synthetic demo world or the in-repo mock. Its quiet link opens a
- * popover with the full sentence. The only place in the chrome that says "demo" (D7).
+ * The demo line (ia-v3 §3.1, docs/design/visual-v4.md §5.1): one 32 px line above the app bar that
+ * never wraps (`--surface-2` in light, the canvas over a Gray 80 rule in dark), shown only for the
+ * synthetic demo world or the in-repo mock. "About the demo" opens a popover with the full
+ * sentence. The only place in the chrome that says "demo" (D7).
  */
 import { Popover } from '../ui/Popover.js'
 

@@ -1,6 +1,7 @@
 /**
- * Test harness of the Pools and Gaps screens: the page on its route, a router probe that logs every location, a stand-in nav link, and a
- * `matchMedia` stub for the phone layout (jsdom computes no layout). Imported by tests only.
+ * Test harness of the Pools and Gaps screens: the page on its route, a router probe that logs every
+ * location, a stand-in nav link, a `matchMedia` stub for the phone layout (jsdom computes no
+ * layout) and a mock world with any number of rated pools. Imported by tests only.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
@@ -16,7 +17,7 @@ import {
 } from 'react-router-dom'
 import { ApiProvider } from '../../api/context.js'
 import { createMockClient } from '../../api/mock.js'
-import type { ApiClient } from '../../api/types.js'
+import type { ApiClient, PoolSummary } from '../../api/types.js'
 import { PHONE_QUERY } from '../../lib/useMediaQuery.js'
 
 export const NOW = 1_760_000_000
@@ -85,4 +86,22 @@ export function stubPhone(phone = true): void {
 
 export function unstubPhone(): void {
   Reflect.deleteProperty(window, 'matchMedia')
+}
+
+/** The mock with `n` rated pools (copies of its healthiest, under distinct ids) and no unrated. */
+export function manyPools(n: number): ApiClient {
+  const mock = createMockClient({ now: NOW })
+  return {
+    ...mock,
+    async pools(query = {}) {
+      const seed = (await mock.pools({ limit: 1 })).items[0] as PoolSummary
+      const all = Array.from({ length: n }, (_, i) => ({
+        ...seed,
+        pool: { ...seed.pool, id: `uniswap-v3:0x${i.toString(16).padStart(40, '0')}` },
+      }))
+      if (query.rated === false) return { items: [], total: 0 }
+      const offset = query.offset ?? 0
+      return { items: all.slice(offset, offset + (query.limit ?? 50)), total: n }
+    },
+  }
 }

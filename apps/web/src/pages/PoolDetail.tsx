@@ -1,9 +1,11 @@
 /**
- * Pool (`/pools/:id`, ia-v3 §4.3, docs/design/visual-v3.md §6.3): "Is this pool deep and healthy
- * enough, and on which side is it thin?" The title block and the answer sentence, the mirrored
- * depth curve with its Show data, four facts and the gap callout, then the sections in a fixed
- * order: Health, Cost to trade, Who provides it, Over time (`?window=7d`), Mandates on this pool,
- * About this pool. Every number is read as the API stored it and only formatted here.
+ * Pool (`/pools/:id`, ia-v3 §4.3, docs/design/visual-v4.md §6.4): "Is this pool deep and healthy
+ * enough, and on which side is it thin?" The title section (back link, eyebrow, the pair and its
+ * price line at left, the answer at right), then the band with the focal mirrored depth curve and
+ * its Show data, the facts row as an ink block over the band's lower edge (with the gap callout),
+ * the sections sheet in a fixed order (health, cost to trade, who provides it, over time with
+ * `?window=7d`, mandates on this pool) and about this pool as a panel. Every number is read as the
+ * API stored it and only formatted here.
  */
 import { useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -11,14 +13,14 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { isNotFound } from '../api/errors.js'
 import { usePool } from '../api/hooks.js'
 import type { HistoryWindow, PoolDetail as PoolDetailDto } from '../api/types.js'
-import { DepthCurveTable } from '../components/charts/ChartTables.js'
-import { DepthCurve } from '../components/charts/DepthCurve.js'
 import { BackLink } from '../components/ui/BackLink.js'
+import { SectionsSheet } from '../components/ui/Section.js'
 import { NotFoundState, SectionError, useDelayedPending } from '../components/ui/States.js'
 import { pairLabel } from '../lib/format.js'
 import { cachedPoolSummary } from '../routeData.js'
 import { OverTime } from './pool/OverTime.js'
 import { PoolAbout } from './pool/PoolAbout.js'
+import { PoolBand } from './pool/PoolBand.js'
 import { PoolFacts } from './pool/PoolFacts.js'
 import { PoolMandates } from './pool/PoolMandates.js'
 import { CostSection, HealthSection, WhoSection } from './pool/PoolSections.js'
@@ -47,24 +49,27 @@ function PoolView({
   const { pool, latest } = detail
   const pair = pairLabel(pool.token0, pool.token1)
   return (
-    <div className="wrap page">
+    <div className="pool">
       <title>{`${pair} – Depthwatch`}</title>
-      <PoolTitle pool={pool} spot={latest?.price ?? null} />
-      <p className="answer answer-block">{poolAnswer(detail)}</p>
-      {latest ? (
-        <div className="pool-fig">
-          <DepthCurve snapshot={latest} token0={pool.token0} token1={pool.token1}>
-            <DepthCurveTable snapshot={latest} token0={pool.token0} token1={pool.token1} />
-          </DepthCurve>
-        </div>
-      ) : null}
+      <PoolTitle
+        pool={pool}
+        spot={latest?.price ?? null}
+        answer={
+          <p className="answer pool-answer" data-rise="">
+            {poolAnswer(detail)}
+          </p>
+        }
+      />
+      <PoolBand detail={detail} />
       <PoolFacts detail={detail} />
-      <div className="secs">
-        <HealthSection detail={detail} />
-        <CostSection detail={detail} />
-        <WhoSection detail={detail} />
-        <OverTime detail={detail} window={win} onWindow={onWindow} />
-        <PoolMandates pool={pool} />
+      <div className="wrap pool-rest">
+        <SectionsSheet>
+          <HealthSection detail={detail} />
+          <CostSection detail={detail} />
+          <WhoSection detail={detail} />
+          <OverTime detail={detail} window={win} onWindow={onWindow} />
+          <PoolMandates pool={pool} />
+        </SectionsSheet>
         <PoolAbout detail={detail} />
       </div>
     </div>
@@ -97,24 +102,22 @@ export function PoolDetail() {
   } else if (pool.isError && isNotFound(pool.error)) {
     content = (
       <NotFoundState
-        title="Pool not found"
+        title="pool not found"
         message="Depthwatch does not track this pool, or the link is wrong."
         id={id}
       />
     )
   } else if (pool.isError) {
     content = (
-      <div className="wrap page">
-        <div className="title-block">
-          <BackLink to="/pools" label="Pools" />
-        </div>
-        <div className="answer-block">
+      <section className="wrap ttl pool-ttl" aria-label="Pool">
+        <BackLink to="/pools" label="Pools" />
+        <div className="pool-error">
           <SectionError what="this pool" onRetry={() => void pool.refetch()} />
         </div>
-      </div>
+      </section>
     )
   } else {
-    // The title block from a list that already holds this pool, so it never waits (ST1).
+    // The title section from a list that already holds this pool, so it never waits (ST1).
     content = <PoolSkeleton visible={showSkeleton} summary={cachedPoolSummary(qc, id)} />
   }
   return content

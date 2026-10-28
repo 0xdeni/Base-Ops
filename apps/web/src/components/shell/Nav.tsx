@@ -1,18 +1,27 @@
 /**
- * Primary navigation (K3, docs/design/visual-v3.md §5.1): one <nav> landmark, restyled per
- * breakpoint (inline on desktop, a 44 px tab strip on phones). The current item is text-1 with
- * `aria-current="page"` and a 2 px indicator placed with `translateX(x) scaleX(width)`, which
- * slides over 200 ms `--ease-in-out` after a pointer navigation and moves instantly otherwise.
+ * Primary navigation (docs/design/visual-v4.md §5.1, §4.2): one <nav> landmark, inline from 840 px
+ * and a 44 px tab strip below (shell.css). The current item is text-1 with `aria-current="page"`.
+ * From 840 px a 4 px indicator in `--nav-ind` sits under it, placed with `left` and `width`; after
+ * a pointer navigation it moves from the old place with `translateX(Δx) scaleX(w0 / w1)` to none
+ * over 200 ms `--ease-in-out`. Keyboard, Back and Forward, resizes and reduced motion move it
+ * instantly. On the strip the current tab draws its own inset bar.
  */
 import { useCallback, useLayoutEffect, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { animate, DUR, EASE, prefersReducedMotion } from '../../lib/motion.js'
 
 /** Primary navigation, in order. Pools stays current on `/pools/:id` and token pages. */
-export const NAV_ITEMS: ReadonlyArray<{ to: string; label: string; also?: RegExp }> = [
+export const NAV_ITEMS: ReadonlyArray<{
+  to: string
+  label: string
+  /** The dock's shorter label, where four tabs share a phone's width. */
+  short?: string
+  also?: RegExp
+}> = [
   { to: '/pools', label: 'Pools', also: /^\/tokens\// },
   { to: '/gaps', label: 'Gaps' },
   { to: '/mm', label: 'Scorecards' },
-  { to: '/methodology', label: 'Methodology' },
+  { to: '/methodology', label: 'Methodology', short: 'Method' },
 ]
 
 /** Whether `item` is the current section for `pathname` (its own path, a child, or `also`). */
@@ -22,10 +31,10 @@ export function isCurrent(item: (typeof NAV_ITEMS)[number], pathname: string): b
   )
 }
 
-export function Nav({ animate }: { animate: boolean }) {
+export function Nav({ animate: slide }: { animate: boolean }) {
   const navRef = useRef<HTMLElement | null>(null)
   const indRef = useRef<HTMLSpanElement | null>(null)
-  const placed = useRef(false)
+  const placed = useRef<{ x: number; w: number } | null>(null)
   const { pathname } = useLocation()
 
   const place = useCallback((animated: boolean) => {
@@ -35,33 +44,35 @@ export function Nav({ animate }: { animate: boolean }) {
     const cur = nav.querySelector<HTMLElement>('a[aria-current="page"]')
     if (!cur) {
       ind.classList.remove('is-on')
-      placed.current = false
+      placed.current = null
       return
     }
-    // The first placement, keyboard and Back/Forward moves, and resizes never slide.
-    const slide = animated && placed.current
-    if (!slide) nav.setAttribute('data-instant', '')
     const n = nav.getBoundingClientRect()
-    // The indicator spans the label, not the link's focus padding.
-    const r = (cur.querySelector('.nav-label') ?? cur).getBoundingClientRect()
+    const r = cur.getBoundingClientRect()
     const x = r.left - n.left + nav.scrollLeft
-    ind.style.transform = `translateX(${x}px) scaleX(${r.width})`
+    const w = r.width
+    const was = placed.current
+    ind.style.left = `${x}px`
+    ind.style.width = `${w}px`
     ind.classList.add('is-on')
-    placed.current = true
+    placed.current = { x, w }
+    for (const a of ind.getAnimations?.() ?? []) a.cancel()
+    if (animated && was && w > 0 && (was.x !== x || was.w !== w) && !prefersReducedMotion()) {
+      animate(
+        ind,
+        [{ transform: `translateX(${was.x - x}px) scaleX(${was.w / w})` }, { transform: 'none' }],
+        { duration: DUR.indicator, easing: EASE.inOut },
+      )
+    }
     // Keep the current tab in view where the strip scrolls (below 360 px).
     const pad = Number.parseFloat(getComputedStyle(nav).paddingRight) || 0
     if (r.right > n.right - pad) nav.scrollLeft += r.right - (n.right - pad)
     else if (r.left < n.left + pad) nav.scrollLeft -= n.left + pad - r.left
-    if (!slide && typeof requestAnimationFrame === 'function') {
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => navRef.current?.removeAttribute('data-instant')),
-      )
-    }
   }, [])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-place on every route change
   useLayoutEffect(() => {
-    place(animate)
+    place(slide)
   }, [pathname, place])
 
   useLayoutEffect(() => {
@@ -80,7 +91,7 @@ export function Nav({ animate }: { animate: boolean }) {
           to={item.to}
           aria-current={isCurrent(item, pathname) ? 'page' : undefined}
         >
-          <span className="nav-label">{item.label}</span>
+          {item.label}
         </Link>
       ))}
       <span ref={indRef} className="nav-ind" aria-hidden="true" />

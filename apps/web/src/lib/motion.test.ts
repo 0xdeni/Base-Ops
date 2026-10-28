@@ -5,7 +5,6 @@ import {
   easeOut,
   isKeyboardClick,
   isTweening,
-  motionMs,
   prefersReducedMotion,
   tween,
 } from './motion.js'
@@ -116,15 +115,12 @@ describe('shared rules (M2, M9)', () => {
     expect(isKeyboardClick({ detail: 1 })).toBe(false)
   })
 
-  it('drops the duration for keyboard actions and under reduced motion', () => {
-    expect(motionMs(280, { keyboard: true })).toBe(0)
-    expect(motionMs(280, { reduced: true })).toBe(0)
-    expect(motionMs(280, { reduced: false })).toBe(280)
+  it('reads the reduced-motion preference, and none where matchMedia is missing', () => {
+    expect(prefersReducedMotion()).toBe(false)
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       value: (q: string) => ({ matches: q === '(prefers-reduced-motion: reduce)' }),
     })
     expect(prefersReducedMotion()).toBe(true)
-    expect(motionMs(280)).toBe(0)
   })
 })

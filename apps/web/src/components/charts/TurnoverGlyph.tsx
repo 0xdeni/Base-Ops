@@ -1,8 +1,9 @@
 /**
- * The turnover glyph of the gap rows (docs/design/visual-v3.md §5.9): the gap score on its own log
- * scale (core's `computeGap`: 1× turnover is 0, 10× is 50, 100× is 100) as a 96 × 4 meter, with a
- * 1 × 12 `text-3` tick at the meaningful-gap threshold (3× turnover, a score of 24), then the
- * score. Rows under 3× are drawn quiet (a `control` fill).
+ * The turnover glyph of the gap rows (docs/design/visual-v4.md §5.8, §5.9.8): the gap score on its
+ * own log scale (core's `computeGap`: 1× turnover is 0, 10× is 50, 100× is 100) as a 72 × 10 bar in
+ * ink on a `--surface-2` track, with a 2 px tick at the meaningful-gap threshold (3× turnover, a
+ * score of 24), then the score at 800. Rows under 3× are drawn quiet (a `--text-2` fill). Its fill
+ * grows with its block in the first view when the rows sit over the band (`data-bar`).
  */
 import { computeGap } from '@depthwatch/core'
 import { score } from '../../lib/format.js'
@@ -29,14 +30,14 @@ export function TurnoverGlyph({
 }) {
   const v = gapScore === null ? 0 : Math.min(1, Math.max(0, gapScore / 100))
   return (
-    <span className={`gap-meter${quiet ? ' quiet' : ''}`}>
+    <span className={`gbar${quiet ? ' quiet' : ''}`}>
       <span
-        className="meter tmeter"
+        className="tmeter"
         role="img"
         aria-label={turnoverLabel(gapScore)}
         style={vars({ '--v': v, '--t': MEANINGFUL_GAP_SCORE / 100 })}
       >
-        <i className="m-fill" />
+        <i className="m-fill" data-bar="" />
         <b className="m-tick" />
       </span>
       <span className="num" aria-hidden="true">

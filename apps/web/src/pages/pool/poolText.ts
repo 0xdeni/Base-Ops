@@ -1,7 +1,8 @@
 /**
- * The Pool page's sentences (ia-v3 §4.3, docs/design/visual-v3.md §6.3): the answer under the
- * title and each section's takeaway. They only word the stored values (P3, P8); nothing here is a
- * metric, and every number goes through `lib/format.ts`.
+ * The Pool page's sentences (ia-v3 §4.3, docs/design/visual-v4.md §6.4): the answer beside the
+ * title, the facts' comparisons, each section's finding and the over-time caption. They only word
+ * the stored values (P3, P8); nothing here is a metric, and every number goes through
+ * `lib/format.ts`.
  */
 import { HEALTH_MAX, type HealthComponents, type HealthScore } from '@depthwatch/core'
 import type {
@@ -14,9 +15,12 @@ import { weakestPart } from '../../components/charts/HealthBar.js'
 import {
   bps,
   cantAbsorb,
+  clockTime,
   NB,
+  ratio,
   SPREAD_UNABSORBED_BPS,
   score,
+  scoreExact,
   shareOf,
   uptime,
   usd,
@@ -35,6 +39,7 @@ const PART_NAME: Readonly<Record<keyof HealthComponents, string>> = {
  * pool's first token, whose price the stored sides move (AGENTS.md rule 6): USDC / AERO reads "to
  * lift USDC", the same sides Home and the scorecards show. With an unpriced side it says which
  * token has no USD price; with a side that runs out before 2 % it says how much empties it (CH3).
+ * When both sides hold $0 within 2 % it says that no liquidity sits there.
  */
 export function poolAnswer(detail: Pick<PoolDetail, 'pool' | 'latest'>): string {
   const { pool } = detail
@@ -50,6 +55,7 @@ export function poolAnswer(detail: Pick<PoolDetail, 'pool' | 'latest'>): string 
   const downOut = raw?.down.reached === false
   if (up === null && down === null)
     return `Depth is unknown in dollars: neither ${t0} nor ${t1} has a USD price.`
+  if (up === 0 && down === 0) return `No liquidity sits within 2${NB}% of the price.`
   if (upOut || downOut) {
     const side = upOut ? 'buy' : 'sell'
     const v = upOut ? up : down
@@ -69,8 +75,9 @@ export function poolAnswer(detail: Pick<PoolDetail, 'pool' | 'latest'>): string 
 }
 
 /**
- * The Health takeaway names the component furthest below its weight; for a pool with no grade it
- * says why there is none.
+ * The Health finding names the component furthest below its weight. When core scored it neutral,
+ * its note says why ("samples cover under 25 % of the window"); otherwise the points it holds, to
+ * one decimal like the health bar and Details. For a pool with no grade it says why there is none.
  */
 export function healthTakeaway(
   health: HealthScore,
@@ -79,6 +86,8 @@ export function healthTakeaway(
 ): string {
   if (!health.rated) return unratedDetail(health.unratedReason)
   const weakest = weakestPart(health.components)
+  const why = neutralReason(health.notes, weakest)
+  if (why) return `${PART_NAME[weakest]} is the weak part: ${why}.`
   if (weakest === 'concentration' && concentration) {
     if (concentration.owners)
       return `Concentration is the weak part: one LP holds ${shareOf(concentration.owners.top1Share)}.`
@@ -86,7 +95,17 @@ export function healthTakeaway(
       return 'Concentration is the weak part: all liquidity is one full range.'
     return `Concentration is the weak part: ${shareOf(concentration.activeRangeShare)} sits in one range.`
   }
-  return `${PART_NAME[weakest]} is the weak part: ${score(health.components[weakest])} of ${HEALTH_MAX[weakest]} points.`
+  return `${PART_NAME[weakest]} is the weak part: ${scoreExact(health.components[weakest])} of ${HEALTH_MAX[weakest]} points.`
+}
+
+/** The reason of core's "persistence neutral: …" note for `part`, with a no-break space before %. */
+export function neutralReason(
+  notes: readonly string[],
+  part: keyof HealthComponents,
+): string | null {
+  const prefix = `${part} neutral: `
+  const note = notes.find((n) => n.startsWith(prefix))
+  return note ? note.slice(prefix.length).replace(/ %/g, `${NB}%`) : null
 }
 
 /** A spread a trade can pay: feasible, and under the 10,000 bps a stored spread can never reach. */
@@ -113,13 +132,16 @@ export function spreadCellText(s: SpreadPoint): string {
   return costs(s) ? bps(s.spreadBps) : cantAbsorb(s.notionalUsd)
 }
 
-/** "One LP holds 53 % of the liquidity near the price.", or the active range when owners are not indexed. */
+/**
+ * "One LP holds 53 % of the liquidity near the price." Without indexed owners it says so and reads
+ * the active range instead; a full-range pool has one range by construction.
+ */
 export function whoTakeaway(concentration: ConcentrationMetrics | null, kind: string): string {
   if (!concentration) return 'No concentration data in the latest snapshot.'
   if (concentration.owners)
     return `One LP holds ${shareOf(concentration.owners.top1Share)} of the liquidity near the price.`
   if (kind !== 'concentrated') return 'A full-range pool: every LP shares one range.'
-  return `${shareOf(concentration.activeRangeShare)} of the liquidity sits in the active range.`
+  return `LP owners are not indexed for this pool. The active range holds ${shareOf(concentration.activeRangeShare)} of the liquidity within ±${concentration.bandPct}${NB}%.`
 }
 
 /** The persistence takeaway's two values for a window (they change with the window control). */
@@ -135,4 +157,80 @@ export function persistenceParts(p: PersistenceMetrics | null): {
 export function spreadAt(spreads: readonly SpreadPoint[], notional: number): number | null {
   const s = spreads.find((x) => x.notionalUsd === notional)
   return s !== undefined && costs(s) ? s.spreadBps : null
+}
+
+/**
+ * The facts' comparisons (§6.4): each label carries what to read its value against (P4). A number
+ * that ends a label is joined to the word before it with a no-break space, so it never sits alone
+ * on the label's last line.
+ */
+export function healthFactSuffix(median: number | null | undefined): string {
+  return median == null ? '' : `; the median rated pool scores${NB}${score(median)}`
+}
+
+/** "traded in 24 h, 14× the depth within 2 %": core's turnover, as the gap metrics store it. */
+export function volumeFactLabel(turnover: number | null | undefined): string {
+  const base = `traded in 24${NB}h`
+  return turnover == null ? base : `${base}, ${ratio(turnover)} the depth within${NB}2${NB}%`
+}
+
+/**
+ * "TVL, of which 10 % sits within 2 %": the stored ±2 % depth over the stored TVL, both from the
+ * latest snapshot. Without either it is the plain label.
+ */
+export function tvlFactLabel(depth2: number | null | undefined, tvl: number | null): string {
+  if (depth2 == null || tvl === null || !(tvl > 0)) return 'TVL'
+  return `TVL, of which ${shareOf(depth2 / tvl)} sits within${NB}2${NB}%`
+}
+
+/**
+ * The gap callout under the facts: "Liquidity gap: one of 48 pools that trade 3× their depth or
+ * more a day." when the gaps feed lists the pool, else its own turnover.
+ */
+export function gapCallout(turnover: number, listed: number | null, floor: number): string {
+  if (listed !== null && listed > 1)
+    return `Liquidity gap: one of ${listed} pools that trade ${floor}× their depth or more a day.`
+  return `Liquidity gap: it trades ${ratio(turnover)} its depth a day.`
+}
+
+/** "51 minutes", "6 hours", "3 days": how long the snapshots of a window span. */
+export function spanWords(seconds: number): string {
+  const min = Math.max(1, Math.round(seconds / 60))
+  if (min < 120) return `${min} ${min === 1 ? 'minute' : 'minutes'}`
+  const h = Math.round(seconds / 3600)
+  if (h < 48) return `${h} hours`
+  return `${Math.round(seconds / 86_400)} days`
+}
+
+/**
+ * The over-time finding when persistence cannot be measured yet: "5 snapshots from 10:39 to 11:30
+ * UTC cover too little of the window to measure persistence."
+ */
+export function tooFewTakeaway(samples: number, times: readonly number[]): string {
+  const first = times[0]
+  const last = times[times.length - 1]
+  const when =
+    first !== undefined && last !== undefined && last > first
+      ? ` from ${clockTime(first)} to ${clockTime(last)}${NB}UTC`
+      : ''
+  if (samples < 3) {
+    const n = samples === 1 ? '1 snapshot' : `${samples} snapshots`
+    return `${n}${when}: too few to measure persistence yet.`
+  }
+  return `${samples} snapshots${when} cover too little of the window to measure persistence.`
+}
+
+/**
+ * The caption under the multiples (§5.9.6): the span the axis covers, and, when switching the
+ * window changes nothing, that both windows hold the same snapshots.
+ */
+export function overTimeCaption(shown: readonly number[], other: number): string {
+  const first = shown[0]
+  const last = shown[shown.length - 1]
+  const span =
+    first !== undefined && last !== undefined && last > first
+      ? ` The axis spans the ${spanWords(last - first)} the snapshots cover; each range is labelled at its right.`
+      : ''
+  const same = other === shown.length ? ` Both windows hold the same ${other} snapshots.` : ''
+  return `Times in UTC.${span}${same}`
 }

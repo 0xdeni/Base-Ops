@@ -1,7 +1,7 @@
 /**
  * Missing periods are never interpolated (CH5): a series splits into solid runs wherever a value is
  * unknown or two samples sit more than 3 sampling intervals apart, and each break becomes a dashed
- * `text-3` segment between the runs it separates.
+ * `--text-2` segment between the runs it separates.
  */
 import { median } from '../../lib/scale.js'
 

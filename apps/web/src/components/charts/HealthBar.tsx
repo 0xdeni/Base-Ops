@@ -1,9 +1,9 @@
 /**
- * The weighted health bar (CH8, ia-v3 §4.3, docs/design/visual-v3.md §5.9): four segments in a
- * `35fr 25fr 20fr 20fr` grid with 2 px gaps, each filled in `text-1` to its component ÷ weight on a
- * `border-subtle` track. 8 px in the Health section, with each component's name and weight under
- * its segment and the weakest in `text-1`; 4 px at 80 px in tables (`mini`). The score itself stays
- * in the facts row (ia-v3 §4.3). Below 600 px the names stagger on two rows, so none is ellipsized.
+ * The weighted health bar (CH8, ia-v3 §4.3, docs/design/visual-v4.md §5.9.8): four segments sized
+ * 35 : 25 : 20 : 20 with 4 px gaps, 16 px tall, each a `--surface-2` track filled in ink to its
+ * component ÷ weight. Under each, the name (the weakest underlined) and "33.7 of 35"; below 600 px
+ * the names sit in a 2 × 2 grid. The score itself stays in the facts (ia-v3 §4.3). `mini` is the
+ * 80 × 4 table glyph without names.
  */
 import { HEALTH_MAX, type HealthComponents } from '@depthwatch/core'
 import type { ReactNode } from 'react'
@@ -51,10 +51,10 @@ export function HealthBar({
 }) {
   const weakest = weakestPart(components)
   const bar = (
-    <div className={`hbar${mini ? ' mini' : ''}`} role="img" aria-label={healthLabel(components)}>
+    <div className={`wbar${mini ? ' mini' : ''}`} role="img" aria-label={healthLabel(components)}>
       {HEALTH_PARTS.map(({ key }) => (
-        <span key={key} className="seg-h">
-          <i className="h-fill" style={vars({ '--v': healthFill(components, key) })} />
+        <span key={key} className="wseg" style={{ flexGrow: HEALTH_MAX[key] }}>
+          <i className="wfill" style={vars({ '--f': healthFill(components, key) })} />
         </span>
       ))}
     </div>
@@ -62,12 +62,19 @@ export function HealthBar({
   if (mini) return bar
   return (
     <>
-      <div className="hbar-wrap">
+      <div className="wbar-wrap">
         {bar}
-        <div className="hbar-names" aria-hidden="true">
+        <div className="wbar-l" aria-hidden="true">
           {HEALTH_PARTS.map(({ key, label }) => (
-            <span key={key} className={key === weakest ? 'weak' : undefined}>
-              {label} <span className="faint">{HEALTH_MAX[key]}</span>
+            <span
+              key={key}
+              className={`wlab${key === weakest ? ' weak' : ''}`}
+              style={{ flexGrow: HEALTH_MAX[key] }}
+            >
+              <b>{label}</b>
+              <span className="cap">
+                {scoreExact(components[key])} of {HEALTH_MAX[key]}
+              </span>
             </span>
           ))}
         </div>

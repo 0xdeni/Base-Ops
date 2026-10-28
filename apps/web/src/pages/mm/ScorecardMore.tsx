@@ -1,12 +1,14 @@
 /**
- * The Scorecard's last three sections (ia-v3 §4.6, docs/design/visual-v3.md §5.11, §6.6):
- * - Spread: with a spread KPI, the market-maker and whole-pool spread over the window; without
- *   one, "This mandate has no spread KPI." with the same series behind "Show measured spread".
- * - Embed badge: the API's badge SVG unaltered, "Copy HTML" and "Copy Markdown", the cache note,
- *   and the snippets behind "Show code". The static build has no server to embed from, so it
- *   shows the preview, one sentence, and the command and badge path behind "Show code".
- * - Mandate (L3): who, which pool, the addresses (mono, Basescan, copy), the KPIs, attribution,
- *   alerts and dates; a two-column list on desktop, "Mandate details" on phones.
+ * The last rows of the Scorecard's sections sheet and the Mandate panel (ia-v3 §4.6,
+ * docs/design/visual-v4.md §5.11, §6.7):
+ * - spread, with a spread KPI: the market-maker and whole-pool spread over the window; without
+ *   one, the same series sit behind "Show measured spread" in the depth over time row.
+ * - embed badge: the API's badge SVG unaltered, "Copy HTML" and "Copy Markdown" with the cache
+ *   note, and the snippets behind "Show code". The static build has no server to embed from, so
+ *   it shows the preview, one sentence, and the command and badge path behind "Show code".
+ * - mandate (L3), a panel after the sheet: who, which pool, the addresses (mono, Basescan, copy),
+ *   the KPIs, attribution, alerts and dates; a two-column list from 840 px, "Mandate details" on
+ *   phones.
  */
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -16,7 +18,12 @@ import { useBadge } from '../../api/hooks.js'
 import type { MmSampleDto, ScorecardDetail } from '../../api/types.js'
 import { type MultipleSeries, SmallMultiples } from '../../components/charts/SmallMultiples.js'
 import { CopyButton } from '../../components/ui/CopyButton.js'
-import { BadgePreview, CodeBlocks, CopyPair, EmbedCode } from '../../components/ui/EmbedBadge.js'
+import {
+  BadgePreview,
+  CodeBlocks,
+  EmbedActions,
+  EmbedCode,
+} from '../../components/ui/EmbedBadge.js'
 import { AboutSection, Section } from '../../components/ui/Section.js'
 import { Skeleton } from '../../components/ui/States.js'
 import { ago, bps, full, group, poolHref, shareOf, uptime, usd } from '../../lib/format.js'
@@ -34,7 +41,8 @@ import type { SeriesProps } from './ScorecardSections.js'
 
 const spreadTick = (v: number) => (v < 100 ? v.toFixed(1) : String(Math.round(v)))
 
-export function SpreadSection({
+/** The market-maker and whole-pool spread over the window, on one shared scale. */
+export function SpreadMultiples({
   detail,
   points,
   to,
@@ -67,47 +75,42 @@ export function SpreadSection({
       minSpan: 0.2,
     },
   ]
-  const chart =
-    points && to !== undefined && points.length ? (
-      <>
-        <SmallMultiples
-          points={points}
-          series={series}
-          domain={windowDomain(to, win)}
-          windowLabel={WINDOW_LABEL[win]}
-          instant={instant}
-          sharedY
-        />
-        <p className="tbl-note">Times in UTC. Both plots share one scale.</p>
-      </>
-    ) : (
-      <p className="small faint">No samples in this window.</p>
-    )
-  if (kpis.maxSpreadBps !== null) {
-    return (
-      <Section
-        id="s-spread"
-        title="Spread"
-        takeaway={`KPI: at most ${bps(kpis.maxSpreadBps)} at ${at}.`}
-      >
-        {chart}
-      </Section>
-    )
-  }
+  if (!points || to === undefined || !points.length)
+    return <p className="takeaway">No samples in this window.</p>
+  return (
+    <>
+      <SmallMultiples
+        points={points}
+        series={series}
+        domain={windowDomain(to, win)}
+        windowLabel={WINDOW_LABEL[win]}
+        instant={instant}
+        sharedY
+      />
+      <p className="cap">Times in UTC. Both plots share one scale.</p>
+    </>
+  )
+}
+
+/**
+ * The spread row, for a mandate with a spread KPI. Without one the measured spread sits behind
+ * "Show measured spread" in the depth over time row, and this row is left out (§6.7).
+ */
+export function SpreadSection(props: { detail: ScorecardDetail; instant: boolean } & SeriesProps) {
+  const { kpis } = props.detail.mandate
+  if (kpis.maxSpreadBps === null) return null
   return (
     <Section
       id="s-spread"
-      title="Spread"
-      takeaway="This mandate has no spread KPI."
-      details={{ label: 'Show measured spread', content: chart }}
-      className="sc-sec-quiet"
+      title="spread"
+      takeaway={`KPI: at most ${bps(kpis.maxSpreadBps)} at ${usd(kpis.spreadNotionalUsd)}.`}
     >
-      {null}
+      <SpreadMultiples {...props} />
     </Section>
   )
 }
 
-const EMBED_TAKEAWAY = 'Show this status on a project page; it updates with every snapshot.'
+const EMBED_TAKEAWAY = 'Show the live status on a project page. The badge is the API’s own SVG.'
 
 export function EmbedSection({ detail }: { detail: ScorecardDetail }) {
   const staticBuild = useIsStatic()
@@ -116,7 +119,7 @@ export function EmbedSection({ detail }: { detail: ScorecardDetail }) {
   const preview = badge.data ? (
     <BadgePreview svg={badge.data} alt={`Depthwatch scorecard: ${name}`} />
   ) : badge.isError ? (
-    <p className="small muted">Badge unavailable.</p>
+    <p className="small t2">Badge unavailable.</p>
   ) : (
     <Skeleton height={52} width={180} />
   )
@@ -124,7 +127,7 @@ export function EmbedSection({ detail }: { detail: ScorecardDetail }) {
     return (
       <Section
         id="s-embed"
-        title="Embed badge"
+        title="embed badge"
         takeaway={EMBED_TAKEAWAY}
         details={{
           label: 'Show code',
@@ -139,7 +142,7 @@ export function EmbedSection({ detail }: { detail: ScorecardDetail }) {
         }}
       >
         <div className="badge-row">{preview}</div>
-        <p className="small faint sc-embed-note" data-testid="embed-static-note">
+        <p className="cap sc-embed-note" data-testid="embed-static-note">
           Badge links need a running Depthwatch API; this static copy shows the preview only.
         </p>
       </Section>
@@ -151,18 +154,17 @@ export function EmbedSection({ detail }: { detail: ScorecardDetail }) {
   return (
     <Section
       id="s-embed"
-      title="Embed badge"
+      title="embed badge"
       takeaway={EMBED_TAKEAWAY}
       details={{
         label: 'Show code',
         content: <EmbedCode html={html} markdown={markdown} url={badgeUrl(origin, id)} />,
       }}
     >
-      <div className="badge-row">
-        {preview}
-        <CopyPair html={html} markdown={markdown} />
+      {preview}
+      <div className="badge-row sc-copy">
+        <EmbedActions html={html} markdown={markdown} />
       </div>
-      <p className="small faint">Cached for 5 minutes.</p>
     </Section>
   )
 }
@@ -182,7 +184,7 @@ export function MandateAbout({ detail, now }: { detail: ScorecardDetail; now: nu
   const a = latest?.attribution ?? null
   const words = poolWords(mandate.poolId, detail.pool?.pool)
   return (
-    <AboutSection id="s-mandate" title="Mandate" disclosureLabel="Mandate details">
+    <AboutSection id="s-mandate" title="mandate" disclosureLabel="Mandate details">
       <dl className="about">
         <Row k="Market maker">{mandate.marketMaker}</Row>
         <Row k="Pool">
@@ -232,7 +234,7 @@ export function MandateAbout({ detail, now }: { detail: ScorecardDetail; now: nu
           )}
         </Row>
         <Row k="Notes" wide>
-          <span className={mandate.notes ? undefined : 'faint'}>{mandate.notes || '—'}</span>
+          <span className={mandate.notes ? undefined : 't2'}>{mandate.notes || '—'}</span>
         </Row>
       </dl>
     </AboutSection>

@@ -1,9 +1,9 @@
 /**
- * Number change (docs/design/visual-v3.md §4 row 12): when a parameter changes (window switch,
- * price flip, filter), only the characters that changed settle in (opacity and
- * `translateY(0.32em)`, 200 ms `--ease-out`; opacity only under reduced motion). Never a count-up
- * (M7). Live values (refetch, freshness, scrubbing) and keyboard changes pass `animate={false}` and
- * swap instantly (M8). The text never breaks across lines.
+ * Number change (docs/design/visual-v4.md §4.3): when a parameter changes (window switch, price
+ * flip, filter), only the characters that changed settle in (opacity and `translateY(0.32em)`,
+ * 200 ms `--ease-out`; opacity only under reduced motion). Never a count-up. Live values (refetch,
+ * freshness, scrubbing) and keyboard changes pass `animate={false}` and swap instantly. The text
+ * never breaks across lines.
  */
 import { useRef } from 'react'
 

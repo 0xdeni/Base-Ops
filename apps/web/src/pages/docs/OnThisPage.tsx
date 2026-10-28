@@ -1,7 +1,7 @@
 /**
- * "On this page" (ia-v3 §4.8, docs/design/visual-v3.md §6.8): from 1200 px a sticky list in the
- * left column with the current section in `text-1` and a 2 px indicator on the rail; below 1200 px
- * a disclosure under the answer. Links are real hrefs (they open in a new tab, and work in the hash
+ * "On this page" (ia-v3 §4.8, docs/design/visual-v4.md §6.9): from 1200 px a sticky list in the
+ * left column with the current section in `--text-1` and a 4 px `--nav-ind` bar on the rail; below
+ * 1200 px a disclosure above the sections. Links are real hrefs (they open in a new tab, and work in the hash
  * router) whose plain clicks `useAnchors` turns into instant in-page jumps.
  */
 import { useHref, useLocation } from 'react-router-dom'
@@ -41,7 +41,7 @@ export function OnThisPageAside() {
   const current = useCurrentSection(IDS)
   return (
     <nav className="doc-toc" aria-labelledby="doc-toc-h">
-      <p className="doc-toc-h" id="doc-toc-h">
+      <p className="meta doc-toc-h" id="doc-toc-h">
         On this page
       </p>
       <OutlineList current={current} />
@@ -49,7 +49,7 @@ export function OnThisPageAside() {
   )
 }
 
-/** The disclosure under the answer (below 1200 px). */
+/** The disclosure above the sections (below 1200 px). */
 export function OnThisPageDisclosure() {
   return (
     <Disclosure label="On this page" className="doc-toc-disc">

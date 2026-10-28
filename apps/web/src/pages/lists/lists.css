@@ -1,183 +1,234 @@
-/* Pools explorer and Gaps (docs/design/visual-v3.md §6.2, §6.4, §5.8). Page-local classes carry
-   the `lists-` prefix; the pools table, rows, controls and states come from styles/ and
-   components/. This sheet loads after styles/index.css (main.tsx). */
+/* Pools and Gaps (docs/design/visual-v4.md §6.3, §6.5, §5.8). Page-local classes carry the
+   `lists-` prefix; the band, blocks, the pools table, rows, controls and states come from styles/
+   and components/. This sheet loads after styles/index.css (main.tsx). */
 
-/* ---------- Pools: controls row (search 320, 16, DEX filter, spacer, Columns) ---------- */
-.lists-controls {
+/* ---------- Pools: the band, title and answer left (5 / 12), the field right (7 / 12) ---------- */
+.lists-pools {
+  --field-h: 420px;
+}
+.lists-grid {
+  display: grid;
+  gap: var(--s5);
+  margin-top: var(--s3);
+}
+.lists-left {
+  display: grid;
+  gap: var(--s5);
+  align-content: start;
+  min-width: 0;
+}
+.lists-left .answer {
+  max-width: 20ch;
+}
+.lists-field {
+  min-width: 0;
+}
+@media (min-width: 64em) {
+  .lists-grid {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    column-gap: var(--s7);
+  }
+  /* Four lines are kept for the answer, so a DEX's longer answer never moves the filter that
+     is being used. */
+  .lists-left .answer {
+    max-width: 22ch;
+    min-height: calc(4 * 1.08em);
+  }
+}
+
+/* The controls row: search up to 380, Rating, a spacer, Columns at the right edge. */
+.lists-ctl {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
-  gap: var(--s4);
+  align-items: center;
+  gap: 12px var(--s4);
   margin-top: var(--s6);
+}
+.lists-ctl .search {
+  flex: 0 1 380px;
 }
 .lists-spacer {
   flex: 1;
 }
-.lists-cols {
-  margin-right: -8px;
+@media (pointer: coarse) {
+  .btn.lists-cols {
+    height: 44px;
+  }
 }
 .lists-ph-ctl {
-  display: flex;
-  gap: var(--s3);
-  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s2);
+  flex: 1 1 100%;
 }
-.lists-ph-ctl .btn {
-  flex: 1 1 0;
+/* Two equal 44 px buttons on the band: white 14 % fill, white label, the sort arrow after it. */
+.lists-ph-ctl > .btn.ghost {
   min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  background: rgb(255 255 255 / 0.14);
+  box-shadow: none;
+  color: var(--on-band);
+  font-weight: 700;
 }
 
-/* Compare DEXes: the DEX names are row headers set as cells. */
-.lists-dex-table tbody th {
-  font-size: var(--t-data);
-  font-weight: 400;
-  color: var(--text-1);
-  padding-block: 9px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.lists-dex-table .tot-row th {
-  font-weight: 500;
-  border-bottom-color: var(--border);
-}
-.lists-dex-table .td-health {
-  gap: var(--s2);
-}
-.lists-more {
-  margin-top: var(--s4);
-}
-.lists-unrated {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s3);
-  margin-top: var(--s4);
+/* ---------- Pools: the table sheet over the band ---------- */
+.lists-empty {
+  padding-inline: var(--s6);
 }
 .lists-error {
-  margin-top: var(--s5);
+  padding: var(--s6);
+}
+.lists-sheet .lists-skel-rows {
+  padding-inline: var(--s6);
 }
 .lists-compare {
-  margin-top: var(--s7);
-}
-.lists-compare .disc-inner {
-  padding-top: var(--s3);
+  margin-top: var(--s5);
 }
 
-/* ---------- Loading (ST1): the final heights, static well blocks ---------- */
-.lists-skel-answer {
-  display: flex;
-  align-items: center;
-  min-height: 1.3em;
+@media (max-width: 52.49em) {
+  .lists-pools {
+    --field-h: 260px;
+  }
+  .lists-ctl {
+    margin-top: var(--s5);
+    gap: 12px var(--s2);
+  }
+  .lists-ctl .search {
+    flex: 1 1 100%;
+  }
+  .lists-empty,
+  .lists-sheet .lists-skel-rows {
+    padding-inline: var(--s4);
+  }
+  .lists-error {
+    padding: var(--s5) var(--s4);
+  }
 }
-.lists-skel-rows {
-  border-top: 1px solid var(--border-subtle);
+
+/* ---------- Loading (ST1): the final heights, static blocks ---------- */
+.lists-skel-answer {
+  display: grid;
+  gap: 0.28em;
+  padding-block: 0.14em;
+}
+.lists-skel-dex {
+  display: grid;
+  gap: 4px;
+}
+.lists-skel-field .skel-stack {
+  gap: 6px;
+}
+.lists-skel-lens {
+  display: block;
+  height: 48px;
+  margin-block: 6px;
+}
+.lists-skel-inline {
+  display: inline-block;
+  vertical-align: -0.1em;
+}
+.lists-skel-rows .skel-stack {
+  gap: 0;
 }
 .lists-skel-rows.has-header {
-  margin-top: 40px;
-}
-.tbl-caption.lists-skel-caption {
-  min-height: 32px;
+  padding-top: 44px;
 }
 .lists-skel-row {
   display: grid;
   align-content: center;
   gap: 6px;
   height: 64px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--line);
+}
+.lists-gaps-blk .lists-skel-row {
+  height: 70px;
+}
+@media (max-width: 52.49em) {
+  .lists-gaps-blk .lists-skel-row {
+    height: 100px;
+  }
 }
 
-/* ---------- Gaps ---------- */
-.lists-lead {
-  margin-top: var(--s3);
-  /* A paragraph: it fills the shared 56ch measure like the Scorecards lead (§3.3). */
-  text-wrap: pretty;
-}
-.tbl-caption.lists-gaps-caption {
-  align-items: center;
+/* ---------- Gaps: the title section, the band's lead and controls ---------- */
+.lists-gaps-lead {
+  display: flex;
   flex-wrap: wrap;
-  margin-top: var(--s7);
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s4) var(--s6);
 }
 .lists-gaps-ctl {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--s5);
+  gap: 12px var(--s5);
+  font-weight: 650;
 }
-.lists-gap-list {
-  border-top: 1px solid var(--border);
+@media (max-width: 52.49em) {
+  .lists-gaps-ctl {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
 }
+
+/* ---------- Gaps: the ranked rows in the block over the band ---------- */
 .lists-gap-row {
-  grid-template-columns: 2rem minmax(0, 1fr) auto 136px;
-}
-.lists-gap-row .lists-rank {
-  color: var(--text-3);
-  font-size: var(--t-data);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+  min-height: 69px;
 }
 .lists-gap-say {
-  font-size: var(--t-small);
-  line-height: 1.385;
-  color: var(--text-2);
-  white-space: nowrap;
+  justify-self: start;
+  font-size: var(--t-data);
+  font-weight: 650;
+  line-height: 1.4;
 }
 .lists-gap-ratio {
   display: none;
   font-size: var(--t-data);
+  font-weight: 650;
+}
+.is-quiet :is(.lists-gap-say, .lists-gap-ratio) {
   color: var(--text-2);
-  text-align: right;
-}
-.lists-gap-row .gap-meter {
-  justify-self: end;
-}
-/* Scores up to 100 take the same width, so every meter starts on one line. */
-.lists-gap-row .gap-meter .num {
-  min-width: 3ch;
-  text-align: right;
-}
-.is-quiet .lists-gap-say,
-.is-quiet .lists-gap-ratio {
-  color: var(--text-3);
-}
-.lists-gaps-more {
-  margin-top: var(--s3);
-}
-.lists-gaps-more .disc-inner {
-  padding-top: 0;
 }
 .lists-gap-none {
   padding-block: 14px;
-  color: var(--text-3);
-  font-size: var(--t-small);
-  line-height: 1.385;
-  border-top: 1px solid var(--border);
+  border-top: 2px solid var(--text-1);
+  font-size: var(--t-data);
+  color: var(--text-2);
 }
-.lists-gtable .lists-turnover {
-  color: var(--text-1);
+.lists-gaps-foot .cap {
+  flex: 1 1 28ch;
+  margin: 0;
 }
-
+.lists-gaps-quiet > .disc-inner {
+  padding-top: var(--s4);
+}
 @media (max-width: 52.49em) {
-  /* The answers run to two lines on phones. */
-  .lists-skel-answer {
-    min-height: 2.6em;
-  }
-  /* Phone gap rows: the pool cell, then "51×", then the score (§6.4). */
   .lists-gap-row {
-    grid-template-columns: minmax(0, 1fr) 3rem auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 99px;
   }
-  .lists-gap-row .lists-rank,
+  .lists-gap-row .cell-pool {
+    grid-column: 1 / -1;
+  }
   .lists-gap-say {
     display: none;
   }
   .lists-gap-ratio {
     display: block;
   }
-  .lists-gap-row .tmeter {
-    width: 64px;
-  }
-  .lists-gaps-ctl {
-    width: 100%;
-    justify-content: space-between;
-  }
-  /* The table view scrolls inside its wrapper, edge to edge, with a sticky first column and a
-     fade at the trailing edge (TB7); the gutter becomes the outer cells' padding. */
+}
+
+/* ---------- Gaps: the table view, a table sheet over the band ---------- */
+.lists-gtable .lists-turnover {
+  color: var(--text-1);
+}
+@media (max-width: 52.49em) {
+  /* The table scrolls inside its wrapper with a sticky first column and a fade at the trailing
+     edge (TB7). */
   .lists-gtable-wrap {
     overflow-x: auto;
-    margin-inline: calc(-1 * var(--gutter));
     mask-image: linear-gradient(to right, #000 calc(100% - var(--s5)), transparent);
   }
   .lists-gtable-wrap :focus-visible {
@@ -191,18 +242,16 @@
     outline: 2px solid var(--focus);
     outline-offset: -2px;
   }
+  .lists-gaps-blk .ptable {
+    --cell-x: var(--s4);
+  }
   .ptable.lists-gtable th:first-child,
   .ptable.lists-gtable td:first-child {
     position: sticky;
     left: 0;
     z-index: 1;
-    background-color: var(--canvas);
-    padding-left: var(--gutter);
+    background-color: var(--surface);
     padding-right: var(--s4);
-  }
-  .ptable.lists-gtable th:last-child,
-  .ptable.lists-gtable td:last-child {
-    padding-right: var(--gutter);
   }
   .ptable.lists-gtable th:first-child {
     z-index: 3;

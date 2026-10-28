@@ -1,20 +1,24 @@
 /**
- * `/` (ia-v3 §4.1, docs/design/visual-v3.md §6.1): one answer, one figure, three facts. The display
- * sentence states Base's depth within 2 % of the price; the focal depth butterfly shows where that
- * depth sits pool by pool, closed by the "All of Base" total row and its "Show data" table; the
- * facts give the 24 h volume, the median health and the biggest gap; two previews hand the reader
- * to the gaps feed and the market-maker scorecards. Home has no URL state (ia-v3 §2).
+ * `/` (ia-v3 §4.1, docs/design/visual-v4.md §6.2): one answer, one figure, three facts. The band
+ * opens on the answer, "$49.9M sits within 2 % of the price on Base.", with the lead and the
+ * actions, then the focal depth butterfly of Base: where that depth sits pool by pool, the "All of
+ * Base" total row with its concentration bracket, and its "Show data" table. Three fact blocks
+ * stack over the band's lower edge (24 h volume, median health, biggest gap); two previews hand
+ * the reader to the gaps feed and the market-maker scorecards. Home has no URL state (ia-v3 §2);
+ * the first view of a session is played by the app shell on the parts marked for it.
  */
+
+import { useSnapshot } from '../api/context.js'
 import { useGaps, useScorecards, useStats } from '../api/hooks.js'
 import type { ButterflyGap } from '../components/charts/index.js'
+import { Overlap } from '../components/ui/Block.js'
 import { useDelayedPending } from '../components/ui/States.js'
+import { useAllPools } from '../lib/useAllPools.js'
 import { isMeaningfulGap } from './home/copy.js'
 import { HomeFacts } from './home/HomeFacts.js'
 import { type HeroFigure, HomeHero } from './home/HomeHero.js'
 import { FactsSkeleton } from './home/HomeSkeleton.js'
 import { GapsPreview, MandatesPreview } from './home/Previews.js'
-import { useAllPools } from './home/useAllPools.js'
-import { useIntro } from './home/useIntro.js'
 import './home/home.css'
 
 /** Enough of the gap feed to count every pool trading 3× its depth or more (the API's page). */
@@ -25,6 +29,7 @@ export function Home() {
   const all = useAllPools()
   const gaps = useGaps({ limit: GAP_FEED_LIMIT })
   const scorecards = useScorecards()
+  const snapshot = useSnapshot() !== undefined
 
   const meaningful = gaps.data?.items.filter(isMeaningfulGap)
   const biggest = meaningful?.[0]
@@ -32,8 +37,6 @@ export function Home() {
     biggest && biggest.gap.turnoverRatio !== null
       ? { poolId: biggest.pool.pool.id, turnoverRatio: biggest.gap.turnoverRatio }
       : null
-  const ready = all.pools !== undefined && !gaps.isPending
-  const intro = useIntro(ready && (all.pools?.length ?? 0) > 0)
   const pending = stats.isPending || all.isPending || gaps.isPending || scorecards.isPending
   const waiting = !useDelayedPending(pending)
 
@@ -41,28 +44,34 @@ export function Home() {
     // Sides as stored (token0's), the same values the pool's page and scorecards show.
     pools: all.pools,
     gap,
-    ready,
+    ready: all.pools !== undefined && !gaps.isPending,
     isError: all.isError,
     retry: all.refetch,
-    intro,
   }
   const totals = stats.data?.totals
-  // The facts wait for the gap feed too, so the third fact never pops in beside the other two.
-  const facts =
-    totals && !gaps.isPending ? (
-      totals.scored > 0 ? (
-        <HomeFacts totals={totals} top={gaps.data?.items[0]} />
-      ) : null
-    ) : stats.isError ? null : (
-      <FactsSkeleton waiting={waiting} />
-    )
+  // The facts wait for the gap feed and the pools too, so no block pops in beside the others.
+  const factsPending = !totals || gaps.isPending || all.isPending
+  const noFacts = stats.isError || (totals !== undefined && totals.scored === 0)
+  let facts = null
+  if (!noFacts)
+    facts =
+      totals && !factsPending ? (
+        <HomeFacts totals={totals} top={gaps.data?.items[0]} pools={all.pools} />
+      ) : (
+        <FactsSkeleton waiting={waiting} />
+      )
   return (
-    <div className="wrap home">
-      <HomeHero stats={stats} figure={figure} waiting={waiting} />
-      {facts}
-      <div className="previews">
+    <div className="home">
+      <HomeHero stats={stats} figure={figure} closed={noFacts} waiting={waiting} />
+      {facts ? <Overlap label="Key facts">{facts}</Overlap> : null}
+      <div className={`wrap grid home-prev${facts ? '' : ' is-first'}`}>
         <GapsPreview gaps={gaps} meaningful={meaningful} waiting={waiting} />
-        <MandatesPreview scorecards={scorecards} pools={all.pools} waiting={waiting} />
+        <MandatesPreview
+          scorecards={scorecards}
+          pools={all.pools}
+          snapshot={snapshot}
+          waiting={waiting}
+        />
       </div>
     </div>
   )

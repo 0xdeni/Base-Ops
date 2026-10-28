@@ -1,40 +1,48 @@
 /**
- * The words of Home (ia-v3 §4.1, docs/design/visual-v3.md §6.1), kept pure so the sentences can be
+ * The words of Home (ia-v3 §4.1, docs/design/visual-v4.md §6.2), kept pure so the sentences can be
  * tested without rendering. Every number is formatted here from stored values; nothing is derived.
  */
 import type { GapItem, ScorecardSummaryDto } from '../../api/types.js'
+import { dexShort } from '../../components/charts/butterflyModel.js'
 import { MEANINGFUL_GAP_TURNOVER } from '../../components/charts/TurnoverGlyph.js'
-import { NB, usd } from '../../lib/format.js'
+import { count, NB, pairLabel, ratio, usd } from '../../lib/format.js'
 
-/** The display answer (P3): "$26.1M sits within 2 % of the price on Base." */
+/** The figure of the display answer: "$49.9M". */
+export const homeFigure = (depth2Usd: number): string => usd(depth2Usd)
+
+/** The sentence after the figure, set beside it as one heading. */
+export const HOME_SAY = `sits within 2${NB}% of the price on Base.`
+
+/** The display answer as one sentence (P3): "$49.9M sits within 2 % of the price on Base." */
 export function homeAnswer(depth2Usd: number): string {
-  return `${usd(depth2Usd)} sits within 2${NB}% of the price on Base.`
+  return `${homeFigure(depth2Usd)} ${HOME_SAY}`
 }
 
 /** The answer before the first score exists. */
 export const EMPTY_ANSWER = 'No pools are scored yet.'
 
+/** The heading when the totals cannot be read. */
+export const ERROR_ANSWER = 'Liquidity on Base'
+
 /**
- * The one-sentence lead under the answer (P8), with the scored-pool count and how many of them
- * are deep enough to be graded.
+ * The one-sentence lead under the answer (P8): what Depthwatch measures and which pools it grades.
+ * It carries no number, so the first viewport keeps its four (§6.1); the counts are in the facts.
  */
 export function homeLead(scored: number, rated: number): string {
-  const subject =
-    scored === 1
-      ? 'its one scored Uniswap or Aerodrome pool'
-      : `each of ${scored} Uniswap and Aerodrome pools`
+  if (scored === 1) {
+    const grading = rated > 0 ? 'and grades it A to F' : 'but it is too thin to grade'
+    return `Depthwatch measures what it costs to move the one Uniswap or Aerodrome pool it scores on Base, ${grading}.`
+  }
   let grading: string
-  if (rated === 0)
-    grading = scored === 1 ? 'but it is too thin to grade' : 'but none is deep enough to grade'
-  else if (rated === scored)
-    grading = scored === 1 ? 'and grades it A to F' : 'and grades them A to F'
-  else grading = `and grades the ${rated} deep enough to rate A to F`
-  return `Depthwatch measures what it costs to move ${subject}, ${grading}.`
+  if (rated === 0) grading = 'but none is deep enough to grade yet'
+  else if (rated === scored) grading = 'and grades each one A to F'
+  else grading = 'and grades the ones deep enough to rate'
+  return `Depthwatch measures what it costs to move each Uniswap and Aerodrome pool on Base, ${grading}.`
 }
 
 /** The lead while nothing is scored: what was found, and when scores appear. */
 export function emptyLead(discovered: number): string {
-  const found = discovered === 1 ? '1 pool discovered.' : `${discovered} pools discovered.`
+  const found = discovered === 1 ? '1 pool discovered.' : `${count(discovered)} pools discovered.`
   return `${found} Scores appear after the first snapshot.`
 }
 
@@ -44,20 +52,34 @@ export function isMeaningfulGap(item: GapItem): boolean {
   return t !== null && t >= MEANINGFUL_GAP_TURNOVER
 }
 
-/** "1 pool trades 3× its depth or more every day." / "No pool trades 3× its depth today." */
+/** The 24 h volume fact's label, with its comparison when the turnover is known. */
+export function volumeLabel(turnover: number | null): string {
+  if (turnover === null) return `traded in 24${NB}h`
+  return `traded in 24${NB}h, ${ratio(turnover)} the depth within 2${NB}% of the price`
+}
+
+/** "median health of the 50 rated pools", or why there is no median. */
+export function healthLabel(rated: number): string {
+  if (rated === 0) return 'median health: no pool is deep enough to rate yet'
+  if (rated === 1) return 'median health of the 1 rated pool'
+  return `median health of the ${count(rated)} rated pools`
+}
+
+/** "WETH / USDT, Slipstream: volume over depth" */
+export function gapLabel(item: GapItem): string {
+  const pool = item.pool.pool
+  return `${pairLabel(pool.token0, pool.token1)}, ${dexShort(pool.dex)}: volume over depth`
+}
+
+/** "48 pools trade 3× their depth or more every day." / "No pool trades 3× its depth today." */
 export function gapsTakeaway(meaningful: number): string {
   if (meaningful === 0) return 'No pool trades 3× its depth today.'
   if (meaningful === 1) return '1 pool trades 3× its depth or more every day.'
-  return `${meaningful} pools trade 3× their depth or more every day.`
+  return `${count(meaningful)} pools trade 3× their depth or more every day.`
 }
 
 /** The quiet line under fewer than 3 gap rows. */
 export const GAPS_QUIET_LINE = 'Every other pool trades less than 3× its depth.'
-
-/** "Trades 51× its depth a day". */
-export function tradesLine(ratioText: string): string {
-  return `Trades ${ratioText} its depth a day`
-}
 
 /**
  * The scorecards takeaway around its glossary term: "1 of 2 mandates is within its [KPIs] right
@@ -75,11 +97,17 @@ export function mandatesTakeaway(items: readonly Pick<ScorecardSummaryDto, 'stat
   return { before: `${ok} of ${n} ${noun} ${verb} within ${their} `, after: ' right now.' }
 }
 
-/** The definitions behind the dotted terms on Home (D8); Methodology has the full text. */
-export const GLOSS = {
-  health:
-    'One score from 0 to 100 built from depth, spread, concentration and persistence. A is 80 or more. A pool too thin to rate gets no grade.',
-  gap: `A pool that trades far more each day than the liquidity within 2${NB}% of its price.`,
-  turnover: `How many times a pool trades its own depth within 2${NB}% of the price in a day.`,
-  kpis: 'The depth a market maker promised to keep on each side, checked at every snapshot.',
-} as const
+/** The scorecards preview with no mandate: a published snapshot says so of itself. */
+export function noMandates(snapshot: boolean): string {
+  return snapshot
+    ? 'No market-maker mandates are registered in this snapshot.'
+    : 'No market-maker mandates are registered yet.'
+}
+
+/** What a scorecard is, under the empty state (§5.12). */
+export const SCORECARD_LINE =
+  'A scorecard checks the depth a market maker promised against what is on chain at every snapshot.'
+
+/** The definition behind the dotted "KPIs" in the scorecards takeaway (D8). */
+export const KPIS_DEFINITION =
+  'The depth a market maker promised to keep on each side, checked at every snapshot.'
