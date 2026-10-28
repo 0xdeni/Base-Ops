@@ -110,6 +110,23 @@ describe('touch targets and layering (A5, §5.5)', () => {
     expect(at('components/shell/Footer.tsx').match(/className="touch-hit"/g)).toHaveLength(3)
   })
 
+  it('keeps the butterfly readout short on touch: "Open pool" takes the hit layer, not a 44 px box', () => {
+    const at = (file: string) => read(join(SRC, file))
+    expect(at('components/charts/DepthButterfly.tsx')).toMatch(/className="bf-open touch-hit"/)
+    for (const m of stripComments(coarse).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const [, selector = '', body = ''] = m
+      if (/\.bf-open\b/.test(selector)) expect(body, selector).not.toMatch(/height/)
+    }
+    // Phone rows set the pair label at the --t-data leading of 1.4 (§3.4).
+    const phone = inMedia(allCss, '(max-width: 52.49em)')
+    expect(block(phone, '.bf-pools .bf-lab')).toMatch(/line-height:\s*1\.4;/)
+  })
+
+  it("gives row lists a 64 px pitch: a 63 px row over its item's 1 px rule (§5.8)", () => {
+    expect(block(sharedCss, '.rl-row')).toMatch(/min-height:\s*63px/)
+    expect(block(sharedCss, '.rowlist > li')).toMatch(/border-bottom:\s*1px solid var\(--line\)/)
+  })
+
   it('keeps the Not rated chip reachable above a row link', () => {
     const stretched = block(allCss, '.ptable .row-link::after')
     expect(stretched).toMatch(/position:\s*absolute/)

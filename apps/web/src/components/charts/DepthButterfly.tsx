@@ -180,7 +180,7 @@ export function DepthButterfly({
               <>
                 <Who row={lensed} scope={scope} />
                 {lens?.touch ? (
-                  <Link className="bf-open" to={poolHref(lensed.id)}>
+                  <Link className="bf-open touch-hit" to={poolHref(lensed.id)}>
                     Open pool
                   </Link>
                 ) : null}

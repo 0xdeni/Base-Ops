@@ -72,6 +72,7 @@
     justify-self: center;
     translate: none;
     padding: 0 8px;
+    line-height: 1.4;
     background: var(--band);
   }
   .bf-pools .bf-h {
@@ -102,7 +103,9 @@
 }
 
 /* Touch: a row's link takes taps only once the row is lensed, so the first tap reads the row
-   and the second opens the pool. Rows, "Open pool" and "Gap" are at least 44 px high. */
+   and the second opens the pool. Rows and "Gap" are at least 44 px high. "Open pool" keeps its
+   text height, so the readout line stays two lines on phones, and takes its 44 × 44 hit area from
+   the centred `touch-hit` layer. */
 @media (pointer: coarse) {
   .bf-pools .bf-r:not(.is-on) > .bf-link {
     pointer-events: none;
@@ -110,7 +113,6 @@
   .bf-pools .bf-r {
     min-height: 44px;
   }
-  .bf-open,
   .bf-gap {
     display: inline-flex;
     align-items: center;

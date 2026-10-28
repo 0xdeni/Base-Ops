@@ -265,13 +265,14 @@ th[aria-sort] .sort-btn svg {
 .rowlist.is-ruled > .rl-row:first-child {
   border-top: 2px solid var(--text-1);
 }
+/* The row and its item's 1 px rule make the 64 px pitch. */
 .rl-row {
   position: relative;
   isolation: isolate;
   display: grid;
   align-items: center;
   gap: 6px var(--s4);
-  min-height: 64px;
+  min-height: 63px;
   padding-block: 12px;
 }
 /* The hover layer bleeds 12 px past the text on both sides. */
