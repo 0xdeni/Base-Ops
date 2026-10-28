@@ -35,7 +35,7 @@ Run from the repository root.
 
 ```sh
 pnpm install          # CI: pnpm install --frozen-lockfile with pnpm 10.28.0; locally `corepack enable` picks up the pinned version
-pnpm lint             # biome check . (format + lint, Markdown included); pnpm lint:fix applies fixes
+pnpm lint             # biome check . (format + lint, Markdown and JSON included; warnings fail); pnpm lint:fix applies fixes
 pnpm typecheck        # tsc --noEmit in every package
 pnpm test             # vitest run: node project (packages, api, cli) + jsdom project (web)
 pnpm build            # vite build of apps/web -> apps/web/dist, served by `depthwatch serve`
@@ -43,10 +43,13 @@ pnpm build:static     # export the demo bundle, then the static site -> apps/web
 pnpm depthwatch demo  # offline: synthetic Base world -> in-memory DB -> API + dashboard on :8787
 pnpm depthwatch start # a server: API + dashboard + the pipeline on a schedule (docs/DEPLOY.md)
 pnpm check            # lint + typecheck + test
+pnpm check:all        # check + build + build:static: every step CI runs
 ```
 
-CI runs install, lint, typecheck, test and build in that order; all must pass. One package at a
-time: `npx vitest run packages/core`, `npx tsc --noEmit -p packages/core/tsconfig.json`,
+CI (`.github/workflows/ci.yml`, on Node 22.13 and 24) runs install, lint, typecheck, test, build
+and build:static in that order and all must pass (`pnpm check:all` runs them locally); a
+`pnpm audit --prod` step reports advisories without failing the job. One package at a time:
+`npx vitest run packages/core`, `npx tsc --noEmit -p packages/core/tsconfig.json`,
 `npx biome check --write packages/core`. `DEPTHWATCH_PORT` (or `--port`, else a platform's `PORT`)
 moves the server; live commands (`discover`, `snapshot`, `volume`, `positions`, `run`, `start`,
 `mm sample`) need `DEPTHWATCH_RPC_URL` and are never needed for tests; `DEPTHWATCH_LOGS_RPC_URL`
@@ -83,8 +86,8 @@ second endpoint.
    ones and docs/design/scorecards.md §6 the `/api/mm` ones; `apps/api/src/routes/agentDocs.test.ts` checks that `openapi.json` lists exactly the
    GET routes and that real responses match its schemas (undocumented fields fail). A new or
    changed route updates those documents and `apps/api/src/agentDocs/` in the same change.
-9. **Biome formats Markdown** (tables, embedded JSON) as well as code; 100 columns, single
-   quotes, no semicolons. Run `pnpm lint:fix` rather than formatting by hand.
+9. **Biome formats Markdown** (tables, embedded JSON) and JSON files as well as code; 100 columns,
+   single quotes, no semicolons. Run `pnpm lint:fix` rather than formatting by hand.
 10. **Never extrapolate pool state**, keep files under about 400 lines, no TODO stubs, no secrets
     (`.env` is git-ignored).
 

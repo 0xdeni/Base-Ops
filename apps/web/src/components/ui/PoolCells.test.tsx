@@ -3,14 +3,23 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PoolSummary } from '../../api/types.js'
 import { NB } from '../../lib/format.js'
-import { DEMO_POOLS } from '../charts/chartFixtures.js'
-import { HealthCell, metricCell } from './PoolCells.js'
+import { UNKNOWN_REASON } from '../../lib/poolsTable.js'
+import { BASIS_MARK, BASIS_MARK_LABEL } from '../../lib/rating.js'
+import { DEMO_POOLS, summary } from '../charts/chartFixtures.js'
+import { DepthCell, HealthCell, metricCell } from './PoolCells.js'
+import { PoolsTable } from './PoolsTable.js'
 
 afterEach(cleanup)
 
-const rated = { total: 71.4, grade: 'B', rated: true, unratedReason: null } as const
-const unrated = (unratedReason: 'thin' | 'one-sided' | 'unpriced') =>
-  ({ total: 38.2, grade: null, rated: false, unratedReason }) as const
+const rated = {
+  total: 71.4,
+  grade: 'B',
+  rated: true,
+  unratedReason: null,
+  concentrationBasis: 'owners',
+} as const
+const unrated = (unratedReason: 'thin' | 'one-sided' | 'unpriced' | 'hooked') =>
+  ({ total: 38.2, grade: null, rated: false, unratedReason, concentrationBasis: 'owners' }) as const
 
 describe('HealthCell', () => {
   it('shows the glyph and the truncated score of a rated pool', () => {
@@ -25,6 +34,7 @@ describe('HealthCell', () => {
       thin: 'Too thin to rate',
       'one-sided': 'Too thin on one side',
       unpriced: 'No USD price',
+      hooked: 'Hooked pool',
     } as const
     for (const [reason, words] of Object.entries(reasons)) {
       const { container, unmount } = render(
@@ -39,6 +49,33 @@ describe('HealthCell', () => {
       expect((await screen.findByRole('tooltip')).textContent).toContain(words)
       unmount()
     }
+  })
+})
+
+describe('HealthCell: the concentration mark', () => {
+  it('marks a grade whose concentration does not rest on LP owners, with the reason', async () => {
+    render(<HealthCell health={rated} />)
+    expect(screen.queryByRole('button', { name: BASIS_MARK_LABEL })).toBeNull()
+    cleanup()
+    const reasons = {
+      ranges: 'spreads over price ranges',
+      neutral: 'scored neutral, 10 of 20',
+    } as const
+    for (const [basis, words] of Object.entries(reasons)) {
+      const { container, unmount } = render(
+        <MemoryRouter>
+          <HealthCell health={{ ...rated, concentrationBasis: basis as keyof typeof reasons }} />
+        </MemoryRouter>,
+      )
+      expect(within(container).getByRole('img', { name: 'Grade B' })).toBeTruthy()
+      expect(container.textContent).toBe(`B${BASIS_MARK}${BASIS_MARK_LABEL}71`)
+      fireEvent.focus(within(container).getByRole('button', { name: BASIS_MARK_LABEL }))
+      expect((await screen.findByRole('tooltip')).textContent).toContain(words)
+      unmount()
+    }
+    // a score stored before the basis was recorded says nothing it does not know
+    render(<HealthCell health={{ ...rated, concentrationBasis: null }} />)
+    expect(screen.queryByRole('button', { name: BASIS_MARK_LABEL })).toBeNull()
   })
 })
 
@@ -69,5 +106,115 @@ describe('metricCell', () => {
       </MemoryRouter>,
     )
     expect(container.textContent).toBe('—')
+  })
+
+  it('gives a hooked pool "—" for depth and spread, named by the hooked reason', () => {
+    const hooked = pool({
+      depth2Usd: null,
+      depth2UpUsd: null,
+      depth2DownUsd: null,
+      spread10kBps: null,
+      health: unrated('hooked'),
+    })
+    for (const key of ['depth', 'spread'] as const) {
+      const { container, unmount } = render(<MemoryRouter>{metricCell(hooked, key)}</MemoryRouter>)
+      expect(container.textContent).toBe('—')
+      expect(within(container).getByRole('img').getAttribute('aria-label')).toContain('Hooked pool')
+      expect(container.querySelector('button, a, [tabindex]')).toBeNull()
+      unmount()
+    }
+  })
+})
+
+describe('DepthCell', () => {
+  const base = DEMO_POOLS[0]
+  if (!base) throw new Error('no fixture pool')
+
+  it('adds the "Stale price" chip to a stale quote, with how far off it is', async () => {
+    const stale = { ...base, priceDeviationBps: 38_601_331, staleQuote: true }
+    const { container } = render(
+      <MemoryRouter>
+        <DepthCell pool={stale} max={20_000_000} />
+      </MemoryRouter>,
+    )
+    const chip = within(container).getByRole('button', { name: 'Stale price' })
+    fireEvent.focus(chip)
+    expect((await screen.findByRole('tooltip')).textContent).toContain(
+      `Stale price: 386,013${NB}% off the market`,
+    )
+  })
+
+  it('has no chip for a pool at the market price', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <DepthCell pool={base} max={20_000_000} />
+      </MemoryRouter>,
+    )
+    expect(within(container).queryByRole('button', { name: 'Stale price' })).toBeNull()
+  })
+})
+
+describe('unknown values (D6)', () => {
+  it('draws a null top LP share as a dash named by its reason, not a tab stop', () => {
+    const base = DEMO_POOLS[0]
+    if (!base) throw new Error('no fixture pool')
+    const { container } = render(
+      <MemoryRouter>{metricCell({ ...base, ownerTop1Share: null }, 'top')}</MemoryRouter>,
+    )
+    const dash = screen.getByRole('img', { name: `Unknown: ${UNKNOWN_REASON.top}` })
+    expect(dash.textContent).toBe('—')
+    expect(dash.getAttribute('title')).toBe(UNKNOWN_REASON.top)
+    expect(container.querySelector('button, a, [tabindex]')).toBeNull()
+  })
+})
+
+describe('PoolsTable: one name per pool', () => {
+  const slip = (address: string, tickSpacing: number): PoolSummary => {
+    const p = summary(
+      `aerodrome-slipstream:${address}`,
+      ['WETH', 'cbBTC'],
+      'aerodrome-slipstream',
+      1_000,
+      1_000,
+    )
+    return { ...p, pool: { ...p.pool, tickSpacing } }
+  }
+  const rows = [
+    slip(`0x${'a'.repeat(40)}`, 10),
+    slip(`0x${'b'.repeat(40)}`, 10),
+    slip(`0x${'c'.repeat(40)}`, 50),
+    summary('uniswap-v3:0xd', ['WETH', 'USDC'], 'uniswap-v3', 1_000, 1_000),
+  ]
+  const table = (phone: boolean) =>
+    render(
+      <MemoryRouter>
+        <PoolsTable
+          rows={rows}
+          state={{ sort: 'depth', dir: 'desc', cols: [] }}
+          now={0}
+          phone={phone}
+          onSort={() => undefined}
+          label="Pools"
+        />
+      </MemoryRouter>,
+    )
+
+  it('names each link by its pair and second line, and tells same-named pools apart', () => {
+    const slipName = `WETH / cbBTC, Aerodrome Slipstream, 0.05${NB}%`
+    for (const phone of [false, true]) {
+      const { unmount } = table(phone)
+      const names = screen.getAllByRole('link').map((a) => a.getAttribute('aria-label'))
+      expect(names).toEqual([
+        `${slipName}, 0xaaaa…aaaa`,
+        `${slipName}, 0xbbbb…bbbb`,
+        `${slipName}, tick spacing 50`,
+        `WETH / USDC, Uniswap v3, 0.05${NB}%`,
+      ])
+      // The second line shows the same words, so sighted readers can tell the rows apart too.
+      const lines = [...document.querySelectorAll('.pd')].map((el) => el.textContent)
+      expect(lines[2]).toBe(`Aerodrome Slipstream, 0.05${NB}%, tick spacing 50`)
+      expect(lines[3]).toBe(`Uniswap v3, 0.05${NB}%`)
+      unmount()
+    }
   })
 })

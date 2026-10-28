@@ -1,3 +1,4 @@
+export type { AdminAuthFailure, RequestLogEntry, RequestLogger } from './accessLog.js'
 export type { CreateAppOptions } from './app.js'
 export { createApp } from './app.js'
 export type { AdminCheck } from './auth.js'
@@ -10,6 +11,13 @@ export {
   formatUptimePct,
   renderBadge,
 } from './badge.js'
+export {
+  API_CACHE_CONTROL,
+  ASSET_CACHE_CONTROL,
+  HISTORY_CACHE_CONTROL,
+  STATIC_CACHE_CONTROL,
+  staticCacheControl,
+} from './caching.js'
 export type { ApiContext } from './context.js'
 export type {
   DataSource,
@@ -40,6 +48,7 @@ export type {
   StatsResponse,
   TokenDetail,
 } from './dto.js'
+export type { HistoryInput } from './history.js'
 export {
   buildHistoryPoints,
   HEALTH_PERSISTENCE_HOURS,
@@ -47,6 +56,7 @@ export {
 } from './history.js'
 export type {
   GapsQuery,
+  HealthQuery,
   HistoryQuery,
   PoolsQuery,
   SamplesQuery,
@@ -68,6 +78,8 @@ export { AGENT_DOCS, AGENT_DOCS_DIR, readAgentDoc } from './routes/agentDocs.js'
 export {
   compareScorecards,
   loadScorecard,
+  SCORECARD_CACHE_SECONDS,
+  ScorecardCache,
   SUMMARY_WINDOW_SECONDS,
   sortScorecards,
   summaryWindowStart,

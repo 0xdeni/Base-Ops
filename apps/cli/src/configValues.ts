@@ -2,7 +2,7 @@
  * Parsers of single configuration values (flags and environment variables) for config.ts and
  * start/settings.ts. Each throws a ConfigError naming the setting; none echoes an RPC URL.
  */
-import { DEXES, type Dex } from '@depthwatch/core'
+import { type Address, DEXES, type Dex } from '@depthwatch/core'
 import { isLogLevel, type LogLevel } from './log.js'
 
 /** Environment variables (`process.env` or a test's object). */
@@ -104,6 +104,24 @@ export function parsePoolIds(raw: readonly string[] | undefined): string[] {
   return out
 }
 
+/**
+ * Token addresses (a repeated flag, or one comma-separated value), lowercased and deduplicated in
+ * order; each must be a 0x-prefixed 20-byte hex address.
+ */
+export function parseSeedTokens(raw: string | readonly string[] | undefined): Address[] {
+  if (raw === undefined) return []
+  const out: Address[] = []
+  for (const entry of (typeof raw === 'string' ? [raw] : raw).flatMap((v) => v.split(','))) {
+    const value = entry.trim()
+    if (value === '') continue
+    if (!/^0x[0-9a-fA-F]{40}$/.test(value))
+      throw new ConfigError(`seed token "${value}" must be a 0x-prefixed 20-byte address`)
+    const address = value.toLowerCase() as Address
+    if (!out.includes(address)) out.push(address)
+  }
+  return out
+}
+
 /** An http(s) URL (the reader's transports are HTTP only), never echoed: RPC URLs carry keys. */
 export function parseRpcUrl(name: string, raw: string | undefined): string | undefined {
   if (raw === undefined || /^https?:\/\/\S+$/i.test(raw.trim())) return raw?.trim()
@@ -120,6 +138,24 @@ export function parsePublicUrl(raw: string | undefined): string | undefined {
   if (!/^https?:\/\/[^\s/]+/i.test(value))
     throw new ConfigError(`DEPTHWATCH_PUBLIC_URL must be an http(s) URL, got "${raw}"`)
   return value.replace(/\/+$/, '')
+}
+
+/** Shortest `DEPTHWATCH_ADMIN_TOKEN` accepted: a bearer secret has to resist guessing. */
+export const MIN_ADMIN_TOKEN_LENGTH = 32
+
+/**
+ * `DEPTHWATCH_ADMIN_TOKEN`, trimmed: at least `MIN_ADMIN_TOKEN_LENGTH` characters, or undefined
+ * when unset. The error gives the length, never the token.
+ */
+export function parseAdminToken(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined
+  const token = raw.trim()
+  if (token.length < MIN_ADMIN_TOKEN_LENGTH)
+    throw new ConfigError(
+      `DEPTHWATCH_ADMIN_TOKEN must be at least ${MIN_ADMIN_TOKEN_LENGTH} characters, got ` +
+        `${token.length}: use \`openssl rand -hex 32\``,
+    )
+  return token
 }
 
 export function parseLogLevel(raw: string | undefined, fallback: LogLevel): LogLevel {

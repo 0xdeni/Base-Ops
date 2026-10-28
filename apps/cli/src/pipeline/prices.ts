@@ -1,19 +1,16 @@
 /**
  * USD prices from one pass of pool overviews (docs/METRICS.md, "USD prices").
  *
- * Every pool is a price edge token0 ↔ token1 (token1 per token0, human) whose weight is the
- * thinner side of its ±2 % depth: the token1 it takes to push the price up by 2 % against the
- * token0 it takes to push it down by 2 %, both valued in one currency. A pool that is empty on one
- * side of its price (an off-market pool that arbitrage has drained) has weight 0 and is not a
- * route, however deep its other side. Depth comes from core's `computeDepth` on the pool's full
- * state when the snapshot step has read it, otherwise on a state built from the overview: reserves
- * for Aerodrome v2 (exact), and for concentrated pools a *proxy* that assumes the active liquidity
- * holds across the band (no tick data yet). Native ETH (Uniswap v4 currency0 == 0x0) is tied to
- * WETH by a 1:1 edge of unbounded weight. Anchors are the chain's USD stablecoins.
- *
- * `derivePrices` is run twice: first with both sides valued in token1 at the pool's own price, to
- * find a USD price for every reachable token, then with each side valued at its token's USD price
- * from the first pass, so the widest-path comparison is made in one currency.
+ * Every pool is a price edge token0 ↔ token1 (token1 per token0, human) carrying its ±2 % depth
+ * sides: the token1 it takes to push the price up by 2 % and the token0 it takes to push it down
+ * by 2 %. Core's `derivePrices` weighs the edge by the thinner side in USD when it reaches it. A
+ * pool that is empty on one side of its price (an off-market pool that arbitrage has drained) is
+ * not a route, however deep its other side, and neither is a Uniswap v4 pool with a hook (not
+ * modelled). Depth comes from core's `computeDepth` on the pool's full state when the snapshot
+ * step has read it, otherwise on a state built from the overview: reserves for Aerodrome v2
+ * (exact), and for concentrated pools a *proxy* that assumes the active liquidity holds across the
+ * band (no tick data yet). Native ETH (Uniswap v4 currency0 == 0x0) is tied to WETH by a 1:1 edge
+ * of unbounded weight. Anchors are the chain's USD stablecoins.
  */
 import type { PoolOverview } from '@depthwatch/chain'
 import {
@@ -23,6 +20,7 @@ import {
   type DerivedPrice,
   depthToUsd,
   derivePrices,
+  isHookedPool,
   midPrice,
   NATIVE_ETH,
   type PoolState,
@@ -119,17 +117,6 @@ export function pricingFor(view: PoolOverview, exact?: PoolState): PoolPricing {
   return { view, state, proxy: exact === undefined && state.kind === 'concentrated', price, depth }
 }
 
-/** A pool's price edge with its ±PRICE_DEPTH_PCT depth per side, in human units. */
-export interface PoolPriceEdge extends PriceEdge {
-  /** token1 that pushes the price up by PRICE_DEPTH_PCT (the up side's input). */
-  upToken1: number
-  /** token0 that pushes the price down by PRICE_DEPTH_PCT (the down side's input). */
-  downToken0: number
-}
-
-/** A pool edge, or a plain edge without depth sides (the ETH ↔ WETH wrap edge, unbounded weight). */
-export type PriceGraphEdge = PoolPriceEdge | PriceEdge
-
 function positive(value: number): number {
   return Number.isFinite(value) && value > 0 ? value : 0
 }
@@ -144,21 +131,6 @@ export function depthSides(pricing: PoolPricing): { upToken1: number; downToken0
   }
 }
 
-/**
- * First-pass edge weight in token1: the thinner side of the ±2 % depth, the down side's token0
- * valued at the pool's own price. 0 when either side is empty or the pool has no price.
- */
-export function edgeWeight(pricing: PoolPricing): number {
-  if (pricing.price === null) return 0
-  const { upToken1, downToken0 } = depthSides(pricing)
-  return positive(Math.min(upToken1, downToken0 * pricing.price))
-}
-
-/** Second-pass edge weight in USD: the thinner side, each valued at its token's USD price. */
-export function usdEdgeWeight(edge: PoolPriceEdge, token0Usd: number, token1Usd: number): number {
-  return positive(Math.min(edge.upToken1 * token1Usd, edge.downToken0 * token0Usd))
-}
-
 function wrapEdge(wrappedNative: Address): PriceEdge {
   return {
     token0: NATIVE_ETH,
@@ -169,24 +141,28 @@ function wrapEdge(wrappedNative: Address): PriceEdge {
   }
 }
 
-/** Edges of every priced pool with depth on both sides, plus the wrap edge when given. */
+/**
+ * Edges of every priced pool with depth on both sides of its price, plus the wrap edge when
+ * given. A pool empty on one side, and a hooked Uniswap v4 pool, is no edge.
+ */
 export function buildPriceEdges(
   pricings: readonly PoolPricing[],
   wrappedNative?: Address,
-): PriceGraphEdge[] {
-  const edges: PriceGraphEdge[] = []
+): PriceEdge[] {
+  const edges: PriceEdge[] = []
   for (const pricing of pricings) {
     if (pricing.price === null) continue
-    const weight = edgeWeight(pricing)
-    if (weight <= 0) continue
     const { pool } = pricing.view
+    if (isHookedPool(pool)) continue
+    const { upToken1, downToken0 } = depthSides(pricing)
+    if (upToken1 <= 0 || downToken0 <= 0) continue
     edges.push({
       token0: pool.token0.address,
       token1: pool.token1.address,
       price: pricing.price,
-      weight,
+      upToken1,
+      downToken0,
       source: pool.id,
-      ...depthSides(pricing),
     })
   }
   if (wrappedNative !== undefined) edges.push(wrapEdge(wrappedNative))
@@ -205,42 +181,14 @@ export interface ComputePricesOptions {
   wrappedNative?: Address
 }
 
-/** Overviews → pricings → two-pass `derivePrices`. */
+/** Overviews → pricings → edges → `derivePrices` (one pass, weights in USD). */
 export function computePrices(
   views: readonly PoolOverview[],
   anchors: Record<Address, number>,
   opts: ComputePricesOptions = {},
 ): PriceMap {
   const pricings = views.map((view) => pricingFor(view, opts.states?.get(view.pool.id)))
-  return derivePricesTwoPass(buildPriceEdges(pricings, opts.wrappedNative), anchors)
-}
-
-function hasSides(edge: PriceGraphEdge): edge is PoolPriceEdge {
-  return 'upToken1' in edge && 'downToken0' in edge
-}
-
-/**
- * First pass on the token1-valued weights; second pass on `usdEdgeWeight`, each side valued at
- * its token's first-pass USD price. A pool edge whose tokens the first pass could not price is
- * dropped; the wrap edge (no sides) keeps its weight.
- */
-export function derivePricesTwoPass(
-  edges: readonly PriceGraphEdge[],
-  anchors: Record<Address, number>,
-): PriceMap {
-  const first = derivePrices(edges, anchors)
-  const usdEdges: PriceEdge[] = []
-  for (const edge of edges) {
-    if (!hasSides(edge)) {
-      usdEdges.push(edge)
-      continue
-    }
-    const token0Usd = usdOf(first, edge.token0)
-    const token1Usd = usdOf(first, edge.token1)
-    if (token0Usd === null || token1Usd === null) continue
-    usdEdges.push({ ...edge, weight: usdEdgeWeight(edge, token0Usd, token1Usd) })
-  }
-  return derivePrices(usdEdges, anchors)
+  return derivePrices(buildPriceEdges(pricings, opts.wrappedNative), anchors)
 }
 
 /** USD value of the 2 % depth (both sides) for ranking pools whose reserves are unknown. */

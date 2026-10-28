@@ -1,5 +1,6 @@
 /**
- * Scorecard samples (docs/design/scorecards.md §4): one row per mandate per snapshot of its pool.
+ * Scorecard samples (docs/design/scorecards.md §4): one row per mandate and block (a snapshot of
+ * its pool or an `mm sample` run).
  * `block_number` is decimal TEXT, `attribution_json` an MmAttribution and `breaches_json` a
  * BreachKind[] (neither holds bigints); `within_kpi` is NULL for non-evaluable samples.
  */
@@ -19,7 +20,8 @@ import {
 const COLUMNS = `id, mandate_id, pool_id, block_number, timestamp, attribution_json, within_kpi,
   breaches_json`
 
-const INSERT = `INSERT INTO mm_samples (
+/** One sample per mandate and block (unique index, schema version 3): a stored one is kept. */
+const INSERT = `INSERT OR IGNORE INTO mm_samples (
     mandate_id, pool_id, block_number, timestamp, attribution_json, within_kpi, breaches_json
   ) VALUES (?, ?, ?, ?, ?, ?, ?)`
 
@@ -45,9 +47,12 @@ export function rowToMmSample(row: Row): MmSample {
 export class MmSamplesRepo {
   constructor(private readonly ctx: SqlContext) {}
 
-  /** Appends one sample and returns its row id. */
-  insert(sample: MmSample): number {
-    return this.ctx.run(INSERT, [
+  /**
+   * Appends one sample and returns its row id, or null when the mandate already has a sample at
+   * that block (a second writer's copy), which is kept as it is.
+   */
+  insert(sample: MmSample): number | null {
+    const { changes, lastInsertRowid } = this.ctx.run(INSERT, [
       sample.mandateId,
       sample.poolId,
       sample.blockNumber,
@@ -55,15 +60,16 @@ export class MmSamplesRepo {
       JSON.stringify(sample.attribution),
       sample.withinKpi === null ? null : sample.withinKpi,
       JSON.stringify(sample.breaches),
-    ]).lastInsertRowid
+    ])
+    return changes === 0 ? null : lastInsertRowid
   }
 
+  /** Inserts every sample in one transaction; returns how many were stored (see `insert`). */
   insertMany(samples: readonly MmSample[]): number {
     if (samples.length === 0) return 0
-    return this.ctx.transaction(() => {
-      for (const sample of samples) this.insert(sample)
-      return samples.length
-    })
+    return this.ctx.transaction(
+      () => samples.filter((sample) => this.insert(sample) !== null).length,
+    )
   }
 
   /**
@@ -104,6 +110,28 @@ export class MmSamplesRepo {
       [mandateId],
     )
     return row ? rowToMmSample(row) : undefined
+  }
+
+  /**
+   * Row id of the newest sample of a mandate (highest timestamp, then insertion order), or null
+   * when it has none: an index lookup that tells whether a summary over its samples is current.
+   */
+  latestIdFor(mandateId: string): number | null {
+    const row = this.ctx.get(
+      'SELECT id FROM mm_samples WHERE mandate_id = ? ORDER BY timestamp DESC, id DESC LIMIT 1',
+      [mandateId],
+    )
+    return row ? colNumber(row, 'id') : null
+  }
+
+  /** The timestamp of the mandate's newest sample within KPI: a breached streak starts after it. */
+  lastWithinKpiAt(mandateId: string): number | undefined {
+    const row = this.ctx.get(
+      'SELECT MAX(timestamp) AS ts FROM mm_samples WHERE mandate_id = ? AND within_kpi = 1',
+      [mandateId],
+    )
+    const ts = row ? colNumberOrNull(row, 'ts') : null
+    return ts === null ? undefined : ts
   }
 
   /** The newest sample of each mandate, in one query. Mandates without samples are absent. */

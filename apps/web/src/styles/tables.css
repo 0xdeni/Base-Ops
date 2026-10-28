@@ -150,6 +150,11 @@ th[aria-sort] .sort-btn {
 th[aria-sort] .sort-btn svg {
   opacity: 1;
 }
+/* A column's "—" explained once (D6): the glossary term after the header's label. */
+.th-note {
+  margin-left: 12px;
+  font-weight: 400;
+}
 /* One tab stop per row: the pool link stretches over the row; the hover layer sits under it. */
 .ptable tr {
   position: relative;

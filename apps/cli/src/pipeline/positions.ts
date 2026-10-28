@@ -4,7 +4,8 @@
  * indexed whether or not they are tracked yet: the snapshot tracks them whatever their rank, and
  * its samples read these positions; until a pool's positions are published (`positionsPublished`)
  * the snapshot does not sample its mandates (an attribution failure, mm.ts, never a false
- * `noLiquidity` breach), and `depthwatch start` runs this step as soon as such a pool exists
+ * `noLiquidity` breach); `depthwatch run` runs this step for the mandated pools before every
+ * snapshot (`mandatedConcentratedPools`) and `depthwatch start` as soon as such a pool exists
  * (`unindexedMandatedPools`).
  *
  * `readPositions` is range based (positions *touched* in the block range, with their current
@@ -130,14 +131,17 @@ export function positionsPublished(db: Database, poolId: string): boolean {
   return db.syncState.get(syncKeys.positions(poolId)) !== undefined
 }
 
+/** The known concentrated pools of the active mandates: what `run` indexes before every snapshot. */
+export function mandatedConcentratedPools(db: Database): PoolMeta[] {
+  return mandatedPools(db).filter((pool) => pool.kind === 'concentrated')
+}
+
 /**
  * Concentrated pools of active mandates whose positions are not published yet: their mandates
  * cannot be sampled (mm.ts), so `depthwatch start` runs positions while there is one.
  */
 export function unindexedMandatedPools(db: Database): PoolMeta[] {
-  return mandatedPools(db).filter(
-    (pool) => pool.kind === 'concentrated' && !positionsPublished(db, pool.id),
-  )
+  return mandatedConcentratedPools(db).filter((pool) => !positionsPublished(db, pool.id))
 }
 
 /** Where a pool stands: its published cursor, its staged first scan, or nothing yet. */
@@ -180,23 +184,42 @@ function nextRound(
   return { fromBlock, toBlock, plans: open.filter((plan) => plan.next <= toBlock) }
 }
 
-/** Merges `fresh` into the pool's set and moves its cursor; publishes once it reaches `head`. */
+/** True when a read of `plan` up to `toBlock` publishes the pool's set (see `store`). */
+function publishes(plan: PoolPlan, toBlock: bigint, head: bigint): boolean {
+  return plan.mode === 'cursor' || toBlock >= head
+}
+
+/** The pool's custodians as `positions` last recorded them (lowercase; [] when none). */
+export function storedCustodians(db: Database, poolId: string): string[] {
+  const value = db.syncState.get(syncKeys.positionsCustodians(poolId))
+  return value === undefined || value === '' ? [] : value.split(',')
+}
+
+/**
+ * Merges `fresh` into the pool's set and moves its cursor; publishes once it reaches `head`, with
+ * the pool's `custodians` read at that head. The stored set is read inside the write transaction,
+ * so a set another process stored meanwhile is merged rather than overwritten.
+ */
 function store(
   db: Database,
   plan: PoolPlan,
   fresh: readonly Position[],
   toBlock: bigint,
   head: bigint,
+  custodians: readonly string[],
 ): { stored: number; published: boolean } {
   const { pool, mode } = plan
   const staging = positionsStagingId(pool.id)
   const existingId = mode === 'cursor' ? pool.id : mode === 'staged' ? staging : undefined
-  const merged = mergePositions(existingId ? db.positions.forPool(existingId) : [], fresh)
-  const published = mode === 'cursor' || toBlock >= head
-  db.transaction(() => {
+  const published = publishes(plan, toBlock, head)
+  return db.transaction(() => {
+    const merged = mergePositions(existingId ? db.positions.forPool(existingId) : [], fresh)
     if (published) {
       db.positions.replaceForPool(pool.id, merged, { updatedBlock: toBlock })
       db.syncState.setBigInt(syncKeys.positions(pool.id), toBlock)
+      const custodiansKey = syncKeys.positionsCustodians(pool.id)
+      if (custodians.length > 0) db.syncState.set(custodiansKey, custodians.join(','))
+      else db.syncState.delete(custodiansKey)
       if (mode === 'staged') {
         db.positions.deleteForPool(staging)
         db.syncState.delete(syncKeys.positionsCatchUp(pool.id))
@@ -205,8 +228,8 @@ function store(
       db.positions.replaceForPool(staging, merged, { updatedBlock: toBlock })
       db.syncState.setBigInt(syncKeys.positionsCatchUp(pool.id), toBlock)
     }
+    return { stored: merged.length, published }
   })
-  return { stored: merged.length, published }
 }
 
 /** Thrown for a pool the spent budget did not start: deferred, not failed. */
@@ -276,7 +299,18 @@ export async function positionsStep(
             if (isLogRangeLimitError(error)) unusable ??= error
             throw error
           })
-        const { stored, published: isPublished } = store(db, plan, fresh, round.toBlock, head)
+        // A Slipstream gauge holds the staked NFTs: recorded with the set it publishes.
+        const custodians = publishes(plan, round.toBlock, head)
+          ? await chain.readCustodians(plan.pool, round.toBlock)
+          : []
+        const { stored, published: isPublished } = store(
+          db,
+          plan,
+          fresh,
+          round.toBlock,
+          head,
+          custodians,
+        )
         if (isPublished) published.add(plan.pool.id)
         log.debug('positions merged', { pool: plan.pool.id, touched: fresh.length, stored })
         const before = byPool.get(plan.pool.id)

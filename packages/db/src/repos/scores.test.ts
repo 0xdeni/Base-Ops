@@ -1,4 +1,4 @@
-import type { PoolMeta } from '@depthwatch/core'
+import { type PoolMeta, priceDeviationBps } from '@depthwatch/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type Database, openDatabase } from '../database.js'
 import {
@@ -134,6 +134,7 @@ describe('ScoresRepo', () => {
       ownerTop1Share: 0.3,
       depth2UpUsd: 500_000,
       depth2DownUsd: 500_000,
+      priceDeviationBps: priceDeviationBps(3000, 3000.25, 1),
     })
     expect(db.scores.getRow(C.id)?.latest).toBeNull()
     expect(db.scores.getRow(C.id)?.tracked).toBe(false)
@@ -173,6 +174,23 @@ describe('ScoresRepo', () => {
     expect(ids(db.scores.topBy('health', { q: fixtureAddress(2) }).items)).toEqual([B.id])
     expect(ids(db.scores.topBy('health', { q: 'cdcdcd' }).items)).toEqual([C.id])
     expect(db.scores.topBy('health', { q: 'zzz' })).toEqual({ items: [], total: 0 })
+    // token: exactly token0 or token1, whatever a symbol spells
+    db.tokens.upsertMany([{ ...DEGEN, symbol: FIXTURE_USDC.address }])
+    expect(ids(db.scores.topBy('health', { q: FIXTURE_USDC.address }).items)).toEqual([
+      A.id,
+      B.id,
+      C.id,
+    ])
+    const byToken = db.scores.topBy('health', { token: FIXTURE_USDC.address })
+    expect(ids(byToken.items)).toEqual([A.id, B.id])
+    expect(byToken.total).toBe(2)
+    expect(ids(db.scores.topBy('tvl', { token: FIXTURE_WETH.address, dir: 'asc' }).items)).toEqual(
+      ids(db.scores.topBy('tvl', { dir: 'asc' }).items).filter((id) => id !== B.id),
+    )
+    expect(db.scores.topBy('health', { token: fixtureAddress(0x999) })).toEqual({
+      items: [],
+      total: 0,
+    })
 
     const byVolume = db.scores.topBy('volume', { minVolumeUsd: 10_000 })
     expect(ids(byVolume.items)).toEqual([A.id, B.id])
@@ -233,6 +251,7 @@ describe('ScoresRepo', () => {
       scored: 1,
       rated: 1,
       depth2UsdSum: 1_000_000,
+      depthKnownPools: 1,
       volume24hUsdSum: 500_000,
       medianHealth: 85,
     })
@@ -243,6 +262,8 @@ describe('ScoresRepo', () => {
       scored: 1,
       rated: 1,
       depth2UsdSum: 0,
+      // C has no known depth: nothing to sum
+      depthKnownPools: 0,
       // C's volume is unknown and it is the only v4 pool: the sum is unknown, not 0
       volume24hUsdSum: null,
       medianHealth: 30,
@@ -352,6 +373,15 @@ describe('ScoresRepo', () => {
     })
     expect(db.scores.statsByDex()[0]).toMatchObject({ scored: 1, rated: 0, medianHealth: null })
     expect(ids(db.scores.topBy('health', { rated: true }).items)).toEqual([D.id, B.id, C.id])
+  })
+
+  it('reads a score stored before the concentration basis existed with a null basis', () => {
+    expect(db.scores.get(A.id)?.health.concentrationBasis).toBe('owners')
+    db.raw.exec(
+      `UPDATE scores SET health_json = json_remove(health_json, '$.concentrationBasis') WHERE pool_id = '${A.id}'`,
+    )
+    expect(db.scores.get(A.id)?.health).toMatchObject({ grade: 'A', concentrationBasis: null })
+    expect(db.scores.getRow(A.id)?.score.health.concentrationBasis).toBeNull()
   })
 
   it('serves the $10k spread of a snapshot stored before the cap as null, not 1e24 bps', () => {

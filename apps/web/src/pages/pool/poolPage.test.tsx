@@ -1,11 +1,13 @@
 /**
  * The Pool page's edge cases: stored sides with the price read from the base token, About this
- * pool's identifiers, a pool with no grade, and not found.
+ * pool's identifiers, a pool with no grade, a stale quote, and not found.
  */
-import { cleanup, fireEvent, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createMockClient } from '../../api/mock.js'
 import { NB, usd } from '../../lib/format.js'
+import { PoolTitle } from './PoolTitle.js'
 import {
   facts,
   HOOKS,
@@ -177,5 +179,52 @@ describe('Pool page: states', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'pool not found' })).toBeTruthy()
     expect(screen.getByText('uniswap-v3:0x00000000000000000000000000000000000000aa')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Browse pools' }).getAttribute('href')).toBe('/pools')
+  })
+})
+
+describe('Pool page: a stale quote', () => {
+  it('carries the "Stale price" chip in the eyebrow, and none at the market price', async () => {
+    const { pool } = await createMockClient({ now: NOW }).pool(V3_WETH_USDC)
+    const stale = render(
+      <MemoryRouter>
+        <PoolTitle pool={pool} spot={null} answer={null} staleDeviationBps={1_000} />
+      </MemoryRouter>,
+    )
+    fireEvent.focus(within(stale.container).getByRole('button', { name: 'Stale price' }))
+    expect((await screen.findByRole('tooltip')).textContent).toContain(
+      `Stale price: 10${NB}% off the market, so its depth is left out of totals.`,
+    )
+    stale.unmount()
+    const fresh = render(
+      <MemoryRouter>
+        <PoolTitle pool={pool} spot={null} answer={null} />
+      </MemoryRouter>,
+    )
+    expect(within(fresh.container).queryByRole('button', { name: 'Stale price' })).toBeNull()
+  })
+})
+
+describe('Pool page: owners that cover too little of the pool', () => {
+  it('says what the indexed LPs hold and draws the active range, never "One LP holds 100 %"', async () => {
+    const detail = await createMockClient({ now: NOW }).pool(V3_WETH_USDC)
+    const latest = detail.latest
+    if (!latest?.concentration) throw new Error('the mock pool has no concentration')
+    // One unstaked LP beside a gauge holding 97 % of the band.
+    const owners = { count: 1, top1Share: 1, top3Share: 1, hhi: 1, coverage: 0.0102 }
+    renderPool(V3_WETH_USDC, {
+      patch: { latest: { ...latest, concentration: { ...latest.concentration, owners } } },
+    })
+    await loaded()
+    const who = screen.getByRole('region', { name: 'who provides it' })
+    expect(within(who).getByText(/^Indexed LPs hold/).textContent).toBe(
+      `Indexed LPs hold 1${NB}% of the liquidity near the price; the largest holds 100${NB}% of that.`,
+    )
+    expect(within(who).queryByText(/One LP holds/)).toBeNull()
+    expect(within(who).getByRole('img', { name: /^Active range/ })).toBeTruthy()
+    fireEvent.click(within(who).getByRole('button', { name: 'Details' }), { detail: 0 })
+    const row = (term: string) => within(who).getByText(term).closest('div')?.textContent
+    expect(row('Coverage')).toBe(`Coverage1${NB}%`)
+    expect(row('Top indexed LP')).toBe(`Top indexed LP100${NB}%`)
+    expect(within(who).getByText(/^Indexed owners cover 1/)).toBeTruthy()
   })
 })

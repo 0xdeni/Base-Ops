@@ -96,6 +96,39 @@ describe('butterfly model (CH4, visual-v4 §5.9.1)', () => {
     expect(rowLinkLabel(row, 'Base')).toContain('— on the sell side')
   })
 
+  it('draws a stale quote but leaves it out of the totals, the segments and the shares', () => {
+    const stale: PoolSummary = {
+      ...summary('uniswap-v3:0x5a1e', ['WETH', 'JUNK'], 'uniswap-v3', 40_000_000, 30_000_000),
+      staleQuote: true,
+      priceDeviationBps: 38_601_300,
+    }
+    const pools = [stale, ...DEMO_POOLS]
+    const model = butterflyModel(pickButterflyRows(pools), pools)
+    const plain = butterflyModel(DEMO_POOLS, DEMO_POOLS)
+    expect(model.total).toEqual(plain.total)
+    expect(model.max).toBe(plain.max)
+    expect(model.poolCount).toBe(DEMO_POOLS.length)
+    expect(model.rest).toEqual({ count: 0, sell: 0, buy: 0 })
+    expect(model.segments.sell.map((s) => s.id)).not.toContain(stale.pool.id)
+    expect(model.bracket?.share).toBeCloseTo(plain.bracket?.share ?? 0, 12)
+    const row = model.rows[0]!
+    expect([row.id, row.stale, row.share]).toEqual([stale.pool.id, true, null])
+    // Deeper than all of Base's counted depth: the bar stops at the end of the scale.
+    expect([row.sellW, row.buyW]).toEqual([1, 1])
+    expect(rowLinkLabel(row, 'Base')).toMatch(/, left out of Base’s total: stale price$/)
+    expect(model.rows.slice(1).map((r) => r.share)).toEqual(plain.rows.map((r) => r.share))
+
+    render(<ButterflyTable pools={pools} scope="Base" />)
+    const table = screen.getByRole('table')
+    const first = within(table).getAllByRole('row')[1]!
+    expect(within(first).getByRole('img').getAttribute('aria-label')).toMatch(
+      /^Unknown: Stale price: 386,013.% off the market/,
+    )
+    expect(within(table).queryByText('Every other pool')).toBeNull()
+    const total = within(table).getByText('All of Base').closest('tr')
+    expect(total?.textContent).toMatch(/^All of Base\$11\.8M\$14\.3M100.%$/)
+  })
+
   it('lists the 7 deepest pools plus the gap pool (ia-v3 §4.1)', async () => {
     const client = createMockClient({ now: 1_760_000_000 })
     const pools = (await client.pools({ limit: 200 })).items

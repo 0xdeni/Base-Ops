@@ -37,6 +37,23 @@ describe('GET /api/tokens/:address', () => {
     expect(body.pools[0]).toMatchObject({ depth2Usd: 1_000_000, health: { total: 85, grade: 'A' } })
   })
 
+  it("sums the token's depth over every scored pool, whatever the page and order", async () => {
+    // WETH/USDC $1M + WETH/AERO $400k + WETH/DEGEN $12k
+    const expected = { depth2UsdTotal: 1_412_000, depthKnownPools: 3 }
+    for (const query of ['', '?limit=1', '?sort=spread&dir=asc&limit=1&offset=2', '?offset=5']) {
+      expect(await token(seed.tokens.WETH.address, query), query).toMatchObject(expected)
+    }
+    // A pool counts for both of its tokens; an unpriced token has no known depth.
+    expect(await token(seed.tokens.AERO.address)).toMatchObject({
+      depth2UsdTotal: 552_000,
+      depthKnownPools: 3,
+    })
+    expect(await token(seed.tokens.BRETT.address)).toMatchObject({
+      depth2UsdTotal: null,
+      depthKnownPools: 0,
+    })
+  })
+
   it('lowercases the address parameter', async () => {
     const mixed = '0x4200000000000000000000000000000000000006'.replace('0x4', '0X4').toUpperCase()
     const body = await token(mixed)
@@ -50,6 +67,21 @@ describe('GET /api/tokens/:address', () => {
     expect(body.total).toBe(3)
     expect(body.poolCount).toBe(4) // + the discovered-only DEGEN/USDC pool
     expect(body.pools.map((p) => p.pool.id)).not.toContain(seed.pools.usdcDegenV3.id)
+  })
+
+  it('matches the address against token0/token1 only, never a symbol that spells it', async () => {
+    const before = await token(seed.tokens.WETH.address)
+    // A token whose symbol is WETH's address, in a scored pool without WETH.
+    db.tokens.upsertMany([{ ...seed.tokens.USDC, symbol: seed.tokens.WETH.address }])
+    const after = await token(seed.tokens.WETH.address, '?limit=200')
+    expect(after.total).toBe(before.total)
+    expect(after.poolCount).toBe(before.poolCount)
+    expect(after.pools.map((p) => p.pool.id)).toEqual(before.pools.map((p) => p.pool.id))
+    expect(after.pools.map((p) => p.pool.id)).not.toContain(seed.pools.aeroUsdcV2.id)
+    // The search box still finds it by that symbol.
+    const search = await app.request(`/api/pools?q=${seed.tokens.WETH.address}`)
+    const found = (await search.json()) as { total: number }
+    expect(found.total).toBeGreaterThan(before.total)
   })
 
   it('reports unpriced tokens with null usd', async () => {

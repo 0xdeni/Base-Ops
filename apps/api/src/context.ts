@@ -1,14 +1,17 @@
 /**
- * What every route handler gets: the database, a clock (injectable so tests are deterministic)
- * and the optional admin token that guards mandate registration.
+ * What every route handler gets: the database, a clock (injectable so tests are deterministic),
+ * the scorecard cache and the optional admin token that guards mandate registration.
  */
 import type { Database } from '@depthwatch/db'
 import type { DataSource } from './dto.js'
+import type { ScorecardCache } from './scorecard.js'
 
 export interface ApiContext {
   db: Database
   /** Unix seconds. */
   now: () => number
+  /** The last summary per mandate (`scorecard.ts`), built over `db` with this clock. */
+  scorecards: ScorecardCache
   /**
    * Bearer token required by `POST /api/mm` and `DELETE /api/mm/:id`. Undefined (or empty) means
    * registration over the API is disabled and those routes answer 403.

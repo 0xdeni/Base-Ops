@@ -43,7 +43,15 @@ export function summary(
     depth2UpUsd: up,
     depth2DownUsd: down,
     spread10kBps: 10,
-    health: { total: 80, grade: 'A', rated: true, unratedReason: null },
+    priceDeviationBps: 0,
+    staleQuote: false,
+    health: {
+      total: 80,
+      grade: 'A',
+      rated: true,
+      unratedReason: null,
+      concentrationBasis: 'owners',
+    },
     gapScore: 0,
     volume24hUsd: null,
     ownerTop1Share: null,
@@ -114,6 +122,7 @@ export const SNAPSHOT: PoolSnapshotDto = {
     },
   ],
   concentration: null,
+  priceDeviationBps: 0,
 }
 
 /**

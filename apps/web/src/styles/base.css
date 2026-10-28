@@ -285,14 +285,15 @@ pre,
   color: var(--on-ink-2);
 }
 
-/* "—" (D6): an unknown value opens its reason on hover, focus or tap, above a row's link. */
+/* "—" (D6): an unknown value, not a tab stop; its reason is a hover tooltip above a row's link. */
 .dash,
 .unknown {
   color: var(--text-2);
 }
-.dash .gloss {
+.dash[title] {
   position: relative;
   z-index: 1;
+  cursor: help;
 }
 
 /* ---------- Links (§5.3) ---------- */

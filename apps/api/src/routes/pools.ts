@@ -1,5 +1,6 @@
 import { toJsonSafe } from '@depthwatch/core'
 import { Hono } from 'hono'
+import { HISTORY_CACHE_CONTROL } from '../caching.js'
 import { type ApiContext, DAY_SECONDS } from '../context.js'
 import type {
   ErrorResponse,
@@ -68,14 +69,17 @@ export function poolsRoutes(ctx: ApiContext): Hono {
     const parsed = parseQuery(historyQuerySchema, c.req.query())
     if (!parsed.ok) return c.json(parsed.error, 400)
     const id = c.req.param('id')
-    if (!ctx.db.pools.get(id)) return c.json(POOL_NOT_FOUND, 404)
+    const pool = ctx.db.pools.get(id)
+    if (!pool) return c.json(POOL_NOT_FOUND, 404)
     const window = parsed.data.window
     // The window ends at the pool's newest snapshot so a paused indexer still yields a chart.
-    const to = ctx.db.snapshots.latestForPool(id)?.timestamp ?? ctx.now()
+    const to = ctx.db.snapshots.latestTimestampForPool(id) ?? ctx.now()
     const from = to - WINDOW_SECONDS[window]
     // One persistence window of lead-in so the first points' health sees its trailing samples.
-    const series = ctx.db.snapshots.seriesForPool(id, from - HEALTH_PERSISTENCE_SECONDS, to)
-    const body: HistoryResponse = { window, from, to, points: buildHistoryPoints(series, from) }
+    const series = ctx.db.snapshots.seriesSummaryForPool(id, from - HEALTH_PERSISTENCE_SECONDS, to)
+    const points = buildHistoryPoints(series, from, pool.kind)
+    const body: HistoryResponse = { window, from, to, points }
+    c.header('Cache-Control', HISTORY_CACHE_CONTROL)
     return c.json(body)
   })
 

@@ -3,6 +3,7 @@ import { type Database, snapshotSummaryFields } from '@depthwatch/db'
 import type { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from '../app.js'
+import { HISTORY_CACHE_CONTROL } from '../caching.js'
 import type {
   ErrorResponse,
   HistoryResponse,
@@ -63,7 +64,15 @@ describe('GET /api/pools', () => {
       depth2UpUsd: 500_000,
       depth2DownUsd: 500_000,
       spread10kBps: 8,
-      health: { total: 85, grade: 'A', rated: true, unratedReason: null },
+      priceDeviationBps: 0,
+      staleQuote: false,
+      health: {
+        total: 85,
+        grade: 'A',
+        rated: true,
+        unratedReason: null,
+        concentrationBasis: 'owners',
+      },
       gapScore: expect.closeTo(15.05, 2),
       volume24hUsd: 2_000_000,
       ownerTop1Share: 0.32,
@@ -75,7 +84,13 @@ describe('GET /api/pools', () => {
     const body = await list(app, '?sort=health&dir=asc&rated=false&limit=1')
     const item = body.items[0] as PoolSummary
     expect(item.pool.id).toBe(seed.pools.brettToshiV3.id)
-    expect(item.health).toEqual({ total: 22, grade: null, rated: false, unratedReason: 'unpriced' })
+    expect(item.health).toEqual({
+      total: 22,
+      grade: null,
+      rated: false,
+      unratedReason: 'unpriced',
+      concentrationBasis: 'owners',
+    })
     expect(item.depth2Usd).toBeNull()
     expect(item.depth2UpUsd).toBeNull()
     expect(item.depth2DownUsd).toBeNull()
@@ -125,9 +140,19 @@ describe('GET /api/pools', () => {
     expect(ids(unrated)).toEqual([p.aeroUsdcSlip.id, p.brettToshiV3.id])
     expect(unrated.total).toBe(2)
     expect(unrated.items.map((item) => item.health)).toEqual([
-      { total: 48, grade: null, rated: false, unratedReason: 'thin' },
-      { total: 22, grade: null, rated: false, unratedReason: 'unpriced' },
+      { total: 48, grade: null, rated: false, unratedReason: 'thin', concentrationBasis: 'owners' },
+      {
+        total: 22,
+        grade: null,
+        rated: false,
+        unratedReason: 'unpriced',
+        concentrationBasis: 'owners',
+      },
     ])
+    // the basis says what the concentration points stand on: owners, the range HHI, or neutral
+    const basis = new Map((await list(app, '')).items.map((i) => [i.pool.id, i.health]))
+    expect(basis.get(p.wethDegenV4.id)?.concentrationBasis).toBe('ranges')
+    expect(basis.get(p.aeroUsdcV2.id)?.concentrationBasis).toBe('neutral')
     // unrated pools keep ranking in every other sort and stay in the other lists
     const byDepth = await list(app, '?sort=depth&rated=false')
     expect(ids(byDepth)).toEqual([p.aeroUsdcSlip.id, p.brettToshiV3.id])
@@ -333,6 +358,8 @@ describe('GET /api/pools/:id/history', () => {
   async function history(id: string, query = ''): Promise<HistoryResponse> {
     const res = await app.request(`/api/pools/${id}/history${query}`)
     expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe(HISTORY_CACHE_CONTROL)
+    expect(res.headers.get('cache-control')).toBe('public, max-age=60')
     return (await res.json()) as HistoryResponse
   }
 
@@ -374,7 +401,9 @@ describe('GET /api/pools/:id/history', () => {
       depth2DownUsd: 500_000,
       spread10kBps: 8,
       ownerTop1Share: 0.32,
+      ownerCoverage: 0.96,
       rangeHhi: 0.28,
+      poolKind: 'concentrated',
       persistence: computePersistence(samples, 24, seed.now),
     }).total
     expect(expectedHealth).toBeGreaterThan(80)

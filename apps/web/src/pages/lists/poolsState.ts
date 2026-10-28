@@ -4,8 +4,8 @@
  * behind "Show N unrated pools") and `rows` (`all`: every loaded rated row on a phone, where the
  * list shows 25 at first). Defaults are left out of the URL and every change replaces the entry
  * instead of pushing one. v2 links keep their meaning (`?sort=depth&dir=asc`, `?dex=aerodrome-v2`,
- * `?q=weth`). The sort keys, columns and order are the shared pools table's (lib/poolsTable.ts); a
- * page-side sort (spread, top LP share) orders the API's page of 200.
+ * `?q=weth`). The sort keys, columns and order are the shared pools table's (lib/poolsTable.ts);
+ * the API orders by every key.
  */
 import { DEXES, type Dex } from '@depthwatch/core'
 import type { SortDir } from '../../api/types.js'
@@ -37,8 +37,6 @@ export interface PoolsState {
 export const PAGE_SIZE = 50
 /** Rated rows a phone shows before "Show all 50 rated pools" (§5.8). */
 export const PHONE_PAGE = 25
-/** The API's largest page: the rows a page-side sort (spread, top LP share) orders. */
-export const CLIENT_SORT_LIMIT = 200
 export const DEFAULT_SORT: PoolsSortKey = 'health'
 
 export function readPoolsState(params: URLSearchParams): PoolsState {

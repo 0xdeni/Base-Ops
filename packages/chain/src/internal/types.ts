@@ -115,4 +115,6 @@ export interface DexAdapter {
     candidates: readonly Address[],
     blockNumber?: bigint,
   ): Promise<Position[]>
+  /** Contracts holding positions for depositors (a gauge), lowercase; absent = none. */
+  custodians?(ctx: ReaderContext, pool: PoolMeta, blockNumber?: bigint): Promise<Address[]>
 }

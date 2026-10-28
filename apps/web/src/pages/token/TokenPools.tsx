@@ -3,9 +3,9 @@
  * token's pools in a plane-1 table sheet after the facts. Its head holds the lowercase heading,
  * the finding (the deepest pool's share of the token's depth) and Columns (the Sort sheet on
  * phones); then the caption row and the shared pools table with the same default columns as
- * Pools. The token's pools all fit one page, so every sort orders them here, nulls last; the sheet
- * lists the first 10 and "Show all 140 pools" lists the rest (`rows=all`), a toggle that stays
- * where it was pressed. A refetch keeps the rows and dims them (M10). Depth glyphs are on one
+ * Pools. The API orders the token's pools by every key, nulls last, and sends the first 200; the
+ * sheet lists the first 10 and "Show all 140 pools" lists the rest (`rows=all`), a toggle that
+ * stays where it was pressed. A refetch keeps the rows and dims them (M10). Depth glyphs are on one
  * shared scale, sides seen from this token.
  */
 import type { PoolSummary } from '../../api/types.js'
@@ -25,13 +25,14 @@ import {
 } from '../../lib/poolsTable.js'
 import { useIsPhone } from '../../lib/useMediaQuery.js'
 import { TOKEN_ROWS } from './tokenSort.js'
-import { poolsTakeaway } from './tokenText.js'
+import { poolsTakeaway, type TokenTotals } from './tokenText.js'
 
 const poolsWord = (n: number) => `${count(n)} ${n === 1 ? 'pool' : 'pools'}`
 
 export function TokenPools({
   pools,
   symbol,
+  totals,
   state,
   allRows,
   busy,
@@ -42,6 +43,8 @@ export function TokenPools({
   /** Seen from this token (sides oriented), as loaded. */
   pools: readonly PoolSummary[]
   symbol: string
+  /** The token's pool count and depth over all of its scored pools (the API's). */
+  totals: TokenTotals
   state: TableState
   /** Every pool is listed (`rows=all`). */
   allRows: boolean
@@ -79,7 +82,7 @@ export function TokenPools({
           <h2 className="h2" id="s-pools">
             pools
           </h2>
-          <p className="takeaway">{poolsTakeaway(pools, symbol)}</p>
+          <p className="takeaway">{poolsTakeaway(pools, symbol, totals)}</p>
           <div className="token-sheet-ctl">{controls}</div>
         </div>
         <div className="tbl-caption">

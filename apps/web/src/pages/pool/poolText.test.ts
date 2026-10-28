@@ -9,6 +9,7 @@ import {
   healthTakeaway,
   neutralReason,
   overTimeCaption,
+  ownersNote,
   poolAnswer,
   spanWords,
   spreadAt,
@@ -63,9 +64,11 @@ describe('healthTakeaway', () => {
   const inputs = {
     spread10kBps: 20,
     ownerTop1Share: 0.3,
+    ownerCoverage: 1,
     rangeHhi: 0.3,
+    poolKind: 'concentrated',
     persistence: null,
-  }
+  } as const
 
   it('names the weakest part of a rated pool', () => {
     const health = computeHealthScore({ ...inputs, depth2UpUsd: 20_000, depth2DownUsd: 20_000 })
@@ -79,11 +82,34 @@ describe('healthTakeaway', () => {
       grade: 'B',
       rated: true,
       unratedReason: null,
+      concentrationBasis: 'owners',
       components: { depth: 33.7, spread: 11.8, concentration: 13.6, persistence: 15 },
       notes: [],
     }
     expect(healthTakeaway(health, null, 'concentrated')).toBe(
       'Spread is the weak part: 11.8 of 25 points.',
+    )
+  })
+
+  it('names one LP as the weak part only when the owners cover the pool', () => {
+    const health: HealthScore = {
+      total: 70,
+      grade: 'B',
+      rated: true,
+      unratedReason: null,
+      // A score stored before the basis was recorded.
+      concentrationBasis: null,
+      components: { depth: 30, spread: 20, concentration: 2, persistence: 18 },
+      notes: [],
+    }
+    const band = { bandPct: 5, rangeHhi: 0.9, activeRangeShare: 0.4 }
+    const lone = { count: 1, top1Share: 1, top3Share: 1, hhi: 1, coverage: 0.0102 }
+    expect(healthTakeaway(health, { ...band, owners: lone }, 'concentrated')).toBe(
+      `Concentration is the weak part: 40${NB}% sits in one range.`,
+    )
+    const covering = { ...lone, count: 3, top1Share: 0.9, coverage: 0.95 }
+    expect(healthTakeaway(health, { ...band, owners: covering }, 'concentrated')).toBe(
+      `Concentration is the weak part: one LP holds 90${NB}%.`,
     )
   })
 
@@ -150,6 +176,37 @@ describe('who provides it', () => {
       `LP owners are not indexed for this pool. The active range holds 1${NB}% of the liquidity within ±5${NB}%.`,
     )
     expect(whoTakeaway(c, 'constant-product')).toBe('A full-range pool: every LP shares one range.')
+  })
+
+  const owners = (count: number, top1Share: number, coverage: number | null) => ({
+    ...c,
+    owners: { count, top1Share, top3Share: Math.min(1, top1Share * 2), hhi: 0.3, coverage },
+  })
+
+  it('names one LP only when the indexed owners cover the pool', () => {
+    expect(whoTakeaway(owners(4, 0.53, 0.95), 'concentrated')).toBe(
+      `One LP holds 53${NB}% of the liquidity near the price.`,
+    )
+  })
+
+  it('says what indexed LPs that cover too little hold, and the largest one’s part of that', () => {
+    // One unstaked LP beside a gauge holding 97 % of the band.
+    expect(whoTakeaway(owners(1, 1, 0.0102), 'concentrated')).toBe(
+      `Indexed LPs hold 1${NB}% of the liquidity near the price; the largest holds 100${NB}% of that.`,
+    )
+    expect(whoTakeaway(owners(3, 0.42, null), 'concentrated')).toBe(
+      `Indexed LPs hold an unknown share of the liquidity near the price; the largest holds 42${NB}% of that.`,
+    )
+    expect(ownersNote(owners(1, 1, 0.0102).owners)).toBe(
+      `Indexed owners cover 1${NB}% of the liquidity in the band, so health uses the range HHI; the LP shares above are of that part.`,
+    )
+    expect(ownersNote(owners(4, 0.53, 0.95).owners)).toBeNull()
+  })
+
+  it('reads the active range when no indexed owner is in the band (only a gauge’s positions)', () => {
+    expect(whoTakeaway(owners(0, 0, 0), 'concentrated')).toBe(
+      `No indexed LP owner holds liquidity near the price. The active range holds 1${NB}% of the liquidity within ±5${NB}%.`,
+    )
   })
 })
 
@@ -224,6 +281,13 @@ describe('poolAnswer', () => {
   it('waits for the first snapshot', () => {
     expect(poolAnswer({ pool, latest: null })).toBe(
       'No snapshot yet. Depth appears after the first snapshot.',
+    )
+  })
+
+  it('says a hooked pool is not modelled, not that its tokens have no price', () => {
+    const hooked = { ...pool, hooks: '0x00000000000000000000000000000000000000c0' } as PoolMetaDto
+    expect(poolAnswer({ pool: hooked, latest: level(null, null).latest })).toBe(
+      'This pool has a Uniswap v4 hook that runs its own swap code: its depth is not modelled.',
     )
   })
 })

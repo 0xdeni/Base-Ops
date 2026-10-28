@@ -33,6 +33,8 @@ const UNKNOWN_POOL = 'uniswap-v3:0x00000000000000000000000000000000000000ff'
 interface World {
   db: Database
   ctx: PipelineContext
+  /** The same world one block later, where `mm sample` finds a block not sampled yet. */
+  later: PipelineContext
   lines: string[]
   mandates: Mandate[]
   snapshot: SnapshotResult
@@ -68,7 +70,11 @@ async function buildWorld(
   await discoverStep(ctx)
   await positionsStep(ctx, { pools: db.pools.list() })
   const snapshot = await snapshotStep(ctx)
-  return { db, ctx, lines, mandates, snapshot }
+  const next = createDemoChain({
+    latestBlock: latest.number + 1n,
+    latestTimestamp: latest.timestamp + 2,
+  })
+  return { db, ctx, later: { ...ctx, chain: wrapChain(next) }, lines, mandates, snapshot }
 }
 
 describe('sampling inside snapshotStep (demo mandates)', () => {
@@ -287,9 +293,14 @@ describe('sampling inside snapshotStep (demo mandates)', () => {
 
   it('mm sample re-samples every active mandate at the latest block without a snapshot row', async () => {
     const before = world.db.snapshots.count()
-    const result = await mmSampleStep(world.ctx)
+    // At the snapshot's own block every pool has its snapshot and every mandate its sample
+    // already: a second pass there (another process) stores nothing.
+    expect(await snapshotStep(world.ctx)).toMatchObject({ snapshots: 0, samples: 0, failed: [] })
+    const same = await mmSampleStep(world.ctx)
+    expect(same).toMatchObject({ mandates: 2, pools: 2, samples: 0, failed: [] })
+    const result = await mmSampleStep(world.later)
     expect(result).toMatchObject({ mandates: 2, pools: 2, samples: 2, failed: [] })
-    expect(result.blockNumber).toBe(world.snapshot.blockNumber)
+    expect(result.blockNumber).toBe(world.snapshot.blockNumber + 1n)
     expect(result.alerts.attempts).toBe(0)
     expect(world.db.snapshots.count()).toBe(before)
     for (const mandate of world.mandates) {
@@ -327,7 +338,7 @@ describe('mandates on pools the database does not know', () => {
           (l) => l.includes('mandate pool not in the database') && l.includes('orphan-pool'),
         ),
       ).toBe(true)
-      const sampled = await mmSampleStep(world.ctx)
+      const sampled = await mmSampleStep(world.later)
       expect(sampled.mandates).toBe(3)
       expect(sampled.pools).toBe(2)
       expect(sampled.samples).toBe(2)
@@ -377,7 +388,7 @@ describe('a failing resolveStakedOwners in the pipeline', () => {
       expect(world.snapshot.samples).toBe(1)
       expect(world.snapshot.sampleFailures).toBe(2)
       expect(world.snapshot.alerts).toBe(0)
-      const sampled = await mmSampleStep(world.ctx)
+      const sampled = await mmSampleStep(world.later)
       expect(sampled.samples).toBe(1)
       expect(sampled.failed.map((f) => f.item).sort()).toEqual([...slipstreamIds].sort())
       expect(sampled.alerts.attempts).toBe(0)

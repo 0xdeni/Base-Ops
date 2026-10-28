@@ -3,10 +3,10 @@
 # and runs `depthwatch start`, the same as the `docker run` of docs/DEPLOY.md "Docker". Settings
 # come from ./.env in the repository root (.env.example lists them; DEPTHWATCH_RPC_URL at least);
 # the database lives in the named volume depthwatch-data, mounted at /data. The image's health
-# check (GET /api/health) applies as it is. The port is published on the host's loopback only: a
-# reverse proxy with TLS on the host fronts it (docs/DEPLOY.md "A reverse proxy with TLS"); a
-# proxy running as another container joins this Compose network and reaches depthwatch:8787
-# directly, with no published port at all.
+# check (GET /api/health?maxAge=3600) applies as it is. The port is published on the host's
+# loopback only: a reverse proxy with TLS on the host fronts it (docs/DEPLOY.md "A reverse proxy
+# with TLS"); a proxy running as another container joins this Compose network and reaches
+# depthwatch:8787 directly, with no published port at all.
 name: depthwatch
 
 services:

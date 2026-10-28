@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { MandateValidationError, maskWebhookUrl, parseMandate, toPublicMandate } from './mandate.js'
+import {
+  MANDATE_LIMITS,
+  MandateValidationError,
+  maskWebhookUrl,
+  mergeRegistration,
+  parseMandate,
+  toPublicMandate,
+} from './mandate.js'
 import { DEFAULT_MANDATE_KPIS, MANDATE_ID_PATTERN } from './types.js'
 
 const now = 1_700_000_000
@@ -9,11 +16,15 @@ const addr2 = '0x00000000000000000000000000000000000000b2'
 const minimal = {
   id: 'demo-slipstream-weth-usdc',
   name: 'Demo mandate',
-  poolId: 'aerodrome-slipstream:0xpool',
+  poolId: 'aerodrome-slipstream:0x00000000000000000000000000000000000000c1',
   marketMaker: 'MM Co',
   addresses: [addr1],
   kpis: { minDepthUsd: 25_000 },
 }
+
+const POOL_ID_PROBLEM =
+  'poolId must be <dex>:<0x pool address>, or uniswap-v4:<0x pool id of 64 hex digits>, with ' +
+  '<dex> one of uniswap-v3, uniswap-v4, aerodrome-v2, aerodrome-slipstream'
 
 function problemsOf(input: unknown): string[] {
   try {
@@ -86,8 +97,9 @@ describe('parseMandate', () => {
         .maxSpreadBps,
     ).toBeNull()
     expect(
-      parseMandate({ ...minimal, alertWebhookUrl: 'http://127.0.0.1:8080/x' }, now).alertWebhookUrl,
-    ).toBe('http://127.0.0.1:8080/x')
+      parseMandate({ ...minimal, alertWebhookUrl: 'http://hooks.example.com:8080/x' }, now)
+        .alertWebhookUrl,
+    ).toBe('http://hooks.example.com:8080/x')
   })
 
   it('rejects anything but an object', () => {
@@ -112,7 +124,7 @@ describe('parseMandate', () => {
     expect(problems).toEqual([
       `id must match ${MANDATE_ID_PATTERN}`,
       'name must be a non-empty string',
-      'poolId must be a non-empty string',
+      POOL_ID_PROBLEM,
       'marketMaker must be a non-empty string',
       'addresses[0] must be a 0x-prefixed 20-byte hex address',
       'addresses[2] must be a 0x-prefixed 20-byte hex address',
@@ -150,6 +162,58 @@ describe('parseMandate', () => {
     ])
     expect(problemsOf({ ...minimal, addresses: [`${addr1}0`] })).toEqual([
       'addresses[0] must be a 0x-prefixed 20-byte hex address',
+    ])
+  })
+
+  it('lowercases the pool id and checks its DEX and length', () => {
+    const v3 = 'uniswap-v3:0xD0B53D9277642d899DF5C87A3966A349A798F224'
+    expect(parseMandate({ ...minimal, poolId: ` ${v3} ` }, now).poolId).toBe(v3.toLowerCase())
+    const v4 = `uniswap-v4:0x${'AB'.repeat(32)}`
+    expect(parseMandate({ ...minimal, poolId: v4 }, now).poolId).toBe(v4.toLowerCase())
+    const address = '0x00000000000000000000000000000000000000c1'
+    for (const poolId of [
+      'not a pool at all',
+      `uniswap-v9:${address}`,
+      address,
+      `:${address}`,
+      'uniswap-v3:0x1',
+      `uniswap-v3:0x${'ab'.repeat(32)}`,
+      `uniswap-v4:${address}`,
+      `aerodrome-v2:${address}0`,
+      `aerodrome-v2:${address.slice(2)}`,
+      `uniswap-v3:${address}:extra`,
+      '',
+      42,
+      undefined,
+    ]) {
+      expect(problemsOf({ ...minimal, poolId }), String(poolId)).toEqual([POOL_ID_PROBLEM])
+    }
+  })
+
+  it('holds the strings and the address list to MANDATE_LIMITS', () => {
+    const at = (field: 'name' | 'marketMaker', length: number) =>
+      parseMandate({ ...minimal, [field]: 'x'.repeat(length) }, now)[field]
+    expect(at('name', MANDATE_LIMITS.name)).toHaveLength(120)
+    expect(at('marketMaker', MANDATE_LIMITS.marketMaker)).toHaveLength(120)
+    expect(problemsOf({ ...minimal, name: 'x'.repeat(121) })).toEqual([
+      'name must be at most 120 characters',
+    ])
+    expect(problemsOf({ ...minimal, marketMaker: 'x'.repeat(121) })).toEqual([
+      'marketMaker must be at most 120 characters',
+    ])
+    const notes = 'n'.repeat(MANDATE_LIMITS.notes)
+    expect(parseMandate({ ...minimal, notes: ` ${notes} ` }, now).notes).toBe(notes)
+    expect(problemsOf({ ...minimal, notes: `${notes}n` })).toEqual([
+      'notes must be at most 2000 characters',
+    ])
+    const addresses = (count: number) =>
+      Array.from({ length: count }, (_, i) => `0x${(i + 1).toString(16).padStart(40, '0')}`)
+    expect(
+      parseMandate({ ...minimal, addresses: addresses(MANDATE_LIMITS.addresses) }, now).addresses,
+    ).toHaveLength(50)
+    // One problem for an oversized list, not one per entry.
+    expect(problemsOf({ ...minimal, addresses: [...addresses(20_000), 'nope'] })).toEqual([
+      'addresses must list at most 50 addresses',
     ])
   })
 
@@ -192,12 +256,44 @@ describe('parseMandate', () => {
         'alertWebhookUrl must be null or an http(s) URL',
       ])
     }
+    // Delivery is a request from the indexer's network: no local or private host, no user info.
+    expect(problemsOf({ ...minimal, alertWebhookUrl: 'http://127.0.0.1:8080/x' })).toEqual([
+      'alertWebhookUrl must name a public host, not localhost or a loopback, private, link-local, carrier-grade NAT or unique-local address',
+    ])
+    expect(problemsOf({ ...minimal, alertWebhookUrl: 'https://u:p@hooks.example.com/x' })).toEqual([
+      'alertWebhookUrl must not carry a username or password',
+    ])
     for (const alertAfterSamples of [0, -1, 1.5, '3', null]) {
       expect(problemsOf({ ...minimal, alertAfterSamples })).toEqual([
         'alertAfterSamples must be an integer ≥ 1',
       ])
     }
     expect(parseMandate({ ...minimal, alertAfterSamples: 10 }, now).alertAfterSamples).toBe(10)
+  })
+})
+
+describe('mergeRegistration', () => {
+  const existing = parseMandate({ ...minimal, active: false, createdAt: 1_600_000_000 }, now)
+
+  it('keeps the stored active flag and createdAt unless the registration sets them', () => {
+    const input = { ...minimal, kpis: { minDepthUsd: 1 } }
+    const merged = mergeRegistration(parseMandate(input, now), existing, input)
+    expect(merged).toMatchObject({
+      active: false,
+      createdAt: 1_600_000_000,
+      kpis: { minDepthUsd: 1 },
+    })
+    const resumed = { ...minimal, active: true, createdAt: 1_650_000_000 }
+    expect(mergeRegistration(parseMandate(resumed, now), existing, resumed)).toMatchObject({
+      active: true,
+      createdAt: 1_650_000_000,
+    })
+  })
+
+  it('stores a new id as parsed', () => {
+    const parsed = parseMandate(minimal, now)
+    expect(mergeRegistration(parsed, undefined, minimal)).toBe(parsed)
+    expect(parsed).toMatchObject({ active: true, createdAt: now })
   })
 })
 

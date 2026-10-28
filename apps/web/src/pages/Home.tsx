@@ -1,11 +1,12 @@
 /**
  * `/` (ia-v3 §4.1, docs/design/visual-v4.md §6.2): one answer, one figure, three facts. The band
- * opens on the answer, "$49.9M sits within 2 % of the price on Base.", with the lead and the
- * actions, then the focal depth butterfly of Base: where that depth sits pool by pool, the "All of
- * Base" total row with its concentration bracket, and its "Show data" table. Three fact blocks
- * stack over the band's lower edge (24 h volume, median health, biggest gap); two previews hand
- * the reader to the gaps feed and the market-maker scorecards. Home has no URL state (ia-v3 §2);
- * the first view of a session is played by the app shell on the parts marked for it.
+ * opens on the answer, "$49.9M sits within 2 % of the price across 492 pools on Base.", with the
+ * lead and the actions, then the focal depth butterfly of Base: where that depth sits pool by
+ * pool, the "All of Base" total row with its concentration bracket, and its "Show data" table.
+ * Three fact blocks stack over the band's lower edge (24 h volume, median health, biggest gap);
+ * two previews hand the reader to the gaps feed and the market-maker scorecards. Home has no URL
+ * state (ia-v3 §2); the first view of a session is played by the app shell on the parts marked
+ * for it.
  */
 
 import { useSnapshot } from '../api/context.js'
@@ -14,6 +15,7 @@ import type { ButterflyGap } from '../components/charts/index.js'
 import { Overlap } from '../components/ui/Block.js'
 import { useDelayedPending } from '../components/ui/States.js'
 import { useAllPools } from '../lib/useAllPools.js'
+import { GAP_FEED } from '../lib/useGapFeed.js'
 import { isMeaningfulGap } from './home/copy.js'
 import { HomeFacts } from './home/HomeFacts.js'
 import { type HeroFigure, HomeHero } from './home/HomeHero.js'
@@ -21,13 +23,11 @@ import { FactsSkeleton } from './home/HomeSkeleton.js'
 import { GapsPreview, MandatesPreview } from './home/Previews.js'
 import './home/home.css'
 
-/** Enough of the gap feed to count every pool trading 3× its depth or more (the API's page). */
-const GAP_FEED_LIMIT = 200
-
 export function Home() {
   const stats = useStats()
   const all = useAllPools()
-  const gaps = useGaps({ limit: GAP_FEED_LIMIT })
+  // The feed's first page: its biggest gaps, and the API's count of every meaningful one.
+  const gaps = useGaps(GAP_FEED)
   const scorecards = useScorecards()
   const snapshot = useSnapshot() !== undefined
 
@@ -65,7 +65,12 @@ export function Home() {
       <HomeHero stats={stats} figure={figure} closed={noFacts} waiting={waiting} />
       {facts ? <Overlap label="Key facts">{facts}</Overlap> : null}
       <div className={`wrap grid home-prev${facts ? '' : ' is-first'}`}>
-        <GapsPreview gaps={gaps} meaningful={meaningful} waiting={waiting} />
+        <GapsPreview
+          gaps={gaps}
+          meaningful={meaningful}
+          count={gaps.data?.meaningful}
+          waiting={waiting}
+        />
         <MandatesPreview
           scorecards={scorecards}
           pools={all.pools}

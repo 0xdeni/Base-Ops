@@ -5,6 +5,7 @@
  * meaningful gap trades 3× its ±2 % depth a day or more (TB9), the threshold every screen uses;
  * the numbers come from the API (core's `computeGap`).
  */
+import { isMeaningfulGap } from '@depthwatch/core'
 import type { GapItem, SortDir } from '../../api/types.js'
 import { MEANINGFUL_GAP_TURNOVER } from '../../components/charts/TurnoverGlyph.js'
 import { NB, ratio, usd } from '../../lib/format.js'
@@ -68,7 +69,7 @@ export function writeGapsState(
 }
 
 export function isMeaningful(g: GapItem): boolean {
-  return (g.gap.turnoverRatio ?? 0) >= MEANINGFUL_GAP_TURNOVER
+  return isMeaningfulGap(g.gap)
 }
 
 /** "1 pool trades 3× its depth or more every day." (or "No pool trades 3× its depth today."). */

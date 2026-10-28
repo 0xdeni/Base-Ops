@@ -3,7 +3,8 @@
  * `depthwatch <command>`: the Depthwatch pipeline and server for Base mainnet.
  *
  * Exit codes: 0 ok, 1 runtime error (one line on stderr; this includes a live command started
- * without an RPC endpoint), 2 usage error (one line + hint).
+ * without an RPC endpoint, a pass that stored nothing because every item failed, a `run --once`
+ * with a failed step and a `run` loop stalled for three passes), 2 usage error (one line + hint).
  * Logs go to stderr; stdout carries only program output: the `--help`/`--version` text, the
  * server URL line of `serve`/`demo`, the summary line of `export`, and the scorecard URL, listing
  * and JSON of `mm register`, `mm list` and `mm show`.
@@ -32,10 +33,15 @@ import { demoCommand } from './demo.js'
 import { exportCommand } from './export.js'
 import { createLogger, errorMessage, type Logger, resultFields } from './log.js'
 import { mmCommand } from './mm.js'
-import { createPipelineContext, type PipelineContext } from './pipeline/context.js'
+import {
+  assertSomethingStored,
+  createPipelineContext,
+  type PipelineContext,
+} from './pipeline/context.js'
 import { discoverStep } from './pipeline/discover.js'
 import { positionsStep } from './pipeline/positions.js'
-import { runLoop } from './pipeline/run.js'
+import { pruneStep } from './pipeline/prune.js'
+import { type IterationResult, runLoop } from './pipeline/run.js'
 import { scoreStep } from './pipeline/score.js'
 import { seedStep } from './pipeline/seed.js'
 import { snapshotStep } from './pipeline/snapshot.js'
@@ -69,14 +75,18 @@ Commands
   discover    scan factory logs for new pools        [--dex <dex,...>] [--from-block N]
                 --seed                   no logs: ask each DEX for the reference-token pools
                                          and date them by archive-state binary search
+                --seed-token <address>   also seed this token's pairs (repeatable; with --seed,
+                                         run --seed and start; DEPTHWATCH_SEED_TOKENS)
   snapshot    prices, TVL ranking, depth/spread/concentration for the top pools
                                                      [--top N] [--pool <id> ...]
   volume      hourly swap volume of tracked pools    [--hours 24]
   positions   LP positions of tracked and mandated concentrated pools
   score       persistence, health score and gaps for tracked pools
-  run         loop: discover → snapshot → volume → score
+  prune       delete snapshots and volume older than --keep-days, samples older than 35 days,
+              alerts older than 90                  [--keep-days 30]
+  run         loop: discover → [positions] → snapshot → volume → score → [prune once a day]
                                                      [--interval 300|5m] [--once] [--with-positions]
-                                                     [--seed]
+                                                     [--seed] [--keep-days 30]
   start       the server: serve + the pipeline on a schedule, in one process (docs/DEPLOY.md)
                 --snapshot-interval <d>  a pass: snapshot + score (DEPTHWATCH_SNAPSHOT_INTERVAL, ${d.snapshotIntervalSeconds})
                 --volume-interval <d>    volume (DEPTHWATCH_VOLUME_INTERVAL, ${d.volumeIntervalSeconds})
@@ -111,13 +121,18 @@ Options
   --log-level <lvl>   debug|info|warn|error|silent (DEPTHWATCH_LOG_LEVEL, default ${DEFAULTS.logLevel})
   --port <n>          DEPTHWATCH_PORT, else PORT (default ${DEFAULTS.port}); --host (DEPTHWATCH_HOST, default ${DEFAULTS.hostname})
   --top <n>           DEPTHWATCH_TOP_POOLS (default ${DEFAULTS.topPools})
+  --keep-days <n>     DEPTHWATCH_KEEP_DAYS (default ${DEFAULTS.keepDays}): days of snapshots and volume that
+                      prune, run and start keep (snapshots at least 8)
   -h, --help          this text;  -v, --version
 
-Environment only: DEPTHWATCH_ADMIN_TOKEN, the bearer token serve, start and demo require for
-POST /api/mm and DELETE /api/mm/:id (unset: those routes answer 403 "registration disabled");
-DEPTHWATCH_SHUTDOWN_GRACE, how long start waits for the step in flight on SIGTERM (${d.shutdownGraceSeconds}).
+Environment only: DEPTHWATCH_ADMIN_TOKEN, the bearer token (at least 32 characters) serve, start
+and demo require for POST /api/mm and DELETE /api/mm/:id (unset: those routes answer 403
+"registration disabled"); DEPTHWATCH_SHUTDOWN_GRACE, how long start waits for the step in flight
+on SIGTERM (${d.shutdownGraceSeconds}).
 
-Exit codes: 0 ok, 1 error, 2 usage.`
+Exit codes: 0 ok, 1 error, 2 usage. A pass that stored nothing because every item failed
+(snapshot, positions, mm sample) and a run --once with a failed step exit 1; the run loop goes
+on past a failed step and exits 1 after three passes in a row whose every chain step failed.`
 }
 
 export interface MainOptions {
@@ -184,6 +199,15 @@ interface RunContext {
   demoHistoryPoints: number | undefined
 }
 
+/** `run --once` is one pass whose outcome is its exit code: a failed step is an error, not a log line. */
+function assertPassSucceeded(failed: IterationResult['failed']): void {
+  if (failed.length === 0) return
+  const steps = failed.map((f) => `${f.step} (${f.error})`).join('; ')
+  throw new Error(
+    `run --once: ${failed.length} step${failed.length === 1 ? '' : 's'} failed: ${steps}`,
+  )
+}
+
 async function runCommand(
   command: Command,
   mm: MmArgs | undefined,
@@ -216,25 +240,38 @@ async function runCommand(
             (r) => ({ found: r.found }),
           )
         return
-      case 'snapshot':
-        await log.timed(command, (step) => snapshotStep({ ...ctx, log: step }), resultFields)
+      case 'snapshot': {
+        const result = await log.timed(
+          command,
+          (step) => snapshotStep({ ...ctx, log: step }),
+          resultFields,
+        )
+        assertSomethingStored(command, result.failed, result.snapshots)
         return
+      }
       case 'volume':
         await log.timed(command, (step) => volumeStep({ ...ctx, log: step }), resultFields)
         return
-      case 'positions':
-        await log.timed(
+      case 'positions': {
+        const result = await log.timed(
           command,
           (step) => positionsStep({ ...ctx, log: step }),
           (r) => ({ positions: r.positions }),
         )
+        assertSomethingStored(command, result.failed, result.pools.filter((p) => !p.skipped).length)
         return
+      }
       case 'score':
         await log.timed(command, (step) => scoreStep({ ...ctx, log: step }), resultFields)
         return
-      case 'run':
-        await runLoop(ctx, { signal })
+      case 'prune':
+        await log.timed(command, (step) => pruneStep({ ...ctx, log: step }), resultFields)
         return
+      case 'run': {
+        const loop = await runLoop(ctx, { signal })
+        if (config.runOnce) assertPassSucceeded(loop.lastFailed)
+        return
+      }
       case 'serve':
         await serveUntilAborted({
           db: ctx.db,

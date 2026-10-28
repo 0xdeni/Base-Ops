@@ -6,12 +6,15 @@
  * requests per pool, skipped for pools whose creation block is already known), in batches whose
  * pools are handed to `onPools` as each one completes. The PoolMeta are the ones log discovery
  * produces for the same pools. Pairs outside the token list, hooked v4 pools and
- * non-standard v4 tiers are not found this way.
+ * non-standard v4 tiers are not found this way. The DEX seeders run independently: one whose
+ * factory views fail (an outage of one contract, a factory whose interface changed) is reported in
+ * `SeedResult.failed` and the other DEXes' pools are still dated and returned.
  */
 import { type Address, DEXES, type Dex, type PoolMeta } from '@depthwatch/core'
 import type { BackoffEvent } from '../internal/backoff.js'
 import type { ReaderContext } from '../internal/context.js'
-import { SEEDERS } from './candidates.js'
+import { errorSummary } from '../internal/errorText.js'
+import { type DexSeed, SEEDERS } from './candidates.js'
 import { type CreationSearchProgress, findCreationBlocks } from './createdAt.js'
 
 export type { BackoffEvent } from '../internal/backoff.js'
@@ -80,10 +83,20 @@ export interface SeedDexResult {
   searched: number
 }
 
+/** A DEX whose seeder failed: none of its pools are in the result. */
+export interface SeedDexFailure {
+  dex: Dex
+  /** One line (errorText.ts), never a request body or an endpoint's key. */
+  error: string
+}
+
 export interface SeedResult {
   blockNumber: bigint
   pools: PoolMeta[]
+  /** The DEXes whose seeder succeeded. */
   dexes: SeedDexResult[]
+  /** The DEXes whose seeder failed, in `dexes` order of the options. */
+  failed: SeedDexFailure[]
   /** Requests of the creation-block search (`eth_getCode`, multicalls for v4), retries aside. */
   searchRequests: number
   /** Rounds over all batches. */
@@ -104,9 +117,17 @@ export async function seedPools(
   const concurrency = positive(opts.concurrency ?? DEFAULT_SEED_CONCURRENCY, 'seed concurrency')
   const batchSize = positive(opts.batchSize ?? DEFAULT_SEED_BATCH, 'seed batch size')
   const tokens = opts.tokens ?? ctx.addresses.referenceTokens.map((t) => t.address)
-  const seeds = await Promise.all(
-    (opts.dexes ?? DEXES).map((dex) => SEEDERS[dex](ctx, blockNumber, tokens)),
+  const dexes = opts.dexes ?? DEXES
+  const settled = await Promise.allSettled(
+    dexes.map((dex) => SEEDERS[dex](ctx, blockNumber, tokens)),
   )
+  const seeds: DexSeed[] = []
+  const failed: SeedDexFailure[] = []
+  settled.forEach((outcome, i) => {
+    const dex = dexes[i] as Dex
+    if (outcome.status === 'fulfilled') seeds.push(outcome.value)
+    else failed.push({ dex, error: errorSummary(outcome.reason) })
+  })
   const known = new Map<string, bigint>()
   const unknown = seeds.flatMap((seed) =>
     seed.targets.filter((target) => {
@@ -146,6 +167,7 @@ export async function seedPools(
       found: seed.targets.length,
       searched: seed.targets.filter((t) => searched.has(t.id)).length,
     })),
+    failed,
     searchRequests: progress.requests,
     searchRounds: rounds,
   }

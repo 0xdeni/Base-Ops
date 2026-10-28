@@ -11,9 +11,9 @@
  * one column (Scorecard); a note (the gap callout) may follow under a Gray 80 rule.
  */
 
-import type { HealthGrade } from '@depthwatch/core'
+import type { ConcentrationBasis, HealthGrade } from '@depthwatch/core'
 import type { ReactNode } from 'react'
-import { GradeGlyph } from './GradeGlyph.js'
+import { GradeWithBasis } from './GradeGlyph.js'
 import { BreachMark } from './StatusWord.js'
 
 /** `home`: rows of one ink block on phones; `pool`: 4 columns, 2 × 2 on phones; `scorecard`: 3. */
@@ -52,6 +52,7 @@ export function Fact({
   label,
   eyebrow,
   grade,
+  gradeBasis,
   breached,
   breachedLabel,
   bullet,
@@ -61,6 +62,8 @@ export function Fact({
   /** The mono caps line above the value ("24 h volume"); written in sentence case. */
   eyebrow?: string
   grade?: HealthGrade | null
+  /** The grade's concentration basis: a grade not resting on LP owners carries the mark. */
+  gradeBasis?: ConcentrationBasis | null
   /** Adds the 14 px triangle after the value. */
   breached?: boolean
   /** The triangle's accessible name; "Below KPI" by default. */
@@ -70,7 +73,7 @@ export function Fact({
 }) {
   const mark = (
     <>
-      {grade ? <GradeGlyph grade={grade} size="fact" /> : null}
+      {grade ? <GradeWithBasis grade={grade} basis={gradeBasis} size="fact" /> : null}
       {breached ? <BreachMark label={breachedLabel} /> : null}
     </>
   )

@@ -83,6 +83,41 @@ describe('MmAlertsRepo', () => {
     expect(() => db.mmAlerts.listFor(M1, -1)).toThrow(RangeError)
   })
 
+  it('finds the newest delivered alert and counts attempts of a kind after a timestamp', () => {
+    const at = (timestamp: number, kind: 'breach' | 'recovered', delivered: boolean) =>
+      db.mmAlerts.insert(
+        fixtureMmAlert({
+          mandateId: M1,
+          timestamp,
+          kind,
+          delivered,
+          responseStatus: delivered ? 200 : 503,
+          error: delivered ? null : 'HTTP 503',
+        }),
+      )
+    expect(db.mmAlerts.latestDeliveredFor(M1)).toBeUndefined()
+    expect(db.mmAlerts.countAttempts(M1, 'breach')).toBe(0)
+    at(10, 'breach', false)
+    at(11, 'breach', true)
+    at(12, 'recovered', false)
+    at(13, 'recovered', false)
+    at(14, 'breach', false)
+    db.mmAlerts.insert(fixtureMmAlert({ mandateId: M2, timestamp: 99, delivered: true }))
+    expect(db.mmAlerts.latestFor(M1)?.timestamp).toBe(14)
+    expect(db.mmAlerts.latestDeliveredFor(M1)).toMatchObject({
+      timestamp: 11,
+      kind: 'breach',
+      delivered: true,
+    })
+    expect(db.mmAlerts.countAttempts(M1, 'breach')).toBe(3)
+    expect(db.mmAlerts.countAttempts(M1, 'breach', 10)).toBe(2)
+    expect(db.mmAlerts.countAttempts(M1, 'breach', 14)).toBe(0)
+    expect(db.mmAlerts.countAttempts(M1, 'recovered')).toBe(2)
+    expect(db.mmAlerts.countAttempts(M1, 'recovered', 11)).toBe(2)
+    expect(db.mmAlerts.countAttempts(M1, 'recovered', 13)).toBe(0)
+    expect(db.mmAlerts.countAttempts('missing', 'breach')).toBe(0)
+  })
+
   it('prunes by timestamp and deletes per mandate', () => {
     db.mmAlerts.insert(fixtureMmAlert({ mandateId: M1, timestamp: 10 }))
     db.mmAlerts.insert(fixtureMmAlert({ mandateId: M1, timestamp: 20 }))
@@ -96,5 +131,18 @@ describe('MmAlertsRepo', () => {
     expect(db.mmAlerts.deleteFor(M1)).toBe(0)
     expect(db.mmAlerts.countFor(M1)).toBe(0)
     expect(db.mmAlerts.count()).toBe(1)
+  })
+
+  it("keeps each mandate's newest delivered alert when pruning, however old", () => {
+    db.mmAlerts.insert(fixtureMmAlert({ mandateId: M1, timestamp: 8, delivered: true }))
+    db.mmAlerts.insert(fixtureMmAlert({ mandateId: M1, timestamp: 10, delivered: true }))
+    db.mmAlerts.insert(fixtureMmAlert({ mandateId: M1, timestamp: 14, delivered: false }))
+    db.mmAlerts.insert(fixtureMmAlert({ mandateId: M2, timestamp: 5, delivered: false }))
+    db.mmAlerts.insert(fixtureMmAlert({ mandateId: M2, timestamp: 200, delivered: true }))
+    expect(db.mmAlerts.pruneBefore(100)).toBe(3)
+    expect(db.mmAlerts.listFor(M1, 10).map((a) => a.timestamp)).toEqual([10])
+    expect(db.mmAlerts.latestDeliveredFor(M1)?.timestamp).toBe(10)
+    expect(db.mmAlerts.listFor(M2, 10).map((a) => a.timestamp)).toEqual([200])
+    expect(db.mmAlerts.pruneBefore(300)).toBe(0)
   })
 })

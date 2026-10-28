@@ -6,6 +6,7 @@ import { AppRoutes, Providers } from '../App.js'
 import { createMockClient } from '../api/mock.js'
 import type { ApiClient } from '../api/types.js'
 import { FIRST_VIEW_KEY } from '../lib/firstView.js'
+import { DRAW_FAILED, RootErrorBoundary } from './ErrorBoundary.js'
 import { isInAppHref, routeIntentOf } from './Layout.js'
 import { DOCK_QUERY } from './shell/Dock.js'
 
@@ -124,6 +125,65 @@ describe('route changes', () => {
     expect(isInAppHref('/AGENTS.md')).toBe(true)
     expect(isInAppHref('//evil.example')).toBe(false)
     expect(isInAppHref('https://github.com/0xdeni/Base-Ops')).toBe(false)
+  })
+})
+
+function Broken(): never {
+  throw new Error('broken')
+}
+
+describe('a page that fails to draw (§5.12 ST3)', () => {
+  /** Pools whose token0 is missing, as a corrupted response would have them. */
+  function brokenPools(): ApiClient {
+    const mock = createMockClient({ now: NOW })
+    return {
+      ...mock,
+      pools: async (query) => {
+        const page = await mock.pools(query)
+        const items = page.items.map((p) => ({ ...p, pool: { ...p.pool, token0: null as never } }))
+        return { ...page, items }
+      },
+    }
+  }
+
+  it('replaces only the route, keeps the chrome, and draws again after a navigation', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      renderAt('/pools', { client: brokenPools() })
+      const title = await screen.findByRole('heading', { level: 1, name: DRAW_FAILED })
+      const failed = title.closest('[role="alert"]') as HTMLElement
+      expect(failed.closest('main')).not.toBeNull()
+      expect(within(failed).getByRole('link', { name: 'Pools' }).getAttribute('href')).toBe(
+        '/pools',
+      )
+      expect(within(nav()).getAllByRole('link').length).toBeGreaterThan(3)
+      expect(screen.getByRole('contentinfo')).toBeTruthy()
+      fireEvent.click(within(nav()).getByRole('link', { name: 'Methodology' }), { detail: 0 })
+      await waitFor(() => expect(current()).toEqual(['Methodology']))
+      expect(screen.queryByRole('heading', { name: DRAW_FAILED })).toBeNull()
+      expect(screen.getByRole('heading', { level: 1 }).textContent).not.toBe('')
+      // A navigation that fails shows it again.
+      fireEvent.click(within(nav()).getByRole('link', { name: 'Pools' }), { detail: 0 })
+      expect(await screen.findByRole('heading', { level: 1, name: DRAW_FAILED })).toBeTruthy()
+    } finally {
+      quiet.mockRestore()
+    }
+  })
+
+  it('replaces the whole app with Reload when it fails outside the routes', () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      render(
+        <RootErrorBoundary>
+          <Broken />
+        </RootErrorBoundary>,
+      )
+      expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(DRAW_FAILED)
+      expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy()
+      expect(screen.getByRole('main')).toBeTruthy()
+    } finally {
+      quiet.mockRestore()
+    }
   })
 })
 

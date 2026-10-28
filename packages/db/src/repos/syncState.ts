@@ -34,6 +34,16 @@ export class SyncStateRepo {
     this.set(key, value.toString())
   }
 
+  /** Every key that starts with `prefix` (e.g. `volume:`), ordered. */
+  keys(prefix: string): string[] {
+    return this.ctx
+      .all('SELECT key FROM sync_state WHERE substr(key, 1, ?) = ? ORDER BY key', [
+        prefix.length,
+        prefix,
+      ])
+      .map((row) => colText(row, 'key'))
+  }
+
   /** Every key/value pair, ordered by key. */
   entries(): Array<[key: string, value: string]> {
     return this.ctx

@@ -26,6 +26,7 @@ import {
   positionsStep,
   unindexedMandatedPools,
 } from '../pipeline/positions.js'
+import { pruneDue, pruneStep } from '../pipeline/prune.js'
 import { sleep } from '../pipeline/run.js'
 import { scoreStep } from '../pipeline/score.js'
 import { seedStep } from '../pipeline/seed.js'
@@ -77,6 +78,7 @@ export function pipelineSteps(ctx: PipelineContext, clockMs: () => number): Sche
     needsSeed: () =>
       ctx.config.dexes.some((dex) => ctx.db.syncState.get(syncKeys.seed(dex)) === undefined),
     needsPositions: () => unindexedMandatedPools(ctx.db).length > 0,
+    needsPrune: () => pruneDue(ctx.db, ctx.now()),
     seed: async (log) => ({ fields: resultFields(await seedStep(withLog(log))) }),
     snapshot: async (log) => ({ fields: resultFields(await snapshotStep(withLog(log))) }),
     volume: async (log) => {
@@ -99,6 +101,7 @@ export function pipelineSteps(ctx: PipelineContext, clockMs: () => number): Sche
       const result = await discoverStep(withLog(log), { budgetMs, clockMs })
       return { fields: { found: result.found }, backlog: !result.complete }
     },
+    prune: async (log) => ({ fields: resultFields(await pruneStep(withLog(log))) }),
   }
 }
 

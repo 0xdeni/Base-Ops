@@ -5,7 +5,10 @@ import type { GapsResponse } from '../dto.js'
 import { gapsQuerySchema, parseQuery } from '../query.js'
 import { toGapItem } from '../summary.js'
 
-/** `GET /api/gaps`: pools with real volume on thin depth, best gap score first. */
+/**
+ * `GET /api/gaps`: pools with real volume on thin depth, best gap score first, with the whole feed's
+ * `total` and `meaningful` counts (docs/METRICS.md, "Gap score and the gaps feed").
+ */
 export function gapsRoutes(ctx: ApiContext): Hono {
   const app = new Hono()
   app.get('/', (c) => {
@@ -14,7 +17,8 @@ export function gapsRoutes(ctx: ApiContext): Hono {
     const q = parsed.data
     const minVolumeUsd = q.minVolume ?? DEFAULT_GAP_MIN_VOLUME_USD
     const rows = ctx.db.scores.gaps({ limit: q.limit, offset: q.offset, minVolumeUsd })
-    const body: GapsResponse = { items: rows.map(toGapItem), minVolumeUsd }
+    const { total, meaningful } = ctx.db.scores.gapCounts(minVolumeUsd)
+    const body: GapsResponse = { items: rows.map(toGapItem), total, meaningful, minVolumeUsd }
     return c.json(body)
   })
   return app

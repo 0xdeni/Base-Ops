@@ -11,6 +11,7 @@ import {
   healthLabel,
   homeAnswer,
   homeLead,
+  homeSay,
   mandatesTakeaway,
   noMandates,
   volumeLabel,
@@ -18,13 +19,18 @@ import {
 import { gradeCounts, NEST_PX, nestSides } from './HomeFacts.js'
 
 describe('Home copy', () => {
-  it('states the answer as one sentence', () => {
-    expect(homeAnswer(49_900_000)).toBe(`$49.9M sits within 2${NB}% of the price on Base.`)
+  it('states the answer as one sentence that counts the pools it sums', () => {
+    // 492 scored pools, 165 of them stale quotes: the figure sums the other 327.
+    expect(homeAnswer(49_800_000, 327)).toBe(
+      `$49.8M sits within 2${NB}% of the price across 327 pools on Base.`,
+    )
+    expect(homeSay(1)).toBe(`sits within 2${NB}% of the price across 1 pool on Base.`)
+    expect(homeSay(1_284)).toBe(`sits within 2${NB}% of the price across 1,284 pools on Base.`)
   })
 
   it('keeps numbers out of the lead and says which pools are graded', () => {
     expect(homeLead(492, 50)).toBe(
-      'Depthwatch measures what it costs to move each Uniswap and Aerodrome pool on Base, and grades the ones deep enough to rate.',
+      'Depthwatch measures what it costs to move each Uniswap and Aerodrome pool it scores on Base, and grades the ones deep enough to rate.',
     )
     expect(homeLead(5, 5)).toMatch(/, and grades each one A to F\.$/)
     expect(homeLead(492, 0)).toMatch(/, but none is deep enough to grade yet\.$/)

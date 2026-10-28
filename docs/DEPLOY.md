@@ -21,9 +21,11 @@ pnpm depthwatch start       # website + API + the pipeline, until SIGTERM
   run as another user, a mount that refused the chown), so the host's restart policy or
   `docker ps` shows the problem instead of a healthy site whose every pass fails.
 - The pipeline runs a pass every 30 minutes: snapshot and score every pass, volume every hour,
-  LP positions every 6 hours, factory-log discovery for up to 15 minutes a pass. On an empty
-  database the first pass seeds the pools of the reference tokens first, so the site shows data
-  within minutes; full discovery from the factories' deployment blocks then completes over the
+  LP positions every 6 hours, factory-log discovery for up to 15 minutes a pass, and once a day
+  the retention prune ([Disk](#disk)). On an empty
+  database the first pass seeds the pools of the reference tokens (and of any
+  `DEPTHWATCH_SEED_TOKENS`) first, so the site shows data within minutes; a DEX whose factory
+  reads fail is seeded again at the next pass, the others' pools already showing; full discovery from the factories' deployment blocks then completes over the
   following passes, in about half a day. A mandate registered on a pool whose LP positions are
   not indexed yet makes positions run in the next pass, whatever the cadence; its scorecard gets
   no sample before then (an attribution failure in the logs, never a false breach).
@@ -79,18 +81,22 @@ docker compose -f deploy/compose.yaml up -d --build
   (`stop_grace_period: 10s`, Docker's default) gives `docker stop` 10 seconds before SIGKILL,
   more than the 8 seconds of `DEPTHWATCH_SHUTDOWN_GRACE` the server takes at most to end the step
   in flight, close the database and exit 0.
-- The image's health check asks `GET /api/health` every 30 seconds (after a 60-second start
-  period; three failures in a row mark the container `unhealthy` in `docker ps`, and an
-  orchestrator restarts it). A healthy container proves that the process is up and reads its
-  database, not that the pipeline runs or that the data is fresh: `latestSnapshotAt` in that
-  response and the `done` lines in the logs show that.
+- The image's health check asks `GET /api/health?maxAge=3600` every 30 seconds (after a
+  5-minute start period, which covers the first pass on an empty database; three failures in a
+  row mark the container `unhealthy` in `docker ps`, and an orchestrator restarts it). It fails
+  when the process is down, the database cannot be read, or the newest snapshot is more than an
+  hour old (two default passes), so a stalled pipeline shows up as `unhealthy`; the response's
+  `snapshotAgeSeconds` and the `done` lines in the logs say how far behind it is. An operator who
+  raises `DEPTHWATCH_SNAPSHOT_INTERVAL` above 30 minutes overrides the check (`healthcheck:` in
+  Compose) with a `maxAge` of about twice the interval.
 - The container's `depthwatch` entrypoint takes the other commands too, for the ones that only
   touch the database: `docker compose exec -u node depthwatch depthwatch mm list` (`docker exec
   -u node depthwatch depthwatch mm list` without Compose). `docker exec` defaults to root; `-u
   node` runs the command as the server's own user, so it never needs the root start-up path and
   creates no root-owned file in `/data`. Do not run the live commands (`snapshot`, `volume`,
-  `mm sample`, …) beside `start`: it runs them on its schedule, and a second writer appends
-  duplicate rows.
+  `mm sample`, …) beside `start`: it runs them on its schedule, and every extra run adds snapshots
+  and samples between passes (a row for a block already stored is skipped), each one more sample
+  in streaks, uptime and persistence.
 
 ## A reverse proxy with TLS
 
@@ -99,7 +105,13 @@ load balancer). `DEPTHWATCH_ADMIN_TOKEN` is a bearer token: `POST /api/mm` and `
 /api/mm/:id` send it in the `Authorization` header, which plain HTTP shows to everyone on the
 path. The image's commands above publish the port on `127.0.0.1` for that reason: the proxy on
 the host reaches `http://127.0.0.1:8787`, nothing else does. Set `DEPTHWATCH_PUBLIC_URL` to the
-proxy's address so the links the server prints are the public ones.
+proxy's address so the links the server prints are the public ones. The token must be at least 32
+characters (`openssl rand -hex 32`); `depthwatch` refuses a shorter one as a usage error (exit
+code 2) before it starts. Rate limits belong in the proxy too: the server has none. It logs one
+`request` line per request (method, path without the query string, status, milliseconds) and an
+`admin request refused` warning for every `401` on the write routes, with the reason (`missing
+token` or `wrong token`) and the peer address, which behind the proxy is the proxy's own; the
+proxy's access log has the client.
 
 ## Settings
 
@@ -130,7 +142,7 @@ seconds):
 
 Each has a flag of the same name for `start` (`--snapshot-interval 1h`), except the grace period.
 `DEPTHWATCH_TOP_POOLS` (default 200) is the other lever: snapshot cost grows with the pools
-tracked.
+tracked. `DEPTHWATCH_KEEP_DAYS` (default 30) bounds the disk ([Disk](#disk)).
 
 ## The logs endpoint
 
@@ -173,6 +185,20 @@ cannot serve the chunk size says how to fix it.
 The database is one SQLite file in WAL mode, with `-wal` and `-shm` files beside it while it is
 open. Keep the directory on persistent disk (the `/data` volume of the image). Deleting the
 database starts over from the seed.
+
+### Disk
+
+Snapshots are the bulk of the file: about 1.4 KB per pool per pass, so 200 tracked pools every
+30 minutes add about 13 MB a day (every 5 minutes with `run`, about 80 MB). Once a day, at the
+end of a pass, the server deletes snapshots and hourly volume older than `DEPTHWATCH_KEEP_DAYS`
+(default 30 days; snapshots keep at least 8, the dashboard's 7-day windows plus a day), scorecard
+samples older than 35 days and alerts older than 90 (each mandate's newest delivered alert is
+kept), then checkpoints the WAL; the same runs on
+demand as `depthwatch prune` (`docker compose exec -u node depthwatch depthwatch prune`,
+database only, safe beside `start`). At the defaults the file settles around 400 MB for 200
+pools (`run` at 5 minutes: around 2.5 GB), plus the WAL's size between checkpoints. SQLite reuses
+the freed pages rather than shrinking the file; `VACUUM` (with the server stopped, or `VACUUM
+INTO` a copy as in [Backups](#backups)) compacts it when that matters.
 
 ### Backups
 

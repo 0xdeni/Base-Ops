@@ -18,6 +18,7 @@ const stat = (dex: Dex, depth2Usd: number): DexStatsDto => ({
   scored: 1,
   rated: 1,
   depth2Usd,
+  depthKnownPools: 1,
   volume24hUsd: null,
   medianHealth: null,
 })

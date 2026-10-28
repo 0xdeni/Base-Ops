@@ -5,7 +5,10 @@
  * together with the rebuilt `prices` table.
  *
  * Uniswap v4 pools hold no reserves of their own (singleton PoolManager), so their TVL is unknown
- * (null) and they are ranked by the USD value of their ±2 % depth instead.
+ * (null) and they are ranked by the USD value of their ±2 % depth instead. A Uniswap v4 pool with a
+ * hook is not modelled (docs/METRICS.md, `hooked`): it is not ranked (tracked only when requested
+ * or mandated), its snapshot holds its price but no depth, spread or concentration, and it is no
+ * price edge.
  *
  * Market-maker scorecards (docs/design/scorecards.md §5): pools with an active mandate are
  * always tracked, each gets one `MmSample` per active mandate right after its snapshot (same
@@ -25,6 +28,7 @@ import {
   computeDepth,
   computeEffectiveSpread,
   depthToUsd,
+  isHookedPool,
   type Mandate,
   type MmSample,
   midPrice,
@@ -32,12 +36,14 @@ import {
   type PoolSnapshot,
   type PoolState,
   type Position,
+  priceDeviationBps,
   tvlUsd,
 } from '@depthwatch/core'
 import { errorMessage, type Logger } from '../log.js'
 import { type AlertsResult, deliverAlerts } from './alerts.js'
 import { type PipelineContext, settleConcurrent, syncKeys, throwIfStopped } from './context.js'
 import { activeMandatesByPool, sampleMandates, storedPositions } from './mm.js'
+import { storedCustodians } from './positions.js'
 import {
   computePrices,
   depthUsdFor,
@@ -62,9 +68,13 @@ export interface SnapshotResult {
   /** Pools in the database (all got an overview). */
   pools: number
   tracked: number
+  /** Snapshots stored: a pool already snapshotted at the block keeps that row. */
   snapshots: number
   prices: number
-  /** Market-maker samples stored (one per active mandate of a snapshotted pool). */
+  /**
+   * Market-maker samples stored (one per active mandate of a snapshotted pool, unless the mandate
+   * was already sampled at the block).
+   */
   samples: number
   /** Mandates whose attribution failed (logged; the snapshot itself is unaffected). */
   sampleFailures: number
@@ -77,7 +87,10 @@ export interface RankedPool {
   view: PoolOverview
   pricing: PoolPricing
   tvlUsd: number | null
-  /** TVL when known, else the USD value of the ±2 % depth (Uniswap v4). */
+  /**
+   * TVL when known, else the USD value of the ±2 % depth (Uniswap v4). Null for a hooked Uniswap
+   * v4 pool: its depth is not modelled, so it is never ranked into the tracked set.
+   */
   rankUsd: number | null
 }
 
@@ -98,12 +111,13 @@ export function poolTvlUsd(view: PoolOverview, prices: PriceMap): number | null 
   )
 }
 
-/** Pools ordered by rank (desc), unranked (unpriced) pools last, ties by id. */
+/** Pools ordered by rank (desc), unranked (unpriced or hooked) pools last, ties by id. */
 export function rankPools(views: readonly PoolOverview[], prices: PriceMap): RankedPool[] {
   const ranked = views.map((view): RankedPool => {
     const pricing = pricingFor(view)
     const tvl = poolTvlUsd(view, prices)
-    const rankUsd = tvl ?? depthUsdFor(pricing, prices)
+    // A hooked pool's depth would be the swap walk's guess (docs/METRICS.md, `hooked`): no rank.
+    const rankUsd = isHookedPool(view.pool) ? null : (tvl ?? depthUsdFor(pricing, prices))
     return { view, pricing, tvlUsd: tvl, rankUsd }
   })
   return ranked.sort((a, b) => {
@@ -114,7 +128,10 @@ export function rankPools(views: readonly PoolOverview[], prices: PriceMap): Ran
   })
 }
 
-/** Top `topPools` ranked ids (with a positive rank) plus the explicitly requested ones. */
+/**
+ * Top `topPools` ranked ids (with a positive rank) plus the explicitly requested ones (`--pool`
+ * and mandated pools), which are tracked whatever their rank, a hooked pool included.
+ */
 export function selectTracked(
   ranked: readonly RankedPool[],
   topPools: number,
@@ -135,6 +152,10 @@ export function selectTracked(
   return [...selected].sort()
 }
 
+/**
+ * One pool's snapshot. `custodians` (a Slipstream gauge, as `positions` recorded it) hold positions
+ * for depositors: their weight counts as uncovered in the owner concentration.
+ */
 export function buildSnapshot(
   pool: PoolMeta,
   view: PoolOverview,
@@ -142,14 +163,14 @@ export function buildSnapshot(
   prices: PriceMap,
   positions: Position[] | null,
   bandPct: number,
+  custodians: readonly string[] = [],
 ): PoolSnapshot {
   const { token0, token1 } = pool
   const price = midPrice(state, token0.decimals, token1.decimals)
   if (!Number.isFinite(price) || price <= 0) throw new Error('pool has no usable mid price')
   const token0Usd = usdOf(prices, token0.address)
   const token1Usd = usdOf(prices, token1.address)
-  const depth = computeDepth(state, token0.decimals, token1.decimals)
-  return {
+  const base = {
     poolId: pool.id,
     blockNumber: state.blockNumber,
     timestamp: state.timestamp,
@@ -158,12 +179,20 @@ export function buildSnapshot(
     token1Usd,
     tvlUsd: poolTvlUsd(view, prices),
     activeLiquidity: state.kind === 'concentrated' ? state.liquidity : 0n,
+    priceDeviationBps: priceDeviationBps(price, token0Usd, token1Usd),
+  }
+  // The swap walk does not run a hook's code: no number is guessed for a hooked pool.
+  if (isHookedPool(pool))
+    return { ...base, depth: [], depthUsd: [], spreads: [], concentration: null }
+  const depth = computeDepth(state, token0.decimals, token1.decimals)
+  return {
+    ...base,
     depth,
     depthUsd: depthToUsd(depth, token0, token1, token0Usd, token1Usd),
     spreads: computeEffectiveSpread(state, token0, token1, token0Usd, token1Usd),
     concentration:
       state.kind === 'concentrated'
-        ? computeConcentration(state, positions, bandPct)
+        ? computeConcentration(state, positions, bandPct, custodians)
         : computeConcentrationForReserves(state, bandPct),
   }
 }
@@ -274,8 +303,9 @@ export async function snapshotStep(
     const view = viewById.get(pool.id)
     if (view === undefined) continue
     const positions = storedPositions(db, pool)
+    const custodians = storedCustodians(db, pool.id)
     try {
-      snapshots.push(buildSnapshot(pool, view, state, prices, positions, bandPct))
+      snapshots.push(buildSnapshot(pool, view, state, prices, positions, bandPct, custodians))
     } catch (error) {
       const message = errorMessage(error)
       result.failed.push({ item: pool.id, error: message })
@@ -303,17 +333,15 @@ export async function snapshotStep(
   throwIfStopped(ctx)
   const entries = priceEntries(prices)
   db.transaction(() => {
-    db.snapshots.insertMany(snapshots)
-    db.mmSamples.insertMany(samples)
+    result.snapshots = db.snapshots.insertMany(snapshots)
+    result.samples = db.mmSamples.insertMany(samples)
     db.prices.replaceAll(entries, latest.timestamp)
     db.syncState.setBigInt(syncKeys.snapshot(), latest.number)
   })
-  result.snapshots = snapshots.length
-  result.samples = samples.length
   result.prices = entries.length
   log.info('stored snapshots', {
-    snapshots: snapshots.length,
-    samples: samples.length,
+    snapshots: result.snapshots,
+    samples: result.samples,
     sampleFailures: result.sampleFailures,
     prices: entries.length,
     failed: result.failed.length,

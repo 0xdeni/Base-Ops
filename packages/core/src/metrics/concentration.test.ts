@@ -114,7 +114,7 @@ describe('range HHI', () => {
     const m = computeConcentration(state, [])
     expect(m.rangeHhi).toBe(1)
     expect(m.activeRangeShare).toBe(0)
-    expect(m.owners).toEqual({ count: 0, top1Share: 0, top3Share: 0, hhi: 0 })
+    expect(m.owners).toEqual({ count: 0, top1Share: 0, top3Share: 0, hhi: 0, coverage: 0 })
   })
 })
 
@@ -127,7 +127,7 @@ describe('owner concentration', () => {
       positions: [{ tickLower: -600, tickUpper: 600, liquidity: L }],
     })
     const m = computeConcentration(state, [position(1, -600, 600)])
-    expect(m.owners).toEqual({ count: 1, top1Share: 1, top3Share: 1, hhi: 1 })
+    expect(m.owners).toEqual({ count: 1, top1Share: 1, top3Share: 1, hhi: 1, coverage: 1 })
   })
 
   it('n equal owners → shares 1/n', () => {
@@ -229,6 +229,57 @@ describe('owner concentration', () => {
     expect(m.owners?.top1Share).toBeCloseTo(positionsShareOfPool(state, [wide], 5) ?? -1, 12)
     // With the raw (unclipped) band the wide position would be over-weighted.
     expect(positionsBandWeight(positions, band)).toBeGreaterThan(total)
+    expect(m.owners?.coverage).toBe(1)
+  })
+})
+
+describe('owner coverage and custodians', () => {
+  const base = { tick: 0, feePips: 3000, tickSpacing: 60 }
+  // Four equal positions make the pool; owner 4 is the pool's gauge (staked NFTs).
+  const positions = [1, 2, 3, 4].map((i) => position(i, -600, 600))
+  const state = buildConcentratedState({
+    ...base,
+    positions: positions.map(({ tickLower, tickUpper, liquidity }) => ({
+      tickLower,
+      tickUpper,
+      liquidity,
+    })),
+  })
+
+  it('is the indexed owners’ share of the pool’s in-band weight', () => {
+    expect(computeConcentration(state, positions).owners?.coverage).toBe(1)
+    // 40 % indexed: two of four positions, one of them at 60 % of the size.
+    const partial = [position(1, -600, 600), position(2, -600, 600, (L * 6n) / 10n)]
+    const owners = computeConcentration(state, partial).owners
+    expect(owners?.coverage).toBe(0.4)
+    // The shares stay relative to the indexed owners.
+    expect(owners?.top1Share).toBe(0.625)
+    // Positions indexed but none in the band: nothing covered.
+    expect(computeConcentration(state, [position(5, 3000, 4000)]).owners?.coverage).toBe(0)
+  })
+
+  it('clamps to 1 when the positions hold more than the state (read at another block)', () => {
+    const more = [...positions, position(5, -600, 600)]
+    const owners = computeConcentration(state, more).owners
+    expect(owners?.coverage).toBe(1)
+    expect(owners?.count).toBe(5)
+  })
+
+  it('leaves a custodian out of the owners: its weight is uncovered', () => {
+    const gauge = owner(4).toUpperCase().replace('0X', '0x')
+    const owners = computeConcentration(state, positions, 5, [gauge]).owners
+    expect(owners?.count).toBe(3)
+    expect(owners?.top1Share).toBeCloseTo(1 / 3, 12)
+    expect(owners?.coverage).toBe(0.75)
+    // A pool whose only positions are staked has no owners at all.
+    const staked = [position(4, -600, 600)]
+    expect(computeConcentration(state, staked, 5, [owner(4)]).owners).toEqual({
+      count: 0,
+      top1Share: 0,
+      top3Share: 0,
+      hhi: 0,
+      coverage: 0,
+    })
   })
 })
 

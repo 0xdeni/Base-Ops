@@ -10,6 +10,7 @@ function sumTotals(byDex: DexStatsDto[], medianHealth: number | null): StatsResp
     scored: 0,
     rated: 0,
     depth2Usd: 0,
+    depthKnownPools: 0,
     volume24hUsd: null as number | null,
     medianHealth,
   }
@@ -19,6 +20,7 @@ function sumTotals(byDex: DexStatsDto[], medianHealth: number | null): StatsResp
     totals.scored += row.scored
     totals.rated += row.rated
     totals.depth2Usd += row.depth2Usd
+    totals.depthKnownPools += row.depthKnownPools
     // Unknown stays unknown: only DEXes with a known volume contribute to the total.
     if (row.volume24hUsd !== null)
       totals.volume24hUsd = (totals.volume24hUsd ?? 0) + row.volume24hUsd
