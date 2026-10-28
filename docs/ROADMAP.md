@@ -6,9 +6,10 @@ start of development. Acceptance criteria are written so that an outsider can ch
 
 ## Layer 1: Observatory MVP (weeks 1–4)
 
-Index every Uniswap v3, Uniswap v4, Aerodrome v2 and Aerodrome Slipstream pool on Base; publish
-depth at ±1/2/5 %, effective spread, LP concentration, liquidity persistence, a Liquidity Health
-Score and a liquidity gaps feed through a public API and dashboard.
+Index Uniswap v3, Uniswap v4, Aerodrome v2 and Aerodrome Slipstream pools on Base (every pool of
+those factories with log discovery, the pools between the reference tokens with `discover --seed`);
+publish depth at ±1/2/5 %, effective spread, LP concentration, liquidity persistence, a Liquidity
+Health Score and a liquidity gaps feed through a public API and dashboard.
 
 ### Week 1: core math and storage
 
@@ -44,9 +45,10 @@ fixture for at least one pool per DEX decodes correctly.
   Light and dark themes.
 
 Acceptance: a fresh clone with an RPC URL reaches a populated dashboard with
-`discover → snapshot → volume → score → serve` in under 30 minutes for the top 200 pools; all API
-routes respond in under 200 ms on a 7-day database; the dashboard has no backend-specific code
-(`VITE_MOCK=1` still works).
+`discover --seed → snapshot → volume → score → serve` in under 30 minutes for the top 200 pools
+(a first factory-log `discover` is about 97,000 `eth_getLogs` at 2,000-block chunks, hours on a
+public endpoint, and is outside that budget); all API routes respond in under 200 ms on a 7-day
+database; the dashboard has no backend-specific code (`VITE_MOCK=1` still works).
 
 ### Week 4: validation at scale and public deployment
 

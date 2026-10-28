@@ -12,7 +12,7 @@ import {
   setClock,
   uniswapV3FactoryAbi,
 } from '@depthwatch/chain'
-import type { Address, Dex } from '@depthwatch/core'
+import { type Address, DEXES, type Dex } from '@depthwatch/core'
 import { type Database, IN_MEMORY, openDatabase } from '@depthwatch/db'
 import { custom, type Hex, hexToBigInt, RpcRequestError, type Transport } from 'viem'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -20,7 +20,12 @@ import { loadConfig } from '../config.js'
 import { createLogger } from '../log.js'
 import { describeError } from '../rpc.js'
 import { createPipelineContext } from './context.js'
-import { discoverStep, formatDuration } from './discover.js'
+import {
+  DISCOVER_WARN_CHUNKS,
+  defaultStartBlock,
+  discoverStep,
+  formatDuration,
+} from './discover.js'
 import { runIteration } from './run.js'
 
 const HEAD = 1_000n
@@ -258,25 +263,39 @@ describe('discoverStep: unusable logs endpoint', () => {
 })
 
 describe('discoverStep: request budget', () => {
-  it('warns before a scan that needs more than DISCOVER_WARN_CHUNKS requests per factory', async () => {
-    const db = freshDb()
-    // 20 M blocks at 100-block chunks: 200 000 requests. The first one fails, so none follow.
-    const { run, lines, seen } = context(db, {
-      head: 20_000_000n,
-      fail: () => rpcError(-32000, 'header not found'),
-    })
+  const fail = () => rpcError(-32000, 'header not found')
+
+  it('warns before a scan that needs more than DISCOVER_WARN_CHUNKS requests per DEX', async () => {
+    expect(DISCOVER_WARN_CHUNKS).toBe(5_000n)
+    // 500 100 blocks at 100-block chunks: 5 001 requests. The first one fails, so none follow.
+    const { run, lines, seen } = context(freshDb(), { head: 500_100n, fail })
     await expect(run()).rejects.toThrow(/header not found/)
     expect(seen).toHaveLength(1)
     expect(
       lines.some((l) =>
-        /WARN {2}this scan needs one eth_getLogs per factory per chunk dex=uniswap-v3 chunks=200000 logChunk=100 fix="DEPTHWATCH_LOGS_RPC_URL.* alternative="discover --seed finds the reference-token pools without eth_getLogs"$/.test(
+        /WARN {2}this scan needs one eth_getLogs per factory per chunk dex=uniswap-v3 chunks=5001 logChunk=100 fix="DEPTHWATCH_LOGS_RPC_URL.* alternative="discover --seed finds the reference-token pools without eth_getLogs"$/.test(
           l,
         ),
       ),
     ).toBe(true)
+    // 5 000 requests exactly: no warning; nor for a short scan.
+    const at = context(freshDb(), { head: 500_000n, fail })
+    await expect(at.run()).rejects.toThrow(/header not found/)
+    expect(at.lines.some((l) => l.includes('this scan needs'))).toBe(false)
     const normal = context(freshDb())
     await normal.run()
     expect(normal.lines.some((l) => l.includes('WARN'))).toBe(false)
+  })
+
+  it('announces a first scan of any DEX from its deployment at the default 2 000-block chunks', () => {
+    const chunk = BigInt(loadConfig({}).logChunkSize)
+    expect(chunk).toBe(2_000n)
+    // A head on 2026-10-25; every DEX's first scan is far past the threshold.
+    const head = 53_061_869n
+    for (const dex of DEXES) {
+      const chunks = (head - defaultStartBlock(BASE_ADDRESSES, dex) + chunk) / chunk
+      expect(chunks, dex).toBeGreaterThan(DISCOVER_WARN_CHUNKS)
+    }
   })
 })
 

@@ -268,14 +268,16 @@ upserted as it completes, so an interrupted seed resumes with the pools it had n
 rate-limited and transient requests back off like `eth_getLogs` (1 s doubling to 30 s, eight
 retries, `Retry-After` wins), each logged as a warning.
 
-Measured on Base on 2026-10-25 against Alchemy's free tier (head 53,056,975): the 2,782 candidates
-gave 580 pools (Uniswap v3 227, Uniswap v4 165, Aerodrome v2 87, Slipstream 101). Dating them took
-13,401 search requests (10,541 `eth_getCode`, 2,860 v4 multicalls) plus 32 other multicalls, in
-9.5 minutes at the default concurrency; the endpoint answered 1,595 requests with HTTP 429, which
-the retries absorbed. At 26 compute units per `eth_call` or `eth_getCode` that is about 350,000
-units, once. A rerun with every pool stored took 2 seconds. Spot checks of five pools (one per
-contract DEX, two v4) against their creation logs, read in 10-block `eth_getLogs` windows, matched
-the searched blocks exactly.
+Measured on Base on 2026-10-25 against Alchemy's free tier (head 53,061,869; the whole run's
+counts are in the README, [Measured on Base](../README.md#measured-on-base-2026-10-25)): the 2,782
+candidates gave 580 pools (Uniswap v3 227, Uniswap v4 165, Aerodrome v2 87, Slipstream 101).
+Dating them took 13,399 search requests, 15,388 HTTP requests in all (11,858 `eth_getCode` and
+3,529 `eth_call`, retries included), in 616 s at the default concurrency; the endpoint answered
+1,968 requests with HTTP 429, which the retries absorbed. At 26 compute units per answered
+`eth_call` or `eth_getCode` that is about 349,000 units, once. A rerun with every pool stored
+took 2 seconds. Spot checks of an earlier seed (head 53,056,975) against the creation logs of
+five pools (one per contract DEX, two v4), read in 10-block `eth_getLogs` windows, matched the
+searched blocks exactly ([base-contracts.md](research/base-contracts.md) §2.7).
 
 ### Overview: multicall batching
 
@@ -395,11 +397,14 @@ a provider that accepts wider spans.
 - **A 10-block plan.** `snapshot` and `score` need no logs. `volume` for 24 h is 45,300 blocks:
   4,531 `eth_getLogs` per event source with tracked pools plus at most seven headers, about 13,600
   requests with all four DEXes (three sources) tracked (on a plan that meters about 75 compute
-  units per `eth_getLogs`, about 1 M units) on a first pass. Later passes start at the hour of the previous head (about
-  100 requests per source for a pass 5 minutes after the last, about 300 an hour after, about
-  1,200 six hours after), but keeping volume current still reads each block at least once per
-  source: at least about 4,320 requests per source a day, about 1 M units a day with three, more than
-  a 30 M-unit month, and a 5-minute loop pays the reread hour on every pass, about ten times that.
+  units per `eth_getLogs`, about 1 M units) on a first pass. The pass measured on 2026-10-25
+  ([README](../README.md#measured-on-base-2026-10-25)) predates the shared filter: four scans,
+  18,131 answered requests and about 1.36 M units, 4,192 more answered HTTP 429. Later passes
+  start at the hour of the previous head (about 100 requests per source for a pass 5 minutes
+  after the last, about 300 an hour after, about 1,200 six hours after), but keeping volume
+  current still reads each block at least once per source: at least about 4,320 requests per
+  source a day, about 1 M units a day with three, more than a 30 M-unit month, and a 5-minute
+  loop pays the reread hour on every pass, about ten times that.
   So a looping `run` does not fit a free plan of that size: run single passes
   (`run --seed --once`) when fresh numbers are needed.
   A first `discover` from the factories' deployment blocks (around 50 M blocks, about 5 M requests
