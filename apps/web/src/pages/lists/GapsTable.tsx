@@ -8,9 +8,9 @@
 import type { GapItem, SortDir } from '../../api/types.js'
 import { HealthCell } from '../../components/ui/PoolCells.js'
 import { PoolCell, SortHeader } from '../../components/ui/Table.js'
-import { Unknown } from '../../components/ui/Unknown.js'
+import { Unknown, UnknownNote } from '../../components/ui/Unknown.js'
 import { ratio, score, usd } from '../../lib/format.js'
-import { tvlReason, UNKNOWN_REASON } from '../../lib/poolsTable.js'
+import { poolTieBreaks, tvlReason, UNKNOWN_REASON } from '../../lib/poolsTable.js'
 import { useIsPhone } from '../../lib/useMediaQuery.js'
 import { GAPS_SORT_LABEL, type GapsSortKey, sortGaps } from './gapsModel.js'
 
@@ -25,7 +25,15 @@ const PHONE_COLUMNS: readonly GapsSortKey[] = [
   'tvl',
 ]
 
+/** Why the gap score or the TVL of a row is "—" (D6); null when the column shows a value. */
+function unknownOf(g: GapItem, k: GapsSortKey): string | null {
+  if (k === 'gap') return g.gap.gapScore === null ? UNKNOWN_REASON.gap : null
+  if (k === 'tvl') return g.pool.tvlUsd === null ? tvlReason(g.pool.pool.dex) : null
+  return null
+}
+
 function Cell({ g, k }: { g: GapItem; k: GapsSortKey }) {
+  const why = unknownOf(g, k)
   switch (k) {
     case 'volume':
       return <td>{usd(g.gap.volume24hUsd)}</td>
@@ -34,15 +42,7 @@ function Cell({ g, k }: { g: GapItem; k: GapsSortKey }) {
     case 'turnover':
       return <td className="lists-turnover">{ratio(g.gap.turnoverRatio)}</td>
     case 'gap':
-      return (
-        <td>
-          {g.gap.gapScore === null ? (
-            <Unknown reason={UNKNOWN_REASON.gap} />
-          ) : (
-            score(g.gap.gapScore)
-          )}
-        </td>
-      )
+      return <td>{why !== null ? <Unknown reason={why} /> : score(g.gap.gapScore)}</td>
     case 'health':
       return (
         <td>
@@ -50,15 +50,7 @@ function Cell({ g, k }: { g: GapItem; k: GapsSortKey }) {
         </td>
       )
     case 'tvl':
-      return (
-        <td>
-          {g.pool.tvlUsd === null ? (
-            <Unknown reason={tvlReason(g.pool.pool.dex)} />
-          ) : (
-            usd(g.pool.tvlUsd)
-          )}
-        </td>
-      )
+      return <td>{why !== null ? <Unknown reason={why} /> : usd(g.pool.tvlUsd)}</td>
   }
 }
 
@@ -74,6 +66,7 @@ export function GapsTable({
   onSort: (key: GapsSortKey) => void
 }) {
   const rows = sortGaps(items, sort, dir)
+  const ties = poolTieBreaks(rows.map((g) => g.pool.pool))
   const columns = useIsPhone() ? PHONE_COLUMNS : COLUMNS
   return (
     <div className="lists-gtable-wrap">
@@ -89,6 +82,7 @@ export function GapsTable({
                 active={sort === key}
                 dir={dir}
                 onSort={() => onSort(key)}
+                note={<UnknownNote reasons={rows.map((g) => unknownOf(g, key))} />}
               />
             ))}
           </tr>
@@ -97,7 +91,11 @@ export function GapsTable({
           {rows.map((g) => (
             <tr key={g.pool.pool.id}>
               <td>
-                <PoolCell pool={g.pool.pool} linkClass="row-link" />
+                <PoolCell
+                  pool={g.pool.pool}
+                  linkClass="row-link"
+                  tieBreak={ties.get(g.pool.pool.id)}
+                />
               </td>
               {columns.map((k) => (
                 <Cell key={k} g={g} k={k} />

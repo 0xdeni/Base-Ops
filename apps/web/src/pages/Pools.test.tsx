@@ -149,9 +149,13 @@ describe('Pools: the table (TB2–TB4)', () => {
     fireEvent.click(within(pop).getByRole('checkbox', { name: 'TVL' }))
     await waitFor(() => expect(last(h)).toBe('/pools?cols=tvl%2Ctop'))
     await waitFor(() => expect(within(t).getAllByRole('columnheader')).toHaveLength(7))
-    // A pool kind without indexed owners shows "—" with its reason (D6).
-    const dash = within(t).getAllByRole('button', { name: '—' })[0] as HTMLElement
-    fireEvent.focus(dash)
+    // A pool kind without indexed owners shows "—" named by its reason, not a tab stop (D6).
+    const dash = within(t).getAllByRole('img', { name: /^Unknown: Owners are not indexed/ })[0]
+    expect(dash?.closest('button, a')).toBeNull()
+    expect(within(t).queryAllByRole('button', { name: '—' })).toEqual([])
+    // The column says why once, in its header, on focus or tap.
+    const top = within(t).getByRole('columnheader', { name: 'Top LP' })
+    fireEvent.focus(within(top).getByRole('button', { name: 'Why some values are unknown' }))
     expect((await screen.findByRole('tooltip')).textContent).toContain('Owners are not indexed')
   })
 

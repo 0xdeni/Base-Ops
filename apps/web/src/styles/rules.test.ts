@@ -134,7 +134,7 @@ describe('touch targets and layering (A5, §5.5)', () => {
     const chip = block(allCss, '.grade.is-unrated')
     expect(chip).toMatch(/position:\s*relative/)
     expect(chip).toMatch(/z-index:\s*2\b/)
-    expect(block(allCss, '.dash .gloss')).toMatch(/z-index:\s*1\b/)
+    expect(block(allCss, '.dash[title]')).toMatch(/z-index:\s*1\b/)
   })
 
   it('draws the freshness dot as a circle, never a square', () => {

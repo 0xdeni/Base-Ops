@@ -69,7 +69,9 @@ describe('table parts (TB3, TB4)', () => {
         />
       </MemoryRouter>,
     )
-    const link = screen.getByRole('link', { name: 'USDC / AERO' })
+    const link = screen.getByRole('link', {
+      name: 'USDC / AERO, Aerodrome v2, 0.3\u00a0%, stable pair',
+    })
     expect(link.getAttribute('href')).toBe('/pools/aerodrome-v2%3A0xabc')
     expect(link.className).toBe('pp rl-link')
     expect(document.querySelector('.pd')?.textContent).toBe('Aerodrome v2, 0.3\u00a0%, stable pair')

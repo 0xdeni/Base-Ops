@@ -989,10 +989,14 @@ is a row, and rows are split by a 1 px `--line` rule. No block per section and n
   pools updated 25 Oct 2026, 11:30 UTC" right, 12 px `--text-2`.
 - **Header:** 44 px, sticky under the chrome, `--surface`, 2 px `--text-1` rule; cells 13 px, 650,
   `--text-2`, sentence case, right-aligned but Pool; sortable headers are buttons with a 12 px
-  arrow on the sorted one (`aria-sort`).
+  arrow on the sorted one (`aria-sort`). A column that shows "—" adds one glossary term "—" after
+  its label, whose tooltip gives the reasons its rows have (ST5).
 - **Rows:** 64 px, 1 px `--line`, 15 px / 600, tabular, 32 px side padding; one stretched link per
-  row; hover `--surface-2`, 0 ms in, 150 ms out.
-- **Columns:** Pool (the pair at 17 px / 750, then "Uniswap v3, 0.05 %" at 13 px `--text-2`);
+  row, named by the pair and its second line ("WETH / USDC, Uniswap v3, 0.05 %"); hover
+  `--surface-2`, 0 ms in, 150 ms out.
+- **Columns:** Pool (the pair at 17 px / 750, then "Uniswap v3, 0.05 %" at 13 px `--text-2`;
+  pools of one table that would read the same add their tick spacing, ", tick spacing 50", or when
+  that is shared too their short address, ", 0x1234…abcd");
   Health (glyph and score, or Not rated); Depth ±2 % (an 84 × 20 row glyph, then the value in a
   fixed 6.5ch, right-aligned, so every row's spine shares one x);
   Spread at $10K ("Can't absorb $10K" when infeasible; "—" when unknown); 24 h volume; optional TVL,
@@ -1221,18 +1225,26 @@ code" opens two code blocks (`--surface-2`, radius 10, 13 px mono).
   field); off the band `--surface-2`. The title block renders at once; CLS is 0. A skeleton stays at
   least 400 ms.
 - **Refetch:** keep the content, dim it to 0.6 after 150 ms, and show a 2 px indeterminate bar at
-  the section top (white on the band). Never a skeleton once content exists.
+  the section top (white on the band). Never a skeleton once content exists. The freshness poll
+  (once a minute) refetches the page's data this way when it finds a newer snapshot, so an open
+  page never shows a newer "Updated … ago" over older numbers; the mock and the static build
+  never change and skip it.
 - **Empty** (ST2): one sentence and at most one action. The Scorecards list with no mandates: "No
   market-maker mandates are registered in this snapshot." on the title, the band's lead "A
   scorecard checks the depth a market maker promised against what is on chain at every snapshot.
   Mandates are added with `depthwatch mm add` or `POST /api/mm`.", and the example scorecard as one
   destination block over the band.
 - **Error in a section** (ST3) and **Offline** (ST7): as v3; the freshness slot shows the Red
-  triangle and "Offline", never a full-page takeover when data exists.
+  triangle and "Offline", never a full-page takeover when data exists. A page that fails to draw
+  is replaced inside <main> only, by "This page could not be drawn." and "Reload, or go to Pools.";
+  the chrome stays and the next navigation draws again. A failure outside the routes replaces the
+  app with the same sentence and a Reload button.
 - **Not found** (ST4): eyebrow "Not found", a lowercase display title ("pool not found"), one
   sentence, the id in mono, then "Browse pools" (ghost) and "See liquidity gaps" (strong link).
 - **Partial** (ST5): unknown is "—" with a reason tooltip; infeasible spreads are "Can't absorb
-  $10K"; "Not rated" with its reason; "Liquidity runs out" on the curve.
+  $10K"; "Not rated" with its reason; "Liquidity runs out" on the curve. The "—" is not a tab
+  stop: its reason is its accessible name ("Unknown: …") and its hover tooltip, and a table column
+  gives the reasons once more in its header, where focus or a tap opens them.
 - **Example data** (the illustrative scorecard): the eyebrow says "Example scorecard" once, and one
   sentence under the title says the mandate is illustrative and the depths are the pool's real,
   measured depths at that snapshot.
