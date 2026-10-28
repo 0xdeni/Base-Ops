@@ -163,7 +163,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The feed page; there is no total, page until a page is shorter than limit.",
+            "description": "The feed page, with total and meaningful counted over the whole feed (ignoring limit and offset).",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GapsResponse" } } }
           },
           "400": { "$ref": "#/components/responses/BadRequest" },
@@ -187,7 +187,8 @@
           {
             "name": "sort",
             "in": "query",
-            "schema": { "type": "string", "enum": ["health", "depth", "volume", "gap", "tvl"], "default": "depth" }
+            "description": "As for /api/pools: health total, ±2 % depth, 24 h volume, gap score, TVL, spread10kBps (spread) or ownerTop1Share (top); null values sort last in both directions.",
+            "schema": { "type": "string", "enum": ["health", "depth", "volume", "gap", "tvl", "spread", "top"], "default": "depth" }
           },
           { "$ref": "#/components/parameters/Dir" },
           { "$ref": "#/components/parameters/Limit" },
@@ -357,8 +358,8 @@
       "PoolSort": {
         "name": "sort",
         "in": "query",
-        "description": "health total, ±2 % depth, 24 h volume, gap score or TVL; null values sort last in both directions, and unrated pools come after the rated ones when sorting by health.",
-        "schema": { "type": "string", "enum": ["health", "depth", "volume", "gap", "tvl"], "default": "health" }
+        "description": "health total, ±2 % depth, 24 h volume, gap score, TVL, spread10kBps (spread) or ownerTop1Share (top); null values sort last in both directions, and unrated pools come after the rated ones when sorting by health.",
+        "schema": { "type": "string", "enum": ["health", "depth", "volume", "gap", "tvl", "spread", "top"], "default": "health" }
       },
       "Dir": {
         "name": "dir",
@@ -740,15 +741,17 @@
       },
       "GapsResponse": {
         "type": "object",
-        "required": ["items", "minVolumeUsd"],
+        "required": ["items", "total", "meaningful", "minVolumeUsd"],
         "properties": {
           "items": { "type": "array", "items": { "$ref": "#/components/schemas/GapItem" } },
+          "total": { "type": "integer", "description": "Pools in the feed at this floor, ignoring limit and offset." },
+          "meaningful": { "type": "integer", "description": "Pools in the feed trading 3× their ±2 % depth or more (turnoverRatio ≥ 3), ignoring limit and offset." },
           "minVolumeUsd": { "type": "number", "description": "The volume floor applied." }
         }
       },
       "TokenDetail": {
         "type": "object",
-        "required": ["token", "usd", "via", "priceUpdatedAt", "pools", "total", "poolCount"],
+        "required": ["token", "usd", "via", "priceUpdatedAt", "pools", "total", "poolCount", "depth2UsdTotal", "depthKnownPools"],
         "properties": {
           "token": { "$ref": "#/components/schemas/TokenInfo" },
           "usd": { "$ref": "#/components/schemas/NullableNumber", "description": "Derived USD price; null when unreachable from the stable anchors." },
@@ -756,7 +759,9 @@
           "priceUpdatedAt": { "type": ["integer", "null"] },
           "pools": { "type": "array", "items": { "$ref": "#/components/schemas/PoolSummary" } },
           "total": { "type": "integer", "description": "Scored pools containing the token, ignoring limit and offset." },
-          "poolCount": { "type": "integer", "description": "Every discovered pool containing the token." }
+          "poolCount": { "type": "integer", "description": "Every discovered pool containing the token." },
+          "depth2UsdTotal": { "$ref": "#/components/schemas/NullableNumber", "description": "±2 % depth (depth2Usd) summed over every scored pool containing the token with a known depth, ignoring limit and offset; null when none has one." },
+          "depthKnownPools": { "type": "integer", "description": "Scored pools of the token whose depth2Usd is known: the pools depth2UsdTotal sums." }
         }
       },
       "MandateKpis": {

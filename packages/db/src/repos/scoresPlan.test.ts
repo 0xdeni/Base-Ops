@@ -75,6 +75,15 @@ describe('ScoresRepo query plans', () => {
     for (const { sql, outer } of seen) expect(outer, sql).toMatch(/^(SCAN|SEARCH) s( |$)/)
   })
 
+  it('scans scores first for the spread sort, the gap counts and a token depth', () => {
+    expect(db.scores.topBy('spread', { dex: 'aerodrome-v2' }).total).toBe(1)
+    expect(db.scores.gapCounts(0).total).toBe(0)
+    expect(db.scores.tokenDepth(FIXTURE_WETH.address).depthKnownPools).toBe(2)
+    const seen = plans()
+    expect(seen.length).toBeGreaterThanOrEqual(4)
+    for (const { sql, outer } of seen) expect(outer, sql).toMatch(/^(SCAN|SEARCH) s( |$)/)
+  })
+
   it('counts pools without the token joins unless q is set', () => {
     expect(db.pools.count()).toBe(2_003)
     expect(db.pools.count({ dex: 'uniswap-v3', tracked: true })).toBe(1)

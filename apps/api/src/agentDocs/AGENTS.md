@@ -170,16 +170,16 @@ fields without `dex`, its `medianHealth` taken over all rated pools.
 A ranked page of scored pools. Response: `{ items: PoolSummary[], total }`, where `total` is the
 number of matching pools ignoring `limit` / `offset`.
 
-| Parameter   | Values                                    | Default  | Meaning                                                                                              |
-| ----------- | ----------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
-| `sort`      | `health`, `depth`, `volume`, `gap`, `tvl` | `health` | Health total, ±2 % depth, 24 h volume, gap score or TVL. `null` values sort last in both directions. |
-| `dir`       | `asc`, `desc`                             | `desc`   | Ties are broken by pool id, ascending.                                                               |
-| `dex`       | one of the four `dex` values              | all      | Keep one DEX.                                                                                        |
-| `q`         | text, at most 100 characters              | none     | Case-insensitive substring of either token's symbol or address, the pool address or the v4 pool id.  |
-| `minVolume` | number ≥ 0 (USD)                          | none     | Keep pools whose known 24 h volume is at least this; pools with unknown volume are dropped.          |
-| `rated`     | `true`, `false`                           | both     | `true` keeps only rated pools, `false` only unrated ones.                                            |
-| `limit`     | integer 1–200                             | 50       | Page size.                                                                                           |
-| `offset`    | integer ≥ 0                               | 0        | Rows to skip.                                                                                        |
+| Parameter   | Values                                                     | Default  | Meaning                                                                                                                                |
+| ----------- | ---------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `sort`      | `health`, `depth`, `volume`, `gap`, `tvl`, `spread`, `top` | `health` | Health total, ±2 % depth, 24 h volume, gap score, TVL, `spread10kBps` or `ownerTop1Share`. `null` values sort last in both directions. |
+| `dir`       | `asc`, `desc`                                              | `desc`   | Ties are broken by pool id, ascending.                                                                                                 |
+| `dex`       | one of the four `dex` values                               | all      | Keep one DEX.                                                                                                                          |
+| `q`         | text, at most 100 characters                               | none     | Case-insensitive substring of either token's symbol or address, the pool address or the v4 pool id.                                    |
+| `minVolume` | number ≥ 0 (USD)                                           | none     | Keep pools whose known 24 h volume is at least this; pools with unknown volume are dropped.                                            |
+| `rated`     | `true`, `false`                                            | both     | `true` keeps only rated pools, `false` only unrated ones.                                                                              |
+| `limit`     | integer 1–200                                              | 50       | Page size.                                                                                                                             |
+| `offset`    | integer ≥ 0                                                | 0        | Rows to skip.                                                                                                                          |
 
 `PoolSummary` fields: `pool` (pool metadata: `id`, `dex`, `kind` (`concentrated`,
 `constant-product`, `stable-swap`), `address`, `poolId`, `token0` and `token1` (`address`,
@@ -227,9 +227,11 @@ found` for an unknown id. The response carries `Cache-Control: public, max-age=6
 ### `GET /api/gaps`
 
 The liquidity gaps feed: scored pools with a gap score and 24 h volume ≥ `minVolume`, highest gap
-score first (ties by pool id). Response: `{ items: [{ pool: PoolSummary, gap }], minVolumeUsd }`
-with `gap` = `volume24hUsd`, `depth2Usd`, `turnoverRatio`, `gapScore`, and `minVolumeUsd` the
-floor applied. There is no `total`: page until a page is shorter than `limit`.
+score first (ties by pool id). Response:
+`{ items: [{ pool: PoolSummary, gap }], total, meaningful, minVolumeUsd }` with `gap` =
+`volume24hUsd`, `depth2Usd`, `turnoverRatio`, `gapScore`; `total` the feed's pools and
+`meaningful` those trading 3× their ±2 % depth or more (`turnoverRatio ≥ 3`), both over the whole
+feed ignoring `limit` / `offset`; and `minVolumeUsd` the floor applied.
 
 | Parameter   | Values           | Default |
 | ----------- | ---------------- | ------- |
@@ -242,19 +244,21 @@ floor applied. There is no `total`: page until a page is shorter than `limit`.
 A token, its USD price and the scored pools that contain it. 400 for an address that is not
 `0x` + 40 hex characters, 404 `token not found` for a token the database does not know.
 
-| Parameter | Values                                    | Default |
-| --------- | ----------------------------------------- | ------- |
-| `sort`    | `health`, `depth`, `volume`, `gap`, `tvl` | `depth` |
-| `dir`     | `asc`, `desc`                             | `desc`  |
-| `limit`   | integer 1–200                             | 50      |
-| `offset`  | integer ≥ 0                               | 0       |
+| Parameter | Values                                                     | Default |
+| --------- | ---------------------------------------------------------- | ------- |
+| `sort`    | `health`, `depth`, `volume`, `gap`, `tvl`, `spread`, `top` | `depth` |
+| `dir`     | `asc`, `desc`                                              | `desc`  |
+| `limit`   | integer 1–200                                              | 50      |
+| `offset`  | integer ≥ 0                                                | 0       |
 
 Fields: `token` (`address`, `symbol`, `name`, `decimals`), `usd` (`null` when unpriced), `via`
 (pool ids the price was derived through, plus `wrap:weth` for the native ETH ↔ WETH step and
 any other non-pool source; empty for an anchor stable or an unpriced token),
 `priceUpdatedAt`, `pools` (`PoolSummary[]`, sorted as requested), `total` (scored pools with the
 token, ignoring `limit` / `offset`), `poolCount` (every discovered pool with the token, scored or
-not).
+not), `depth2UsdTotal` (the ±2 % depth, `depth2Usd`, summed over every scored pool of the token
+with a known depth, whatever the page; `null` when none has one) and `depthKnownPools` (how many
+pools that sum covers). A pool counts in full for each of its two tokens.
 
 ### `GET /api/mm`
 

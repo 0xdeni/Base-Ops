@@ -131,11 +131,14 @@ const skeletonTake = (waiting: boolean) => (
 export function GapsPreview({
   gaps,
   meaningful,
+  count,
   waiting,
 }: {
   gaps: UseQueryResult<GapsResponse>
-  /** The gap feed's pools trading 3× their depth or more, highest first. */
+  /** The first page's pools trading 3× their depth or more, highest first. */
   meaningful: readonly GapItem[] | undefined
+  /** The API's count of those pools over the whole feed. */
+  count: number | undefined
   /** Loading for under 300 ms: the skeleton holds its space unseen (M10). */
   waiting: boolean
 }) {
@@ -154,7 +157,7 @@ export function GapsPreview({
         {foot(false)}
       </Preview>
     )
-  if (!meaningful)
+  if (!meaningful || count === undefined)
     return (
       <Preview id="home-gaps" title={GAPS_TITLE} span={7} takeaway={skeletonTake(waiting)} busy>
         <SkeletonBody waiting={waiting} />
@@ -162,7 +165,7 @@ export function GapsPreview({
     )
   const shown = meaningful.slice(0, PREVIEW_ROWS)
   return (
-    <Preview id="home-gaps" title={GAPS_TITLE} span={7} takeaway={gapsTakeaway(meaningful.length)}>
+    <Preview id="home-gaps" title={GAPS_TITLE} span={7} takeaway={gapsTakeaway(count)}>
       {shown.length > 0 ? (
         <ul className="rowlist is-ruled">
           {shown.map((g) => (

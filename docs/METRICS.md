@@ -108,6 +108,13 @@ amounts with `reached = false`.
 A second example used throughout the health score below: a USDC/WETH pool whose ±2 % depth is
 $1.2M on each side, so `depth2Usd = $2.4M`.
 
+**A token's depth.** `depth2UsdTotal` (`GET /api/tokens/:address`) is the sum of `depth2Usd` (the
+score's, else the newest snapshot's, as the pool lists show it) over every scored pool containing
+the token whose depth is known, whatever page of the pools is listed; `depthKnownPools` counts
+those pools. A pool counts in full for each of its two tokens. `null` when no pool of the token
+has a known depth (unknown is not 0). Example: three WETH pools with `depth2Usd` $2.4M, $50,408.82
+and `null` → `depth2UsdTotal = $2,450,408.82`, `depthKnownPools = 2`.
+
 ## Effective spread at N USD
 
 **Question.** What does a round trip of N dollars cost, fees and price impact included?
@@ -453,6 +460,14 @@ Turnover of 1× (a day's volume equals the ±2 % depth) → 0; 10× → 50; 100�
 **Feed.** `GET /api/gaps` lists pools with `volume24hUsd ≥ 10,000` sorted by `gapScore`
 descending. The volume floor keeps dust pools with a single trade out of the feed.
 
+**Meaningful gap.** A feed pool whose `turnover ≥ 3` (`MEANINGFUL_GAP_TURNOVER`, a gap score of
+23.86) trades at least three times its ±2 % depth a day: a meaningful gap, the threshold every
+screen counts and highlights. Each feed response carries two counts over the whole feed at its
+volume floor, ignoring `limit` / `offset`: `total`, the feed's pools, and `meaningful`, those with
+`turnover ≥ 3`. Since the gap score rises with turnover, the meaningful pools are the head of the
+feed. Example: a feed of 250 pools of which 120 trade 3× or more answers `total = 250`,
+`meaningful = 120` on every page, including a page of 100.
+
 **Worked example.** `volume24hUsd = $500,000`, `depth2Usd = $20,000` → `turnover = 25` →
 `log10 25 / 2 = 0.699` → **69.90**. `$20,000 / $20,000` → 0. `$2,000,000 / $20,000` → 100.
 `$5,000 / $20,000` → 0. Depth 0 → `null`.
@@ -540,7 +555,7 @@ reproduced by anyone with an RPC endpoint and this page.
 | Concentration            | `packages/core/src/metrics/concentration.ts`        | `computeConcentration`, `computeConcentrationForReserves`, `bandSqrtBounds`                       |
 | Persistence              | `packages/core/src/metrics/persistence.ts`          | `computePersistence`, `PERSISTENCE_MIN_COVERAGE`                                                  |
 | Health score, rating     | `packages/core/src/metrics/health.ts`               | `computeHealthScore`, `healthGrade`, `rateDepth`, `HEALTH_RATING_MIN_SIDE_USD`, `HEALTH_MAX`      |
-| Gap score                | `packages/core/src/metrics/gap.ts`                  | `computeGap`, `GAP_FEED_MIN_VOLUME_USD`                                                           |
+| Gap score                | `packages/core/src/metrics/gap.ts`                  | `computeGap`, `GAP_FEED_MIN_VOLUME_USD`, `MEANINGFUL_GAP_TURNOVER`, `isMeaningfulGap`             |
 | TVL                      | `packages/core/src/metrics/tvl.ts`                  | `tvlUsd`                                                                                          |
 | 24 h volume              | `packages/core/src/metrics/volume.ts`               | `volumeWindow`, `scoringVolumeWindow`, `computeVolume24hUsd`                                      |
 | USD prices               | `packages/core/src/pricing.ts`                      | `derivePrices`; edge weights in `apps/cli/src/pipeline/prices.ts` (`edgeWeight`, `usdEdgeWeight`) |

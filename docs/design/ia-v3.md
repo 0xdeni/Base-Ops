@@ -500,7 +500,7 @@ All are sortable, with a sticky header.
 
 **Removed:** the 3-line formula lead, and health chips as a default column (health is in the table view).
 
-**Data:** `useGaps({limit: 100})`.
+**Data:** every page of `useGaps({limit: 200})` (`lib/useGapFeed.ts`); the answer counts the API's `meaningful`, over the whole feed.
 
 ---
 
@@ -637,7 +637,7 @@ All are sortable, with a sticky header.
 
 **Title block and answer:**
 - **H1:** "WETH", with the secondary line "Wrapped Ether".
-- **Answer:** "$16.5M sits within 2 % of the price across WETH's 2 scored pools." (the sum of the pools' `depth2Usd`)
+- **Answer:** "$16.5M sits within 2 % of the price across WETH's 2 scored pools." (the API's `depth2UsdTotal` over `total` scored pools)
 - **Unpriced token:** "WETH has no USD price yet, so depth is shown in pool terms only."
 
 **Facts row (3).** There are at most 6 data numbers in the first viewport:
@@ -805,7 +805,7 @@ Nothing is removed from the product. Only these change:
    - The butterflies, the total row and the Pools glyph column read both sides from `usePools` / `useToken`; no per-row `usePool` request is made.
 2. **Breach episodes.** Derive them on the client from `useScorecardSamples` in a new `lib/scorecard.ts` helper, `breachEpisodes(points)`. It returns start, end, sample count, kinds and the worst depth per side. No API change.
 3. **Scorecards list strips.** Each strip needs that mandate's 7 d samples. Fetch them only on desktop and only when there are 10 mandates or fewer. Otherwise show the bullet alone. The static bundle already holds the samples.
-4. **Token total depth** is the client-side sum of `pools[].depth2Usd`. Note in the tooltip that a pool counted for two tokens contributes to both token pages.
+4. **Token total depth** is the API's `depth2UsdTotal`: the sum of `depth2Usd` over every scored pool of the token, whatever page of them is loaded (docs/METRICS.md, "A token's depth"). Note in the tooltip that a pool counted for two tokens contributes to both token pages.
 5. **Mandates on a pool:** `useScorecards({pool: id})`, already supported by the HTTP, mock and static clients.
 6. **History series** for health, TVL and price already exist in `HistoryPoint`. No API change.
 7. **Tests.** Page tests (`Home.test.tsx`, `Pools.test.tsx`, `PoolDetail.test.tsx`, `Scorecard.test.tsx`, `Scorecards.test.tsx`, `Token.test.tsx`, `Methodology.test.tsx`) assert this contract: answer sentences, focal element presence, disclosure contents and URL parameters. The greps from `principles.md` §17 are test cases (no `text-transform: uppercase`, no `·` in `.tsx` UI strings, no `→` in link text). v4 amended: `text-transform: uppercase` appears only in the `.eyebrow` rule (`T1`, `T11`).

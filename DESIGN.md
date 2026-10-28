@@ -226,11 +226,15 @@ Protocol specifics (addresses live in `src/addresses.ts`, overridable via `creat
 - `sync_state(key PK, value)` (e.g. `discover:uniswap-v3:lastBlock`; `seed:<dex>:lastBlock` records the block of the last `discover --seed`; `volume:<pool>:lastBlock` / `volume:<pool>:fromTs` the volume coverage of a pool; `volume:lastBlock` / `volume:lastTs` the head of the last volume pass; `positions:<pool>:lastBlock` the positions cursor, `positions:<pool>:catchUpBlock` that of a staged first scan; `start:<step>:lastRunAt` the unix ms of `start`'s last volume / positions run)
 
 bigint columns are TEXT (decimal strings). JSON columns hold the core types with bigint → string.
-Reads apply core's spread cap (`feasibleSpreadBps`): a snapshot stored before it comes back with the points whose legs are above `SPREAD_MAX_LEG_IMPACT_BPS` infeasible, and `SnapshotSummary.spread10kBps` is derived from the stored $10k point, never read from the denormalised `spread10k_bps` column.
+Reads apply core's spread cap (`feasibleSpreadBps`): a snapshot stored before it comes back with the points whose legs are above `SPREAD_MAX_LEG_IMPACT_BPS` infeasible, and `SnapshotSummary.spread10kBps` is derived from the stored $10k point, never read from the denormalised `spread10k_bps` column; the score feeds
+derive it in SQL through `dw_spread10k_bps(point, price)`, a function `openDatabase` registers on the connection that runs core's rule, so
+`scores.topBy('spread')` orders by exactly the value it lists.
 Repositories expose typed methods (`pools.upsertMany`, `snapshots.insert`, `snapshots.latestForPool`, `snapshots.seriesForPool(poolId, fromTs)`,
 `snapshots.seriesSummaryForPool(poolId, fromTs, toTs)` (the `SnapshotHealthSummary` per row: the summary columns plus `rangeHhi`, extracted by
 SQLite, no snapshot JSON parsed; what the history route scores), `snapshots.latestTimestampForPool`, `mmSamples.latestIdFor(mandateId)`,
-`volume.upsertBuckets`, `volume.sumUsd(poolId, fromTs)`, `scores.upsert`, `scores.topBy('health'|'gap'|'depth'|'volume', limit, offset, filters)`…).
+`volume.upsertBuckets`, `volume.sumUsd(poolId, fromTs)`, `scores.upsert`, `scores.topBy('health'|'gap'|'depth'|'volume'|'tvl'|'spread'|'top', limit, offset, filters)`, `scores.gapCounts(minVolumeUsd)`
+(`{ total, meaningful }` over the whole gaps feed), `scores.tokenDepth(token)` (`{ depth2UsdTotal, depthKnownPools }` over every scored pool of
+the token)…).
 Pool filters (`PoolFilter`, shared by `pools.list/count` and `scores.topBy`): `dex`, `tracked`, `q` (case-insensitive substring of a token
 symbol, token address, pool address or v4 pool id) and `token` (exactly token0 or token1, never a symbol; what `/api/tokens/:address` uses).
 Query plans: the score feeds join `scores s CROSS JOIN pools p` so the scored set drives every count and filtered page whatever the number of
@@ -249,12 +253,18 @@ unless the route sets its own (the badge: `public, max-age=300`; a pool's histor
   when the database cannot be read (zero counts) or, with `maxAge` (a positive integer of seconds), when `snapshotAgeSeconds`
   is `null` or above it (`error: stale: …`, counts filled); `400` for an invalid `maxAge`
 - `GET /api/stats` → totals by dex: pools, tracked, scored, rated, depth2Usd sum, volume24hUsd sum, median health over rated pools
-- `GET /api/pools?sort=health|depth|volume|gap|tvl&dir=asc|desc&dex=&q=&minVolume=&rated=true|false&limit=&offset=` → `{ items: PoolSummary[], total }` (sorting by health puts unrated pools last in both directions)
+- `GET /api/pools?sort=health|depth|volume|gap|tvl|spread|top&dir=asc|desc&dex=&q=&minVolume=&rated=true|false&limit=&offset=` → `{ items: PoolSummary[], total }`
+  (sorting by health puts unrated pools last in both directions; `spread` orders by `spread10kBps` and `top` by `ownerTop1Share`,
+  both of the newest snapshot as listed, so every key orders the whole matching set, nulls last)
 - `GET /api/pools/:id` → `{ pool, latest: PoolSnapshot, score: HealthScore, gap, persistence24h, persistence7d, volume24hUsd }`
 - `GET /api/pools/:id/history?window=24h|7d` → `{ points: Array<{ timestamp, depth2Usd, spread10kBps, health, price }> }`, built from
   `snapshots.seriesSummaryForPool` (health recomputed per point by core); `Cache-Control: public, max-age=60`
-- `GET /api/gaps?limit=` → ranked gaps feed (volume ≥ $10k) with pool summary + gap metrics
-- `GET /api/tokens/:address` → token info, USD price, pools containing it with latest depth
+- `GET /api/gaps?limit=&offset=&minVolume=` → `{ items: GapItem[], total, meaningful, minVolumeUsd }`: the ranked gaps feed (volume ≥ $10k)
+  with pool summary + gap metrics; `total` (feed pools) and `meaningful` (feed pools with turnover ≥ 3, docs/METRICS.md) count
+  the whole feed, ignoring `limit` / `offset`
+- `GET /api/tokens/:address` → token info, USD price, a page of the scored pools containing it (sorted like `/api/pools`, default
+  depth) with `total`, `poolCount`, and `depth2UsdTotal` / `depthKnownPools` (the ±2 % depth summed over every scored pool of the
+  token with a known depth, ignoring paging; docs/METRICS.md)
 - `GET /AGENTS.md`, `GET /llms.txt`, `GET /openapi.json` → the documents for AI agents (usage guide, llms.txt index,
   hand-written OpenAPI 3.1 of the GET routes), written once in `apps/api/src/agentDocs/` and registered before the static
   fallback; the web build copies the files into `dist` unchanged and into `dist-static` with a generated static-site

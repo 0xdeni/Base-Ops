@@ -87,6 +87,8 @@ describe('static client: pools', () => {
       volume: (p: PoolSummary) => p.volume24hUsd,
       gap: (p: PoolSummary) => p.gapScore,
       tvl: (p: PoolSummary) => p.tvlUsd,
+      spread: (p: PoolSummary) => p.spread10kBps,
+      top: (p: PoolSummary) => p.ownerTop1Share,
     } as const
     for (const [sort, value] of Object.entries(keys)) {
       for (const dir of ['asc', 'desc'] as const) {
@@ -206,6 +208,13 @@ describe('static client: gaps', () => {
     expect(paged.items.map((g) => g.pool.pool.id)).toEqual(
       res.items.slice(1, 3).map((g) => g.pool.pool.id),
     )
+    // Both counts cover the whole feed on every page, like the API's.
+    const meaningful = BASE.gaps.filter((g) => (g.gap.turnoverRatio ?? 0) >= 3).length
+    expect(meaningful).toBeGreaterThan(1)
+    for (const page of [res, paged, await client.gaps({ limit: 1, offset: 50 })]) {
+      expect(page.total).toBe(BASE.gaps.length)
+      expect(page.meaningful).toBe(meaningful)
+    }
   })
 
   it('applies a higher floor to the feed and a lower one from the scored pools', async () => {
@@ -267,6 +276,12 @@ describe('static client: tokens', () => {
       expectedOrder(detail.pools, (p) => p.volume24hUsd, 'asc').slice(1, 3),
     )
     expect(byVolume.total).toBe(detail.total)
+    // The token's depth is the exported total over all its pools, whatever the page.
+    expect(detail.depth2UsdTotal).toBeGreaterThan(0)
+    expect(byVolume.depth2UsdTotal).toBe(detail.depth2UsdTotal)
+    expect(byVolume.depthKnownPools).toBe(detail.depthKnownPools)
+    const bySpread = await client.token(usdc, { sort: 'spread', dir: 'asc', limit: 200 })
+    expect(ids(bySpread.pools)).toEqual(expectedOrder(detail.pools, (p) => p.spread10kBps, 'asc'))
   })
 })
 

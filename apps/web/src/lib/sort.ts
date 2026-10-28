@@ -13,8 +13,10 @@ export function sortValue(item: PoolSummary, sort: PoolSort): number | null {
       return item.gapScore
     case 'tvl':
       return item.tvlUsd
-    default:
-      return null
+    case 'spread':
+      return item.spread10kBps
+    case 'top':
+      return item.ownerTop1Share
   }
 }
 

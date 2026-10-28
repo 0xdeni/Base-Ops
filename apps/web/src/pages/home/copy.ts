@@ -2,9 +2,9 @@
  * The words of Home (ia-v3 §4.1, docs/design/visual-v4.md §6.2), kept pure so the sentences can be
  * tested without rendering. Every number is formatted here from stored values; nothing is derived.
  */
+import { isMeaningfulGap as meaningfulTurnover } from '@depthwatch/core'
 import type { GapItem, ScorecardSummaryDto } from '../../api/types.js'
 import { dexShort } from '../../components/charts/butterflyModel.js'
-import { MEANINGFUL_GAP_TURNOVER } from '../../components/charts/TurnoverGlyph.js'
 import { count, NB, pairLabel, ratio, usd } from '../../lib/format.js'
 
 /** The figure of the display answer: "$49.9M". */
@@ -48,8 +48,7 @@ export function emptyLead(discovered: number): string {
 
 /** A pool trading 3× its ±2 % depth a day or more (the same threshold on every screen, TB9). */
 export function isMeaningfulGap(item: GapItem): boolean {
-  const t = item.gap.turnoverRatio
-  return t !== null && t >= MEANINGFUL_GAP_TURNOVER
+  return meaningfulTurnover(item.gap)
 }
 
 /** The 24 h volume fact's label, with its comparison when the turnover is known. */

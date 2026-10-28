@@ -9,8 +9,9 @@ const BAD_ADDRESS: ErrorResponse = { error: 'invalid token address: expected 0x 
 
 /**
  * `GET /api/tokens/:address`: token info, derived USD price and the scored pools containing the
- * token (sorted like `/api/pools`, default deepest first). The address is lowercased first and
- * matched exactly against token0/token1 (the `token` filter), never against symbols.
+ * token (sorted like `/api/pools`, default deepest first), with the token's ±2 % depth summed over
+ * all of them whatever the page. The address is lowercased first and matched exactly against
+ * token0/token1 (the `token` filter), never against symbols.
  */
 export function tokensRoutes(ctx: ApiContext): Hono {
   const app = new Hono()
@@ -38,6 +39,7 @@ export function tokensRoutes(ctx: ApiContext): Hono {
       pools: scored.items.map(toPoolSummary),
       total: scored.total,
       poolCount: ctx.db.pools.count({ token: address }),
+      ...ctx.db.scores.tokenDepth(address),
     }
     return c.json(body)
   })

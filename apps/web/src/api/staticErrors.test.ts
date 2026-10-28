@@ -43,7 +43,8 @@ function shape(error: ApiError) {
   return { status: error.status, message: error.message, issues: error.issues }
 }
 
-const SORT_OPTIONS = 'Invalid option: expected one of "health"|"depth"|"volume"|"gap"|"tvl"'
+const SORT_OPTIONS =
+  'Invalid option: expected one of "health"|"depth"|"volume"|"gap"|"tvl"|"spread"|"top"'
 
 describe('static client: 400 bodies', () => {
   it('rejects bad pools parameters with the API messages, in schema order', async () => {

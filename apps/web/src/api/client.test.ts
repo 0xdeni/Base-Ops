@@ -171,7 +171,7 @@ describe('createHttpClient', () => {
     }
     expect(await recording(stats).client.stats()).toEqual(stats)
 
-    const gaps: GapsResponse = { items: [], minVolumeUsd: 10_000 }
+    const gaps: GapsResponse = { items: [], total: 0, meaningful: 0, minVolumeUsd: 10_000 }
     expect(await recording(gaps).client.gaps()).toEqual(gaps)
 
     const token: TokenDetail = {
@@ -182,6 +182,8 @@ describe('createHttpClient', () => {
       pools: [],
       total: 0,
       poolCount: 1,
+      depth2UsdTotal: null,
+      depthKnownPools: 0,
     }
     expect(await recording(token).client.token('0xabc')).toEqual(token)
   })
