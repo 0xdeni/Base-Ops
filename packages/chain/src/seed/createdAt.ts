@@ -22,6 +22,7 @@ import type { Address, Hex } from '@depthwatch/core'
 import { encodePacked, hexToBigInt, keccak256 } from 'viem'
 import { v4PoolManagerAbi } from '../abi/v4PoolManager.js'
 import { type BackoffEvent, callWithBackoff } from '../internal/backoff.js'
+import { runLimited } from '../internal/concurrency.js'
 import type { ReaderContext } from '../internal/context.js'
 import { multicallBatched, optionalResult } from '../internal/multicall.js'
 
@@ -100,24 +101,6 @@ interface SearchState {
 function settle(state: SearchState, block: bigint, exists: boolean): void {
   if (exists) state.hi = block
   else state.lo = block + 1n
-}
-
-/** Runs `tasks` with at most `limit` in flight; after a failure no task starts and it is thrown. */
-async function runLimited(tasks: readonly (() => Promise<void>)[], limit: number): Promise<void> {
-  let next = 0
-  let failed = false
-  const worker = async () => {
-    while (!failed && next < tasks.length) {
-      const task = tasks[next++]
-      try {
-        if (task) await task()
-      } catch (error) {
-        failed = true
-        throw error
-      }
-    }
-  }
-  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, tasks.length)) }, worker))
 }
 
 export async function findCreationBlocks(

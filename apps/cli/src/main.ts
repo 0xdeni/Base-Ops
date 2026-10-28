@@ -75,6 +75,8 @@ Commands
   discover    scan factory logs for new pools        [--dex <dex,...>] [--from-block N]
                 --seed                   no logs: ask each DEX for the reference-token pools
                                          and date them by archive-state binary search
+                --seed-token <address>   also seed this token's pairs (repeatable; with --seed,
+                                         run --seed and start; DEPTHWATCH_SEED_TOKENS)
   snapshot    prices, TVL ranking, depth/spread/concentration for the top pools
                                                      [--top N] [--pool <id> ...]
   volume      hourly swap volume of tracked pools    [--hours 24]

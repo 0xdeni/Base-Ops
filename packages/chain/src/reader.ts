@@ -1,7 +1,8 @@
 /**
  * `createChainReader`: composes the per-DEX adapters over viem public clients for Base.
  * Token metadata and block timestamps are cached per reader; every contract read goes through
- * Multicall3 (≤ `maxCallsPerMulticall` calls per aggregate3) on the main client, and every log
+ * Multicall3 (≤ `maxCallsPerMulticall` calls per aggregate3, at most `maxConcurrentMulticalls`
+ * aggregate3 requests of one read in flight) on the main client, and every log
  * scan through chunked `eth_getLogs` on the logs client (`logsRpcUrl` / `logsTransport`, default:
  * the main endpoint), with range splitting (see internal/logs.ts). Every request, on either
  * client, is retried on rate limits and transient failures by one bounded backoff
@@ -50,6 +51,12 @@ export type { PoolOverview } from './internal/types.js'
 export const DEFAULT_RPC_URL = 'https://mainnet.base.org'
 export const DEFAULT_LOG_CHUNK_SIZE = 10_000n
 export const DEFAULT_MAX_CALLS_PER_MULTICALL = 500
+/**
+ * Aggregate3 requests one batched read keeps in flight: a first positions read touches every
+ * token of a position manager (2–3 calls each), thousands of groups that would otherwise all be
+ * sent at once to an endpoint that already answers 429 at a handful of parallel requests.
+ */
+export const DEFAULT_MAX_CONCURRENT_MULTICALLS = 4
 /**
  * Smallest span a rejected `eth_getLogs` range is split to (or `logChunkSize`, when that is
  * smaller). Below it the reader throws `LogRangeLimitError`: at 100 blocks a first discovery of
@@ -159,6 +166,8 @@ export interface CreateChainReaderOptions {
   onCallRetry?: (event: BackoffEvent) => void
   /** Calls per Multicall3 aggregate3 (default 500). */
   maxCallsPerMulticall?: number
+  /** Aggregate3 requests of one batched read in flight at once (default 4). */
+  maxConcurrentMulticalls?: number
   /** Blocks between swap-timestamp anchors (default 10 000, see DEFAULT_TIMESTAMP_SPAN). */
   timestampSpan?: number | bigint
   /**
@@ -249,6 +258,7 @@ export function createChainReader(opts: CreateChainReaderOptions = {}): ChainRea
     },
     onCallRetry: opts.onCallRetry,
     maxCallsPerMulticall: opts.maxCallsPerMulticall ?? DEFAULT_MAX_CALLS_PER_MULTICALL,
+    maxConcurrentMulticalls: opts.maxConcurrentMulticalls ?? DEFAULT_MAX_CONCURRENT_MULTICALLS,
     tokenCache: new Map(),
     timestampCache: new Map(),
     nfpmCache: new Map(),
@@ -258,6 +268,8 @@ export function createChainReader(opts: CreateChainReaderOptions = {}): ChainRea
   if (ctx.minLogRange <= 0n) throw new RangeError('minLogRange must be positive')
   if (ctx.logRetry.retries < 0) throw new RangeError('logRetry.retries must be ≥ 0')
   if (ctx.maxCallsPerMulticall <= 0) throw new RangeError('maxCallsPerMulticall must be positive')
+  if (!Number.isInteger(ctx.maxConcurrentMulticalls) || ctx.maxConcurrentMulticalls <= 0)
+    throw new RangeError('maxConcurrentMulticalls must be a positive integer')
   if (timestampSpan <= 0n) throw new RangeError('timestampSpan must be positive')
 
   async function getLatestBlock(): Promise<{ number: bigint; timestamp: number }> {
