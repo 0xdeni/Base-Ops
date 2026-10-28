@@ -39,6 +39,15 @@ describe('a mandate on a pool whose positions are not indexed yet', () => {
       log,
       now: () => latest.timestamp,
     })
+    // The same world `blocks` later: a mandate has one sample per block, so each sampling step
+    // after the first reads a newer head, as it does on a live chain.
+    const later = (blocks: number) => ({
+      ...ctx,
+      chain: createDemoChain({
+        latestBlock: latest.number + BigInt(blocks),
+        latestTimestamp: latest.timestamp + 2 * blocks,
+      }),
+    })
     const [slipstream, aero] = registerDemoMandates(db, latest.timestamp) as [Mandate, Mandate]
     await discoverStep(ctx)
     expect(unindexedMandatedPools(db).map((pool) => pool.id)).toEqual([SLIPSTREAM])
@@ -58,7 +67,7 @@ describe('a mandate on a pool whose positions are not indexed yet', () => {
     expect(
       lines.some((l) => l.includes('positions not indexed yet') && l.includes(slipstream.id)),
     ).toBe(true)
-    const sampled = await mmSampleStep(ctx)
+    const sampled = await mmSampleStep(later(1))
     expect(sampled.samples).toBe(1)
     expect(sampled.failed).toEqual([{ item: slipstream.id, error: POSITIONS_NOT_INDEXED }])
     expect(db.mmSamples.countFor(slipstream.id)).toBe(0)
@@ -66,7 +75,7 @@ describe('a mandate on a pool whose positions are not indexed yet', () => {
 
     await positionsStep(ctx)
     expect(unindexedMandatedPools(db)).toEqual([])
-    const second = await snapshotStep(ctx)
+    const second = await snapshotStep(later(2))
     expect(second).toMatchObject({ samples: 2, sampleFailures: 0 })
     const sample = db.mmSamples.latestFor(slipstream.id)
     expect(sample?.attribution.method).toBe('positions')

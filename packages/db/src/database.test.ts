@@ -2,12 +2,13 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { type Database, openDatabase } from './database.js'
+import { BUSY_TIMEOUT_MS, type Database, openDatabase, retryWhileBusy } from './database.js'
 import {
   fixtureMandate,
   fixtureMmAlert,
   fixtureMmSample,
   fixturePool,
+  fixtureSnapshot,
   fixtureToken,
 } from './fixtures.js'
 import { currentVersion, MIGRATIONS, SCHEMA_VERSION } from './schema.js'
@@ -32,6 +33,7 @@ const EXPECTED_TABLES = [
 const EXPECTED_INDEXES = [
   'mandates_pool_id',
   'mm_alerts_mandate_timestamp',
+  'mm_samples_mandate_block',
   'mm_samples_mandate_timestamp',
   'pools_dex',
   'pools_token0',
@@ -41,6 +43,7 @@ const EXPECTED_INDEXES = [
   'scores_gap_score',
   'scores_health_total',
   'scores_volume_24h_usd',
+  'snapshots_pool_block',
   'snapshots_pool_timestamp',
   'snapshots_timestamp',
   'volume_hourly_hour_start',
@@ -72,8 +75,8 @@ describe('openDatabase', () => {
   it('creates the schema and records every migration once', () => {
     const db = memory()
     expect(db.migration).toEqual({ from: 0, to: SCHEMA_VERSION })
-    expect(MIGRATIONS.length).toBe(2)
-    expect(SCHEMA_VERSION).toBe(2)
+    expect(MIGRATIONS.length).toBe(3)
+    expect(SCHEMA_VERSION).toBe(3)
     expect(names(db, 'table')).toEqual(EXPECTED_TABLES)
     expect(names(db, 'index')).toEqual(EXPECTED_INDEXES)
     const versions = db.raw
@@ -128,6 +131,7 @@ describe('openDatabase', () => {
     const fresh = openDatabase(path, { now: () => NOW })
     fresh.tokens.upsertMany([fixtureToken()])
     fresh.raw.exec('DROP TABLE mm_alerts; DROP TABLE mm_samples; DROP TABLE mandates')
+    fresh.raw.exec('DROP INDEX snapshots_pool_block')
     fresh.raw.prepare('DELETE FROM schema_version WHERE version > 1').run()
     expect(currentVersion(fresh.raw)).toBe(1)
     expect(names(fresh, 'table')).not.toContain('mandates')
@@ -143,6 +147,7 @@ describe('openDatabase', () => {
     ).toEqual([
       { version: 1, applied_at: NOW },
       { version: 2, applied_at: NOW + 5 },
+      { version: 3, applied_at: NOW + 5 },
     ])
     expect(upgraded.tokens.get(fixtureToken().address)).toEqual(fixtureToken())
     upgraded.mandates.upsert(fixtureMandate())
@@ -153,6 +158,66 @@ describe('openDatabase', () => {
     open.push(again)
     expect(again.migration).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION })
     expect(again.mandates.get(fixtureMandate().id)).toEqual(fixtureMandate())
+  })
+
+  it('upgrades a version-2 database to one row per block, keeping the first copy stored', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'depthwatch-db-'))
+    tempDirs.push(dir)
+    const path = join(dir, 'v2.sqlite')
+
+    // Version 2 had no unique indexes, so a second writer's copies at the same block were stored.
+    const v2 = openDatabase(path, { now: () => NOW })
+    v2.raw.exec('DROP INDEX snapshots_pool_block; DROP INDEX mm_samples_mandate_block')
+    v2.raw.prepare('DELETE FROM schema_version WHERE version > 2').run()
+    v2.snapshots.insertMany([
+      fixtureSnapshot({ blockNumber: 7n, timestamp: NOW, price: 1 }),
+      fixtureSnapshot({ blockNumber: 7n, timestamp: NOW + 1, price: 2 }),
+      fixtureSnapshot({ blockNumber: 8n, timestamp: NOW + 2, price: 3 }),
+    ])
+    v2.mmSamples.insertMany([
+      fixtureMmSample({ blockNumber: 7n, timestamp: NOW }),
+      fixtureMmSample({ blockNumber: 7n, timestamp: NOW + 1, withinKpi: false }),
+      fixtureMmSample({ blockNumber: 8n, timestamp: NOW + 2 }),
+    ])
+    expect(v2.snapshots.count()).toBe(3)
+    expect(v2.mmSamples.count()).toBe(3)
+    v2.close()
+
+    const upgraded = openDatabase(path, { now: () => NOW + 5 })
+    open.push(upgraded)
+    expect(upgraded.migration).toEqual({ from: 2, to: SCHEMA_VERSION })
+    expect(names(upgraded, 'index')).toEqual(EXPECTED_INDEXES)
+    const pool = fixturePool().id
+    expect(upgraded.snapshots.seriesForPool(pool, 0).map((s) => [s.blockNumber, s.price])).toEqual([
+      [7n, 1],
+      [8n, 3],
+    ])
+    const mandate = fixtureMmSample().mandateId
+    expect(
+      upgraded.mmSamples.seriesFor(mandate, 0).map((s) => [s.blockNumber, s.withinKpi]),
+    ).toEqual([
+      [7n, true],
+      [8n, true],
+    ])
+
+    // From now on a copy at a stored block is skipped; insertMany counts the rows it stored.
+    expect(upgraded.snapshots.insert(fixtureSnapshot({ blockNumber: 8n, price: 4 }))).toBeNull()
+    expect(upgraded.mmSamples.insert(fixtureMmSample({ blockNumber: 8n }))).toBeNull()
+    expect(
+      upgraded.snapshots.insertMany([
+        fixtureSnapshot({ blockNumber: 8n, timestamp: NOW + 3 }),
+        fixtureSnapshot({ blockNumber: 9n, timestamp: NOW + 3 }),
+      ]),
+    ).toBe(1)
+    expect(
+      upgraded.mmSamples.insertMany([
+        fixtureMmSample({ blockNumber: 8n, timestamp: NOW + 3 }),
+        fixtureMmSample({ blockNumber: 9n, timestamp: NOW + 3 }),
+      ]),
+    ).toBe(1)
+    expect(upgraded.snapshots.count()).toBe(3)
+    expect(upgraded.mmSamples.count()).toBe(3)
+    expect(upgraded.snapshots.latestForPool(pool)?.price).toBe(fixtureSnapshot().price)
   })
 
   it('refuses a database written by a newer schema', () => {
@@ -224,5 +289,67 @@ describe('openDatabase', () => {
     db.close()
     expect(() => db.close()).not.toThrow()
     expect(db.isOpen).toBe(false)
+  })
+})
+
+describe('retryWhileBusy', () => {
+  const busy = () => Object.assign(new Error('database is locked'), { errcode: 5 })
+
+  function fakeClock() {
+    let now = 0
+    const sleeps: number[] = []
+    return {
+      sleeps,
+      nowMs: () => now,
+      sleep: (ms: number) => {
+        sleeps.push(ms)
+        now += ms
+      },
+    }
+  }
+
+  it('retries SQLITE_BUSY and SQLITE_LOCKED (extended codes too) with a growing wait', () => {
+    const clock = fakeClock()
+    const errors = [busy(), Object.assign(new Error('locked'), { errcode: 6 }), busy()]
+    errors.push(Object.assign(new Error('busy recovery'), { errcode: 5 | (1 << 8) }))
+    let calls = 0
+    const value = retryWhileBusy(() => {
+      const error = errors[calls++]
+      if (error !== undefined) throw error
+      return 'wal'
+    }, clock)
+    expect(value).toBe('wal')
+    expect(calls).toBe(5)
+    expect(clock.sleeps).toEqual([10, 20, 40, 80])
+  })
+
+  it('throws the last busy error once the timeout has passed', () => {
+    const clock = fakeClock()
+    let calls = 0
+    expect(() =>
+      retryWhileBusy(() => {
+        calls++
+        throw busy()
+      }, clock),
+    ).toThrow('database is locked')
+    expect(clock.nowMs()).toBeGreaterThanOrEqual(BUSY_TIMEOUT_MS)
+    expect(clock.nowMs()).toBeLessThan(BUSY_TIMEOUT_MS + 100)
+    expect(calls).toBe(clock.sleeps.length + 1)
+  })
+
+  it('throws any other error at once', () => {
+    const clock = fakeClock()
+    const corrupt = Object.assign(new Error('file is not a database'), { errcode: 26 })
+    expect(() =>
+      retryWhileBusy(() => {
+        throw corrupt
+      }, clock),
+    ).toThrow(corrupt)
+    expect(() =>
+      retryWhileBusy(() => {
+        throw new Error('plain')
+      }, clock),
+    ).toThrow('plain')
+    expect(clock.sleeps).toEqual([])
   })
 })

@@ -78,7 +78,8 @@ const SUMMARY_OUTER = `${SUMMARY_COLUMNS},
 const HEALTH_SUMMARY = `${SUMMARY_OUTER},
   json_extract(concentration_json, '$.rangeHhi') AS range_hhi`
 
-const INSERT = `INSERT INTO snapshots (
+/** One snapshot per pool and block (unique index, schema version 3): a stored one is kept. */
+const INSERT = `INSERT OR IGNORE INTO snapshots (
     pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd, active_liquidity,
     depth_json, depth_usd_json, spreads_json, concentration_json,
     depth2_usd, spread10k_bps, owner_top1_share
@@ -137,10 +138,13 @@ export function rowToSnapshotHealthSummary(row: Row): SnapshotHealthSummary {
 export class SnapshotsRepo {
   constructor(private readonly ctx: SqlContext) {}
 
-  /** Appends one snapshot and returns its row id. */
-  insert(snapshot: PoolSnapshot): number {
+  /**
+   * Appends one snapshot and returns its row id, or null when the pool already has a snapshot at
+   * that block (a second writer's copy), which is kept as it is.
+   */
+  insert(snapshot: PoolSnapshot): number | null {
     const summary = snapshotSummaryFields(snapshot)
-    return this.ctx.run(INSERT, [
+    const { changes, lastInsertRowid } = this.ctx.run(INSERT, [
       snapshot.poolId,
       snapshot.blockNumber,
       snapshot.timestamp,
@@ -156,15 +160,16 @@ export class SnapshotsRepo {
       summary.depth2Usd,
       summary.spread10kBps,
       summary.ownerTop1Share,
-    ]).lastInsertRowid
+    ])
+    return changes === 0 ? null : lastInsertRowid
   }
 
+  /** Inserts every snapshot in one transaction; returns how many were stored (see `insert`). */
   insertMany(snapshots: readonly PoolSnapshot[]): number {
     if (snapshots.length === 0) return 0
-    return this.ctx.transaction(() => {
-      for (const snapshot of snapshots) this.insert(snapshot)
-      return snapshots.length
-    })
+    return this.ctx.transaction(
+      () => snapshots.filter((snapshot) => this.insert(snapshot) !== null).length,
+    )
   }
 
   latestForPool(poolId: string): PoolSnapshot | undefined {

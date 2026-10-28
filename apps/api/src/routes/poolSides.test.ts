@@ -45,8 +45,9 @@ describe('PoolSummary per-side ±2 % depth', () => {
   function snapshotWith(poolId: string, depthUsd: DepthLevelUsd[]): void {
     const latest = seed.snapshots.get(poolId)?.at(-1)
     if (!latest) throw new Error(`seed has no snapshot of ${poolId}`)
-    // Same timestamp as the seed's newest: the higher row id makes it the newest snapshot.
-    db.snapshots.insert({ ...latest, depthUsd })
+    // Same timestamp as the seed's newest, one block later (a pool has one snapshot per block):
+    // the higher row id makes it the newest snapshot.
+    db.snapshots.insert({ ...latest, blockNumber: latest.blockNumber + 1n, depthUsd })
   }
 
   it('carries the newest snapshot ±2 % upUsd and downUsd of every scored pool', async () => {

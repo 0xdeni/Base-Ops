@@ -1,5 +1,6 @@
 /**
- * Scorecard samples (docs/design/scorecards.md §4): one row per mandate per snapshot of its pool.
+ * Scorecard samples (docs/design/scorecards.md §4): one row per mandate and block (a snapshot of
+ * its pool or an `mm sample` run).
  * `block_number` is decimal TEXT, `attribution_json` an MmAttribution and `breaches_json` a
  * BreachKind[] (neither holds bigints); `within_kpi` is NULL for non-evaluable samples.
  */
@@ -19,7 +20,8 @@ import {
 const COLUMNS = `id, mandate_id, pool_id, block_number, timestamp, attribution_json, within_kpi,
   breaches_json`
 
-const INSERT = `INSERT INTO mm_samples (
+/** One sample per mandate and block (unique index, schema version 3): a stored one is kept. */
+const INSERT = `INSERT OR IGNORE INTO mm_samples (
     mandate_id, pool_id, block_number, timestamp, attribution_json, within_kpi, breaches_json
   ) VALUES (?, ?, ?, ?, ?, ?, ?)`
 
@@ -45,9 +47,12 @@ export function rowToMmSample(row: Row): MmSample {
 export class MmSamplesRepo {
   constructor(private readonly ctx: SqlContext) {}
 
-  /** Appends one sample and returns its row id. */
-  insert(sample: MmSample): number {
-    return this.ctx.run(INSERT, [
+  /**
+   * Appends one sample and returns its row id, or null when the mandate already has a sample at
+   * that block (a second writer's copy), which is kept as it is.
+   */
+  insert(sample: MmSample): number | null {
+    const { changes, lastInsertRowid } = this.ctx.run(INSERT, [
       sample.mandateId,
       sample.poolId,
       sample.blockNumber,
@@ -55,15 +60,16 @@ export class MmSamplesRepo {
       JSON.stringify(sample.attribution),
       sample.withinKpi === null ? null : sample.withinKpi,
       JSON.stringify(sample.breaches),
-    ]).lastInsertRowid
+    ])
+    return changes === 0 ? null : lastInsertRowid
   }
 
+  /** Inserts every sample in one transaction; returns how many were stored (see `insert`). */
   insertMany(samples: readonly MmSample[]): number {
     if (samples.length === 0) return 0
-    return this.ctx.transaction(() => {
-      for (const sample of samples) this.insert(sample)
-      return samples.length
-    })
+    return this.ctx.transaction(
+      () => samples.filter((sample) => this.insert(sample) !== null).length,
+    )
   }
 
   /**

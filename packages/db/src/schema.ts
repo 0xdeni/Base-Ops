@@ -2,7 +2,7 @@
  * Versioned schema. `MIGRATIONS[i]` brings the database to version `i + 1`; each entry is a batch
  * of SQL statements applied in one transaction and recorded in `schema_version`.
  *
- * Never edit an entry that has shipped: append a new one.
+ * Never edit an entry that has shipped: append a new one (schema.test.ts pins a sha256 of each).
  *
  * Storage conventions (DESIGN.md "Storage"): bigints are TEXT decimal strings, JSON columns hold
  * the core types with bigints as strings, addresses are lowercase, timestamps are unix seconds.
@@ -12,6 +12,12 @@
  * stored before the cap holds the uncapped spread.
  *
  * Version 2 adds the market-maker scorecard tables (`mandates`, `mm_samples`, `mm_alerts`).
+ * Version 3 stores one snapshot per pool and block and one sample per mandate and block.
+ *
+ * Several processes may open one file at once: a database at the current version is read without
+ * a write lock; otherwise `BEGIN IMMEDIATE` comes first and `schema_version` is created and read
+ * inside that transaction, so the first process applies the pending migrations and every other
+ * one, waiting on its lock, then reads the version it recorded and applies nothing.
  */
 import type { DatabaseSync } from 'node:sqlite'
 import { toCount } from './sql.js'
@@ -163,6 +169,21 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX mm_alerts_mandate_timestamp ON mm_alerts(mandate_id, timestamp);
   `,
+  // Version 3: one snapshot per pool and block, one sample per mandate and block, so a second
+  // process writing the same block (a one-shot `snapshot` or `mm sample` beside a running
+  // pipeline) adds nothing (the repositories insert with OR IGNORE). Copies stored before are
+  // deleted first, keeping the first row stored: the one alerts and streaks were computed from.
+  `
+  DELETE FROM snapshots WHERE id NOT IN (
+    SELECT MIN(id) FROM snapshots GROUP BY pool_id, block_number
+  );
+  CREATE UNIQUE INDEX snapshots_pool_block ON snapshots(pool_id, block_number);
+
+  DELETE FROM mm_samples WHERE id NOT IN (
+    SELECT MIN(id) FROM mm_samples GROUP BY mandate_id, block_number
+  );
+  CREATE UNIQUE INDEX mm_samples_mandate_block ON mm_samples(mandate_id, block_number);
+  `,
 ]
 
 export const SCHEMA_VERSION = MIGRATIONS.length
@@ -174,22 +195,42 @@ export interface MigrationResult {
   to: number
 }
 
-/** Creates `schema_version` when missing and applies every pending migration in one transaction. */
-export function applyMigrations(db: DatabaseSync, now: () => number): MigrationResult {
-  db.exec(
-    'CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)',
+function refuseNewer(version: number): void {
+  if (version <= SCHEMA_VERSION) return
+  throw new Error(
+    `db: database schema version ${version} is newer than this build (${SCHEMA_VERSION}); upgrade depthwatch`,
   )
-  const from = currentVersion(db)
-  if (from > SCHEMA_VERSION) {
-    throw new Error(
-      `db: database schema version ${from} is newer than this build (${SCHEMA_VERSION}); upgrade depthwatch`,
-    )
-  }
-  if (from === SCHEMA_VERSION) return { from, to: from }
+}
 
-  const record = db.prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)')
+/** The recorded version, or undefined while `schema_version` does not exist (a new file). */
+function recordedVersion(db: DatabaseSync): number | undefined {
+  const table = db
+    .prepare(
+      `SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = 'schema_version'`,
+    )
+    .get()
+  return table === undefined ? undefined : currentVersion(db)
+}
+
+/**
+ * Creates `schema_version` when missing and applies every pending migration in one transaction,
+ * reading the version inside it (see the header).
+ */
+export function applyMigrations(db: DatabaseSync, now: () => number): MigrationResult {
+  const recorded = recordedVersion(db)
+  if (recorded !== undefined) {
+    refuseNewer(recorded)
+    if (recorded === SCHEMA_VERSION) return { from: recorded, to: recorded }
+  }
+
   db.exec('BEGIN IMMEDIATE')
   try {
+    db.exec(
+      'CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)',
+    )
+    const from = currentVersion(db)
+    refuseNewer(from)
+    const record = db.prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)')
     for (let version = from + 1; version <= SCHEMA_VERSION; version++) {
       const sql = MIGRATIONS[version - 1]
       if (sql === undefined) throw new Error(`db: migration ${version} is missing`)
@@ -197,11 +238,11 @@ export function applyMigrations(db: DatabaseSync, now: () => number): MigrationR
       record.run(version, now())
     }
     db.exec('COMMIT')
+    return { from, to: SCHEMA_VERSION }
   } catch (error) {
     if (db.isTransaction) db.exec('ROLLBACK')
     throw error
   }
-  return { from, to: SCHEMA_VERSION }
 }
 
 export function currentVersion(db: DatabaseSync): number {

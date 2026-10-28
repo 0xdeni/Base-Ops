@@ -287,6 +287,7 @@ export interface MmSampleResult {
   mandates: number
   /** Pools sampled (every active mandate's pool that the database knows). */
   pools: number
+  /** Samples stored: a mandate already sampled at the block keeps that sample. */
   samples: number
   /** Mandates (and pools) whose state read or attribution failed. */
   failed: Array<{ item: string; error: string }>
@@ -367,11 +368,8 @@ export async function mmSampleStep(ctx: PipelineContext): Promise<MmSampleResult
   }
   const samples = settled.ok.flat()
   throwIfStopped(ctx)
-  db.transaction(() => {
-    db.mmSamples.insertMany(samples)
-  })
-  result.samples = samples.length
-  log.info('stored samples', { samples: samples.length, failed: result.failed.length })
+  result.samples = db.mmSamples.insertMany(samples)
+  log.info('stored samples', { samples: result.samples, failed: result.failed.length })
   const sampled = new Set(samples.map((s) => s.mandateId))
   result.alerts = await deliverAlerts(
     ctx,

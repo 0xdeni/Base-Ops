@@ -62,9 +62,13 @@ export interface SnapshotResult {
   /** Pools in the database (all got an overview). */
   pools: number
   tracked: number
+  /** Snapshots stored: a pool already snapshotted at the block keeps that row. */
   snapshots: number
   prices: number
-  /** Market-maker samples stored (one per active mandate of a snapshotted pool). */
+  /**
+   * Market-maker samples stored (one per active mandate of a snapshotted pool, unless the mandate
+   * was already sampled at the block).
+   */
   samples: number
   /** Mandates whose attribution failed (logged; the snapshot itself is unaffected). */
   sampleFailures: number
@@ -303,17 +307,15 @@ export async function snapshotStep(
   throwIfStopped(ctx)
   const entries = priceEntries(prices)
   db.transaction(() => {
-    db.snapshots.insertMany(snapshots)
-    db.mmSamples.insertMany(samples)
+    result.snapshots = db.snapshots.insertMany(snapshots)
+    result.samples = db.mmSamples.insertMany(samples)
     db.prices.replaceAll(entries, latest.timestamp)
     db.syncState.setBigInt(syncKeys.snapshot(), latest.number)
   })
-  result.snapshots = snapshots.length
-  result.samples = samples.length
   result.prices = entries.length
   log.info('stored snapshots', {
-    snapshots: snapshots.length,
-    samples: samples.length,
+    snapshots: result.snapshots,
+    samples: result.samples,
     sampleFailures: result.sampleFailures,
     prices: entries.length,
     failed: result.failed.length,
