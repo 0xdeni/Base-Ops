@@ -205,19 +205,25 @@ export interface SheetOption<T extends string> {
 /**
  * The sheet's option rows (at least 52 px, a check on the selected one) as a radio group: arrow
  * keys move and select, like every other radio group in the product. An option may carry a meta
- * value on its right (a DEX's share of the depth in the Filter sheet).
+ * value on its right (a DEX's share of the depth in the Filter sheet). Where a sheet holds more
+ * than one group, each shows its label as a heading that names the group (13 px / 650, 24 px above
+ * the second), so two checks read as two choices.
  */
 export function SheetOptions<T extends string>({
   label,
   options,
   value,
   onChange,
+  heading = false,
 }: {
   label: string
   options: ReadonlyArray<SheetOption<T>>
   value: T
   onChange: (value: T) => void
+  /** Show the label as the group's visible heading. */
+  heading?: boolean
 }) {
+  const headId = useId()
   const listRef = useRef<HTMLDivElement | null>(null)
   const onKeyDown = (e: KeyboardEvent, index: number) => {
     const n = options.length
@@ -230,8 +236,13 @@ export function SheetOptions<T extends string>({
     listRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]')[j]?.focus()
     onChange(next.value)
   }
-  return (
-    <div ref={listRef} role="radiogroup" aria-label={label}>
+  const group = (
+    <div
+      ref={listRef}
+      role="radiogroup"
+      aria-label={heading ? undefined : label}
+      aria-labelledby={heading ? headId : undefined}
+    >
       {options.map((o, i) => (
         // biome-ignore lint/a11y/useSemanticElements: full-row custom radios with a check icon (PH4)
         <button
@@ -250,6 +261,15 @@ export function SheetOptions<T extends string>({
           <Icon name="check" />
         </button>
       ))}
+    </div>
+  )
+  if (!heading) return group
+  return (
+    <div className="opt-group">
+      <h3 id={headId} className="opt-head">
+        {label}
+      </h3>
+      {group}
     </div>
   )
 }

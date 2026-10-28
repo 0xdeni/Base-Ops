@@ -20,6 +20,7 @@ import {
   ratio,
   SPREAD_UNABSORBED_BPS,
   score,
+  scoreExact,
   shareOf,
   uptime,
   usd,
@@ -73,8 +74,8 @@ export function poolAnswer(detail: Pick<PoolDetail, 'pool' | 'latest'>): string 
 
 /**
  * The Health finding names the component furthest below its weight. When core scored it neutral,
- * its note says why ("samples cover under 25 % of the window"); otherwise the points it holds. For
- * a pool with no grade it says why there is none.
+ * its note says why ("samples cover under 25 % of the window"); otherwise the points it holds, to
+ * one decimal like the health bar and Details. For a pool with no grade it says why there is none.
  */
 export function healthTakeaway(
   health: HealthScore,
@@ -92,7 +93,7 @@ export function healthTakeaway(
       return 'Concentration is the weak part: all liquidity is one full range.'
     return `Concentration is the weak part: ${shareOf(concentration.activeRangeShare)} sits in one range.`
   }
-  return `${PART_NAME[weakest]} is the weak part: ${score(health.components[weakest])} of ${HEALTH_MAX[weakest]} points.`
+  return `${PART_NAME[weakest]} is the weak part: ${scoreExact(health.components[weakest])} of ${HEALTH_MAX[weakest]} points.`
 }
 
 /** The reason of core's "persistence neutral: …" note for `part`, with a no-break space before %. */

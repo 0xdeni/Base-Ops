@@ -121,7 +121,9 @@ export function DepthCurveTable({
               <th scope="col" className="r">
                 {token1.symbol} spent
               </th>
-              <th scope="col">Price</th>
+              <th scope="col" className="r">
+                Price
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -145,7 +147,9 @@ export function DepthCurveTable({
                     {raw ? amount(raw.up.amountIn, token1.decimals) : '—'}
                     {out(raw?.up.reached)}
                   </td>
-                  <td>{reached === null ? '—' : reached ? 'Reached' : 'Liquidity runs out'}</td>
+                  <td className="r">
+                    {reached === null ? '—' : reached ? 'Reached' : 'Liquidity runs out'}
+                  </td>
                 </tr>
               )
             })}

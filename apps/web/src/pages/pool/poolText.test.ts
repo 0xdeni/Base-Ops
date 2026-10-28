@@ -1,4 +1,4 @@
-import { computeHealthScore } from '@depthwatch/core'
+import { computeHealthScore, type HealthScore } from '@depthwatch/core'
 import { describe, expect, it } from 'vitest'
 import type { PoolDetail, PoolMetaDto, SpreadPoint } from '../../api/types.js'
 import { NB } from '../../lib/format.js'
@@ -71,6 +71,20 @@ describe('healthTakeaway', () => {
     const health = computeHealthScore({ ...inputs, depth2UpUsd: 20_000, depth2DownUsd: 20_000 })
     expect(health.rated).toBe(true)
     expect(healthTakeaway(health, null, 'concentrated')).toMatch(/is the weak part/)
+  })
+
+  it('states the weakest part’s points to one decimal, as the health bar labels them', () => {
+    const health: HealthScore = {
+      total: 74.1,
+      grade: 'B',
+      rated: true,
+      unratedReason: null,
+      components: { depth: 33.7, spread: 11.8, concentration: 13.6, persistence: 15 },
+      notes: [],
+    }
+    expect(healthTakeaway(health, null, 'concentrated')).toBe(
+      'Spread is the weak part: 11.8 of 25 points.',
+    )
   })
 
   it('gives core’s reason when it scored the weakest part neutral', () => {

@@ -85,6 +85,8 @@ export interface PoolsControlsProps {
   onDir: (dir: SortDir) => void
   cols: readonly OptionalColumn[]
   onCols: (cols: OptionalColumn[]) => void
+  /** Some loaded pool has its top LP share: it is offered as a sort and a column. */
+  topShare: boolean
   /** "Rated only": the pools with no grade are not offered. */
   ratedOnly: boolean
   onRatedOnly: (ratedOnly: boolean, meta: ChangeMeta) => void
@@ -100,7 +102,7 @@ export function PoolsControls(props: PoolsControlsProps) {
   )
 }
 
-function DesktopControls({ cols, onCols, ratedOnly, onRatedOnly }: PoolsControlsProps) {
+function DesktopControls({ cols, onCols, topShare, ratedOnly, onRatedOnly }: PoolsControlsProps) {
   return (
     <>
       <SegmentedControl<RatingValue>
@@ -111,7 +113,7 @@ function DesktopControls({ cols, onCols, ratedOnly, onRatedOnly }: PoolsControls
         onBand
       />
       <span className="lists-spacer" />
-      <ColumnsMenu cols={cols} onChange={onCols} className="lists-cols" />
+      <ColumnsMenu cols={cols} onChange={onCols} topShare={topShare} className="lists-cols" />
     </>
   )
 }
@@ -142,6 +144,7 @@ function PhoneControls({
   dir,
   onSortKey,
   onDir,
+  topShare,
   ratedOnly,
   onRatedOnly,
 }: PoolsControlsProps) {
@@ -159,7 +162,7 @@ function PhoneControls({
       >
         {dexShort(dex)}
       </Button>
-      <SortSheet sort={sort} dir={dir} onSort={onSortKey} onDir={onDir} />
+      <SortSheet sort={sort} dir={dir} onSort={onSortKey} onDir={onDir} topShare={topShare} />
       <Sheet
         open={filter.open}
         instant={filter.instant}
@@ -177,6 +180,7 @@ function PhoneControls({
           }}
         >
           <SheetOptions<DexValue>
+            heading
             label="DEX"
             options={rows.map((r) => ({
               value: r.dex ?? 'all',
@@ -188,6 +192,7 @@ function PhoneControls({
             onChange={(v) => onDex(v === 'all' ? '' : v, { keyboard: true })}
           />
           <SheetOptions<RatingValue>
+            heading
             label="Rating"
             options={RATING_OPTIONS}
             value={ratedOnly ? 'rated' : 'all'}

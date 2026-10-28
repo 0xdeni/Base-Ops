@@ -14,11 +14,11 @@ export interface MultipleSeries<T> {
   /** Desktop height in px; 132 by default (120 on phones). */
   height?: number
   value: (p: T) => number | null
-  /** The head value: "$811K", "14.8 bps". */
+  /** The head value and the bracket's ends: "$812K", "14.8 bps". */
   format: (v: number | null) => string
   /**
-   * The range bracket's end labels ("$810K"); `format` when not given, or when the two ends
-   * would print the same.
+   * A shorter label for the bracket's ends ("10.4" beside "10.3"); `format` when not given, or
+   * when the two ends would print the same.
    */
   tick?: (v: number) => string
   /** A band (the p10–median of the window) shaded behind the line. */
@@ -56,15 +56,44 @@ export function dataRange<T>(
   return [Math.min(...vals), Math.max(...vals)]
 }
 
+/** The least span of a level series' y domain, as a share of its median: ±1 %. */
+export const FLAT_SPAN = 0.02
+
+/** The bracket's end labels: `tick` when it tells the two ends apart, otherwise `format`. */
+export function bracketLabel<T>(
+  s: MultipleSeries<T>,
+  range: readonly [number, number],
+): (v: number) => string {
+  const t = s.tick
+  return t && t(range[0]) !== t(range[1]) ? t : (v: number) => s.format(v)
+}
+
+/**
+ * True when the data's two ends print the same: the series moves by less than its display
+ * precision, and the chart draws it level with one label instead of a swing between equal numbers.
+ */
+export function printsLevel<T>(s: MultipleSeries<T>, range: readonly [number, number]): boolean {
+  const label = bracketLabel(s, range)
+  return label(range[0]) === label(range[1])
+}
+
 /**
  * The cropped y domain: the data (with the band and the reference when set), widened to
- * `minSpan` × the median when asked, padded 12 % of its span (2 % of the value when flat), and
- * never below 0 for values that are not.
+ * `minSpan` × the median when asked, padded 12 % of its span, and never below 0 for values that
+ * are not. A series whose ends print the same is centred in a domain of at least 10× its span and
+ * `max(minSpan, 2 %)` of its median, so it draws level at mid-height.
  */
 export function seriesYDomain<T>(points: readonly T[], s: MultipleSeries<T>): [number, number] {
   const r = dataRange(points, s.value)
   if (!r) return [0, 1]
   let [lo, hi] = r
+  const med = median(points.map(s.value).filter((v): v is number => v !== null))
+  if (med !== null && printsLevel(s, r)) {
+    const c = (r[0] + r[1]) / 2
+    const need = Math.max(10 * (r[1] - r[0]), Math.max(s.minSpan ?? 0, FLAT_SPAN) * Math.abs(med))
+    lo = c - need / 2
+    hi = c + need / 2
+  }
   if (s.band) {
     lo = Math.min(lo, s.band[0])
     hi = Math.max(hi, s.band[1])
@@ -74,7 +103,6 @@ export function seriesYDomain<T>(points: readonly T[], s: MultipleSeries<T>): [n
     lo = Math.min(lo, ref)
     hi = Math.max(hi, ref)
   }
-  const med = median(points.map(s.value).filter((v): v is number => v !== null))
   if (s.minSpan && med !== null && hi - lo < Math.abs(med) * s.minSpan) {
     const c = (hi + lo) / 2
     const need = Math.abs(med) * s.minSpan
@@ -120,11 +148,14 @@ export function Multiple<T extends { timestamp: number }>({
   const range = dataRange(data, s.value)
   const plotR = W - SM_RIGHT
   const head = cur ? s.value(cur) : latest ? s.value(latest) : null
-  const label = (v: number) => {
-    const t = s.tick
-    if (!t || !range || t(range[0]) === t(range[1])) return s.format(v)
-    return t(v)
-  }
+  const label = range ? bracketLabel(s, range) : (v: number) => s.format(v)
+  // Ends that print the same get one label and no bracket: there is no range to span.
+  const level = range ? printsLevel(s, range) : false
+  const said = range
+    ? level
+      ? `${s.format(range[1])} throughout, `
+      : `between ${s.format(range[0])} and ${s.format(range[1])}, `
+    : ''
   const ref = s.reference ?? null
   const bx = plotR + 12
   // Points stand apart only where the samples do; a dense window keeps the line alone.
@@ -147,7 +178,7 @@ export function Multiple<T extends { timestamp: number }>({
       <svg
         className="chart-svg"
         role="img"
-        aria-label={`${s.label} over ${windowLabel}: ${range ? `between ${s.format(range[0])} and ${s.format(range[1])}, ` : ''}latest ${s.format(latest ? s.value(latest) : null)}.`}
+        aria-label={`${s.label} over ${windowLabel}: ${said}latest ${s.format(latest ? s.value(latest) : null)}.`}
         width={W}
         height={H}
         viewBox={`0 0 ${W} ${H}`}
@@ -177,15 +208,15 @@ export function Multiple<T extends { timestamp: number }>({
         ) : null}
         {range ? (
           <g className="sm-range">
-            <line x1={bx} x2={bx} y1={fy(range[1])} y2={fy(range[0])} />
+            {level ? null : <line x1={bx} x2={bx} y1={fy(range[1])} y2={fy(range[0])} />}
             <text className="chart-text" x={bx + 8} y={fy(range[1]) + 4}>
               {label(range[1])}
             </text>
-            {range[0] !== range[1] ? (
+            {level ? null : (
               <text className="chart-text" x={bx + 8} y={fy(range[0]) + 4}>
                 {label(range[0])}
               </text>
-            ) : null}
+            )}
           </g>
         ) : null}
         {runs.gaps.map(([a, b]) => (

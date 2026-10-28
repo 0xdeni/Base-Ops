@@ -21,7 +21,7 @@ import { SegmentedControl } from '../../components/ui/SegmentedControl.js'
 import { SectionError, Skeleton, useDelayedPending } from '../../components/ui/States.js'
 import { TableScroll } from '../../components/ui/TableScroll.js'
 import { TextChange } from '../../components/ui/TextChange.js'
-import { bps, count, NB, price, score, uptime, usd, usdTick } from '../../lib/format.js'
+import { bps, count, NB, price, score, uptime, usd } from '../../lib/format.js'
 import { baseQuote } from '../../lib/orient.js'
 import { useIsPhone } from '../../lib/useMediaQuery.js'
 import { overTimeCaption, persistenceParts, tooFewTakeaway } from './poolText.js'
@@ -37,8 +37,10 @@ const WINDOW_SHORT: Readonly<Record<HistoryWindow, string>> = {
 }
 
 /**
- * The two multiples. Each y range is cropped to its own data and labelled at both ends by the
- * chart, so a 2 % range never reads as a swing without its numbers (§5.9.6).
+ * The two multiples. Each y range is cropped to its own data and labelled at both ends in the
+ * head's own format ("$29.5M", "$29M"), so a 2 % range never reads as a swing without its numbers
+ * and a bracket end never contradicts the head (§5.9.6). The spread is never cropped below 2 % of
+ * its median, and a spread that moves less than its 0.1 bps precision draws level.
  */
 function mainSeries(): MultipleSeries<HistoryPoint>[] {
   return [
@@ -47,13 +49,13 @@ function mainSeries(): MultipleSeries<HistoryPoint>[] {
       label: `Depth ±2${NB}%, both sides`,
       value: (pt) => pt.depth2Usd,
       format: usd,
-      tick: usdTick,
     },
     {
       key: 'spread',
       label: 'Spread at $10K',
       value: (pt) => pt.spread10kBps,
       format: bps,
+      minSpan: 0.02,
     },
   ]
 }
@@ -87,7 +89,6 @@ function moreSeries(
       height: 120,
       value: (pt) => pt.tvlUsd,
       format: usd,
-      tick: usdTick,
       minSpan: 0.05,
     })
   out.push({

@@ -252,8 +252,11 @@
   display: inline-flex;
   align-items: center;
 }
+/* The ±2 % band of a schematic: two dashed rules, so side marks stay on the canvas (§2.4). */
 .curve-band {
-  fill: var(--surface-2);
+  stroke: var(--line-2);
+  stroke-width: 1px;
+  stroke-dasharray: 3 3;
 }
 .curve-spine,
 .curve-base {
@@ -268,9 +271,6 @@
 }
 .c-line.sell {
   stroke: var(--sell);
-}
-.c-line.buy {
-  stroke: var(--buy);
 }
 .c-line.is-exhausted {
   stroke-dasharray: 4 4;

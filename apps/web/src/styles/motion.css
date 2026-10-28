@@ -56,7 +56,8 @@
   }
 
   /* Route change by pointer: <main> fades out in 100 ms while the new view fades in over 180 ms,
-     both from the same instant; the chrome and the root never animate. */
+     both from the same instant; the chrome and the root never animate. The group takes the new
+     view's box at once, so only the two opacities animate (never its width, height or position). */
   ::view-transition-old(main) {
     animation: vt-out var(--d-route-out) var(--ease-out) both;
   }
@@ -64,8 +65,7 @@
     animation: vt-in var(--d-route-in) var(--ease-out) both;
   }
   ::view-transition-group(main) {
-    animation-duration: var(--d-route-in);
-    animation-timing-function: var(--ease-out);
+    animation: none;
   }
 }
 

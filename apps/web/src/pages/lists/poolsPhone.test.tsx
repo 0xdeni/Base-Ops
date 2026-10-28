@@ -8,7 +8,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import { afterEach, describe, expect, it } from 'vitest'
 import { createMockClient } from '../../api/mock.js'
 import type { ApiClient, PoolSummary } from '../../api/types.js'
-import { share } from '../../lib/format.js'
+import { NB, share } from '../../lib/format.js'
 import { Pools } from '../Pools.js'
 import { manyPools, NOW, renderPage, stubPhone, unstubPhone } from './testing.js'
 
@@ -55,6 +55,51 @@ describe('Pools: phone (TB7, PH4)', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: 'Done' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Sort pools' })).toBeNull())
     expect(screen.getByRole('button', { name: 'Sort: top LP' })).toBeTruthy()
+  })
+
+  it('offers the top LP share only when some pool has it, after the sorts in the sheet’s order', async () => {
+    stubPhone()
+    const base = manyPools(30)
+    const client: ApiClient = {
+      ...base,
+      pools: async (query = {}) => {
+        const page = await base.pools(query)
+        return { ...page, items: page.items.map((p) => ({ ...p, ownerTop1Share: null })) }
+      },
+    }
+    renderAt('/pools', client)
+    await screen.findByRole('list', { name: 'Pools' })
+    fireEvent.click(screen.getByRole('button', { name: 'Sort: health' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Sort pools' })
+    const names = within(within(sheet).getByRole('radiogroup', { name: 'Sort by' }))
+      .getAllByRole('radio')
+      .map((r) => r.textContent)
+    expect(names).toEqual([
+      'Health',
+      `Depth ±2${NB}%`,
+      'Spread at $10K',
+      `24${NB}h volume`,
+      'TVL',
+      'Gap score',
+    ])
+  })
+
+  it('heads the Filter sheet’s two groups, DEX and Rating', async () => {
+    stubPhone()
+    renderAt('/pools')
+    await screen.findByRole('list', { name: 'Pools' })
+    fireEvent.click(screen.getByRole('button', { name: 'All DEXes' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Filter pools' })
+    const heads = within(sheet).getAllByRole('heading', { level: 3 })
+    expect(heads.map((h) => h.textContent)).toEqual(['DEX', 'Rating'])
+    const rating = within(sheet).getByRole('radiogroup', { name: 'Rating' })
+    expect(rating.getAttribute('aria-labelledby')).toBe(heads[1]?.id)
+    expect(
+      within(rating)
+        .getAllByRole('radio')
+        .map((r) => r.textContent),
+    ).toEqual(['All pools', 'Rated only'])
+    expect(within(sheet).getByRole('radiogroup', { name: 'DEX' })).toBeTruthy()
   })
 
   it('filters by DEX from the Filter sheet and closes it', async () => {

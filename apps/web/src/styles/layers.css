@@ -2,11 +2,15 @@
    phone sheet. Plane 3 (`--sh-3`). They live in portals outside <main>, so route transitions
    never touch them. Motion is WAAPI (ui/*.tsx). */
 
-/* Popover: fixed, min(380px, 100vw − 32px), padding 18, radius 16, 14 px / 1.5. */
+/* Popover: fixed, min(380px, 100vw − 32px), padding 18, radius 16, 14 px / 1.5; never taller than
+   the viewport less 16 px at each edge, so a long one scrolls inside itself. */
 .pop {
   position: fixed;
   z-index: 90;
   width: min(380px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 18px;
   border-radius: var(--r-pop);
   background: var(--surface);
@@ -161,6 +165,19 @@
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1.2;
+}
+/* A sheet with two groups heads each one (13 px / 650, text-2), 24 px above the second. */
+.opt-head {
+  margin: 0;
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-small);
+  font-weight: 650;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+.opt-group + .opt-group {
+  margin-top: var(--s6);
 }
 /* Options: at least 52 px, a rule under each and a check on the selected one. */
 .opt {

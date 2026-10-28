@@ -53,7 +53,7 @@ export function NotRatedChip({
 }) {
   return (
     <span className={`grade tone-none is-unrated${size === 'fact' ? ' is-fact' : ''}`}>
-      <Glossary definition={unratedDetail(reason)} anchor="health" className="touch-hit">
+      <Glossary definition={unratedDetail(reason)} anchor="health">
         {NOT_RATED}
       </Glossary>
     </span>

@@ -312,10 +312,7 @@ export function WorstSection({ detail, now }: { detail: ScorecardDetail; now: nu
                 {fmt(e.value)} <span className="faint">KPI {fmt(e.threshold)}</span>
               </span>
               <span className="sc-w-t">
-                <Glossary
-                  definition={`Block ${group(e.blockNumber)}, ${full(e.timestamp)}`}
-                  className="touch-hit"
-                >
+                <Glossary definition={`Block ${group(e.blockNumber)}, ${full(e.timestamp)}`}>
                   {when(e.timestamp, now)}
                 </Glossary>
               </span>

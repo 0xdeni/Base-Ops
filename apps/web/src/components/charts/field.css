@@ -54,11 +54,13 @@
 .field .sq.dim {
   opacity: 0.22;
 }
+/* The label clears the square's own corner: inset 30 % of the radius (19 px on the 400 px square,
+   whose radius is 64), and never less than 10 / 8 px. */
 .field .sq .lab {
   position: absolute;
-  left: 10px;
-  top: 8px;
-  right: 8px;
+  left: max(10px, calc(var(--r) * 0.3));
+  top: max(8px, calc(var(--r) * 0.3));
+  right: max(8px, calc(var(--r) * 0.3));
   display: grid;
   gap: 2px;
   pointer-events: none;

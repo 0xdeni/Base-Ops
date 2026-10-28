@@ -16,7 +16,7 @@ import { Band } from '../components/ui/Band.js'
 import { Overlap } from '../components/ui/Block.js'
 import { SectionError, useDelayedPending } from '../components/ui/States.js'
 import { animate, DUR, EASE, prefersReducedMotion } from '../lib/motion.js'
-import { defaultDir, nextSort } from '../lib/poolsTable.js'
+import { defaultDir, hasTopShare, nextSort } from '../lib/poolsTable.js'
 import { useAllPools } from '../lib/useAllPools.js'
 import { useDebounced } from '../lib/useDebounced.js'
 import { useIsPhone } from '../lib/useMediaQuery.js'
@@ -187,6 +187,7 @@ export function Pools() {
           onDir={(dir) => update({ dir })}
           cols={state.cols}
           onCols={(cols) => update({ cols })}
+          topShare={hasTopShare([...(pools.rows ?? []), ...(unrated.rows ?? [])])}
           ratedOnly={state.ratedOnly}
           onRatedOnly={(ratedOnly) => update({ ratedOnly })}
         />

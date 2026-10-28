@@ -192,6 +192,7 @@
   --t-mark: 1.3125rem; /* 21: the app bar wordmark */
   --t-sheet: 1.5rem; /* 24: the phone sheet's title */
   --t-mark-lg: 1.75rem; /* 28: the footer wordmark, phone fact values */
+  --t-code-in: 0.9em; /* code inside a lead: 0.9 of its line, so Plex Mono sits level with it */
 
   /* Space (§3.5): 4 … 128. Other lengths: 1 px hairlines and edges, 2 px rules and the spine,
      4 px indicators. */

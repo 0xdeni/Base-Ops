@@ -1,8 +1,8 @@
 /**
  * The footer (docs/design/visual-v4.md §5.1): the ink block in both themes. From 1024 px one row of
  * three columns: the wordmark at 28 px; the promise, "Built on Base" in plain text and the data
- * source named once (D7), in `--on-ink-2`; the links Methodology, API and GitHub as 44 px targets.
- * Phones stack them in that order.
+ * source named once (D7), in `--on-ink-2`; the links Methodology, API and GitHub as 44 px targets
+ * (44 × 44 on a coarse pointer). Phones stack them in that order.
  */
 import { Link } from 'react-router-dom'
 import { Wordmark } from './Logo.js'
@@ -40,13 +40,17 @@ export function Footer({ source }: { source: DataSourceKind }) {
         </p>
         <ul className="foot-links">
           <li>
-            <Link to="/methodology">Methodology</Link>
+            <Link className="touch-hit" to="/methodology">
+              Methodology
+            </Link>
           </li>
           <li>
-            <a href={API_DOCS_HREF}>API</a>
+            <a className="touch-hit" href={API_DOCS_HREF}>
+              API
+            </a>
           </li>
           <li>
-            <a href={REPO_URL} rel="noopener">
+            <a className="touch-hit" href={REPO_URL} rel="noopener">
               GitHub
             </a>
           </li>

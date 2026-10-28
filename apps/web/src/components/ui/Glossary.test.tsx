@@ -89,16 +89,48 @@ describe('Glossary tooltip (§5.10, §4.4)', () => {
 
 describe('placement (§5.10)', () => {
   it('sets a popover 8 px under its trigger, right-aligned to it, 16 px inside the viewport', () => {
-    expect(placePopover({ left: 1180, right: 1320, bottom: 74, width: 140 }, 240, 1440)).toEqual({
+    const at = (left: number, right: number, top: number, bottom: number) => ({
+      left,
+      right,
+      top,
+      bottom,
+      width: right - left,
+    })
+    expect(placePopover(at(1180, 1320, 34, 74), 240, 200, 1440, 900)).toEqual({
       left: 1080,
       top: 82,
       origin: '170px top',
+      maxHeight: null,
     })
-    expect(placePopover({ left: 344, right: 437, bottom: 24, width: 93 }, 260, 1440).left).toBe(177)
+    expect(placePopover(at(344, 437, 0, 24), 260, 200, 1440, 900).left).toBe(177)
     // A phone: clamped 16 px from either edge.
-    expect(placePopover({ left: 330, right: 374, bottom: 80, width: 44 }, 320, 390).left).toBe(54)
-    expect(placePopover({ left: 340, right: 380, bottom: 80, width: 40 }, 358, 390).left).toBe(16)
-    expect(placePopover({ left: 0, right: 30, bottom: 20, width: 30 }, 288, 320).left).toBe(16)
+    expect(placePopover(at(330, 374, 36, 80), 320, 200, 390, 844).left).toBe(54)
+    expect(placePopover(at(340, 380, 40, 80), 358, 200, 390, 844).left).toBe(16)
+    expect(placePopover(at(0, 30, 0, 20), 288, 200, 320, 640).left).toBe(16)
+  })
+
+  it('opens above its trigger when it would end less than 16 px from the viewport bottom', () => {
+    // The Columns button of the Pools band at 1440 × 900 (trigger bottom 797, popover 204 tall).
+    const trigger = { left: 1240, right: 1376, top: 757, bottom: 797, width: 136 }
+    expect(placePopover(trigger, 260, 204, 1440, 900)).toEqual({
+      left: 1116,
+      top: 757 - 8 - 204,
+      origin: '192px bottom',
+      maxHeight: null,
+    })
+    // Room on neither side: the roomier side, scrolled to fit 16 px inside the viewport.
+    const mid = { left: 100, right: 200, top: 300, bottom: 340, width: 100 }
+    expect(placePopover(mid, 260, 600, 1440, 700)).toMatchObject({
+      top: 348,
+      origin: '134px top',
+      maxHeight: 700 - 16 - 348,
+    })
+    const low = { left: 100, right: 200, top: 500, bottom: 540, width: 100 }
+    expect(placePopover(low, 260, 600, 1440, 700)).toMatchObject({
+      top: 16,
+      origin: '134px bottom',
+      maxHeight: 500 - 8 - 16,
+    })
   })
 
   it('sets a tooltip 10 px above its trigger, or 10 px below it near the top', () => {

@@ -151,42 +151,32 @@
   line-height: 1.4;
   color: var(--text-2);
 }
-/* Flat areas under the depth schematic; the lines and points carry the contrast. */
+/* The depth schematic draws like the Pool curve (§5.9.3): flat side areas on the canvas, the buy
+   area with its 1 px ink edge in light, and 12 px points ringed in their side's colour. */
 .doc-area {
   stroke: none;
 }
 .doc-area.sell {
   fill: var(--sell);
-  fill-opacity: 0.18;
 }
 .doc-area.buy {
   fill: var(--buy);
-  fill-opacity: 0.3;
-}
-/* On black a quieter Yellow keeps the area from reading as a colour of its own. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .doc-area.buy {
-    fill-opacity: 0.16;
-  }
-}
-:root[data-theme="dark"] .doc-area.buy {
-  fill-opacity: 0.16;
-}
-/* The buy line's 1 px ink edge in light: a 4 px edge stroke under the 2 px Yellow one. */
-.doc-edge {
-  fill: none;
   stroke: var(--buy-edge);
-  stroke-width: 4px;
+  stroke-width: 1px;
   stroke-linejoin: round;
-  stroke-linecap: round;
+}
+.doc-pt {
+  fill: var(--canvas);
+  stroke-width: 3px;
 }
 .doc-pt.sell {
-  fill: var(--sell);
-  stroke: var(--canvas);
-  stroke-width: 2px;
+  stroke: var(--sell);
 }
 .doc-pt.buy {
-  fill: var(--buy);
+  stroke: var(--buy);
+}
+.doc-pt-edge {
+  fill: none;
   stroke: var(--buy-edge);
   stroke-width: 1px;
 }

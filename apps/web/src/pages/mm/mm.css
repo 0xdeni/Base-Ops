@@ -202,8 +202,9 @@
     column-gap: var(--s7);
   }
 }
+/* The commands in the band's lead: 0.9 of the lead's size, where wider Plex Mono reads level. */
 .mml-band .lead code {
-  font-size: inherit;
+  font-size: var(--t-code-in);
 }
 .mml-ctl {
   display: flex;

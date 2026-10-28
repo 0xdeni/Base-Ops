@@ -14,14 +14,14 @@ import { sortSummaries } from './sort.js'
 export type PoolsSortKey = PoolSort | 'spread' | 'top'
 export type OptionalColumn = 'tvl' | 'gap' | 'top' | 'price' | 'updated'
 
-/** Header and sort-sheet labels, in the sheet's order. */
+/** Header and sort-sheet labels, in the sheet's order (§5.10), then the top LP share. */
 export const SORT_LABEL: Readonly<Record<PoolsSortKey, string>> = {
   health: 'Health',
   depth: `Depth ±2${NB}%`,
   spread: 'Spread at $10K',
   volume: `24${NB}h volume`,
-  gap: 'Gap score',
   tvl: 'TVL',
+  gap: 'Gap score',
   top: 'Top LP share',
 }
 export const SORT_KEYS = Object.keys(SORT_LABEL) as PoolsSortKey[]
@@ -45,6 +45,28 @@ export const OPTIONAL_COLUMNS: ReadonlyArray<{ key: OptionalColumn; label: strin
   { key: 'price', label: 'Price' },
   { key: 'updated', label: 'Updated' },
 ]
+
+/**
+ * Whether any of these pools has its top LP share measured. Where none has (LP ownership was not
+ * indexed), the share is neither a sort nor a column: it would be "—" on every row.
+ */
+export function hasTopShare(pools: readonly PoolSummary[]): boolean {
+  return pools.some((p) => p.ownerTop1Share !== null)
+}
+
+/**
+ * The sort keys and optional columns offered: every one, less the top LP share when no pool has
+ * it, unless it is already chosen (a shared link), so the choice stays visible and undoable.
+ */
+export function offeredSorts(topShare: boolean, sort: PoolsSortKey): PoolsSortKey[] {
+  return SORT_KEYS.filter((k) => k !== 'top' || topShare || sort === 'top')
+}
+export function offeredColumns(
+  topShare: boolean,
+  cols: readonly OptionalColumn[],
+): ReadonlyArray<{ key: OptionalColumn; label: string }> {
+  return OPTIONAL_COLUMNS.filter((c) => c.key !== 'top' || topShare || cols.includes('top'))
+}
 
 const API_SORTS: ReadonlySet<string> = new Set<PoolSort>([
   'health',

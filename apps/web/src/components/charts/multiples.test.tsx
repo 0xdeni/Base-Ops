@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { HistoryPoint } from '../../api/types.js'
-import { dataRange, fittedDomain, seriesYDomain } from './Multiple.js'
+import { bracketLabel, dataRange, fittedDomain, printsLevel, seriesYDomain } from './Multiple.js'
 import { type MultipleSeries, SmallMultiples } from './SmallMultiples.js'
 import { seriesRuns } from './seriesRuns.js'
 
@@ -106,6 +106,40 @@ describe('SmallMultiples (visual-v4 §5.9.6)', () => {
       ...(container.querySelectorAll('.sm')[1]?.querySelectorAll('.sm-range text') ?? []),
     ]
     expect(spread.map((t) => t.textContent)).toEqual(['10.4', '10.3'])
+  })
+
+  it('draws a series that moves less than its precision level at mid-height, with one label', () => {
+    const flat = history(5, (i) => ({ spread10kBps: i === 0 ? 60.227 : 60.226 }))
+    const spread: MultipleSeries<HistoryPoint> = {
+      key: 'spread',
+      label: 'Spread at $10K',
+      value: (p) => p.spread10kBps,
+      format: (v) => (v === null ? '—' : `${v.toFixed(1)} bps`),
+      minSpan: 0.02,
+    }
+    const { container } = render(
+      <SmallMultiples
+        points={flat}
+        series={[spread]}
+        domain={[flat[0]!.timestamp, flat[4]!.timestamp]}
+        windowLabel="24 hours"
+      />,
+    )
+    // The plot runs from y 10 to y 102 (132 − 30): the line stays within 10 % of it, mid-height.
+    const ys = [...container.querySelectorAll('rect.sm-pt')].map(
+      (r) => Number(r.getAttribute('y')) + 5,
+    )
+    expect(ys).toHaveLength(5)
+    expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(0.1 * 92)
+    expect(Math.abs((Math.max(...ys) + Math.min(...ys)) / 2 - 56)).toBeLessThan(0.1 * 92)
+    const range = container.querySelector('.sm-range')
+    expect([...(range?.querySelectorAll('text') ?? [])].map((t) => t.textContent)).toEqual([
+      '60.2 bps',
+    ])
+    expect(range?.querySelector('line')).toBeNull()
+    expect(screen.getByRole('img').getAttribute('aria-label')).toBe(
+      'Spread at $10K over 24 hours: 60.2 bps throughout, latest 60.2 bps.',
+    )
   })
 
   it('fits the x axis to the samples, with ticks every 15 minutes under 2 hours', () => {
@@ -241,5 +275,21 @@ describe('small multiple scales', () => {
     const [, top] = seriesYDomain(pts, { ...plain, reference: { value: 20_000_000, label: 'KPI' } })
     expect(top).toBeGreaterThan(20_000_000)
     expect(seriesYDomain([], plain)).toEqual([0, 1])
+  })
+
+  it('centres a series whose ends print the same in at least 10× its span and 2 % of its median', () => {
+    const flat = history(2, (i) => ({ depth2Usd: 1_000_000 + i * 100 }))
+    const usd = { ...SERIES[0]!, band: null, tick: undefined, format: () => '$1.00M' }
+    expect(printsLevel(usd, [1_000_000, 1_000_100])).toBe(true)
+    const [lo, hi] = seriesYDomain(flat, usd)
+    // 2 % of the $1.00M median beats 10 × the $100 span; 12 % padding on top.
+    expect(hi - lo).toBeCloseTo(20_001 * 1.24, 6)
+    expect((lo + hi) / 2).toBeCloseTo(1_000_050, 6)
+    // A tick that tells the ends apart labels them, and the range stays cropped to the data.
+    expect(printsLevel(SERIES[1]!, [10.3, 10.4])).toBe(false)
+    expect(bracketLabel(SERIES[1]!, [10.3, 10.4])(10.4)).toBe('10.4')
+    expect(bracketLabel({ ...SERIES[1]!, tick: (v) => v.toFixed(0) }, [10.3, 10.4])(10.4)).toBe(
+      '10.4 bps',
+    )
   })
 })

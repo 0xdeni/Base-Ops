@@ -1,8 +1,9 @@
 /**
  * Methodology's three schematics (ia-v3 §4.8, docs/design/visual-v4.md §6.9): the mirrored depth
  * curve, the persistence sparkline with its p10–median band, and the scorecard's KPI lines with a
- * breach band. Each is drawn in the visual language of the chart it explains (flat fills, square
- * points, Cerulean for the sell side and Yellow with an ink edge for the buy side), from fixed
+ * breach band. Each is drawn in the visual language of the chart it explains (flat fills, ringed
+ * square points, Cerulean for the sell side and Yellow with an ink edge for the buy side, side marks
+ * on the canvas and never on a Gray 10 well; the ±2 % band as two dashed rules), from fixed
  * illustrative shapes: no axis carries a number (the page shows no data numbers outside
  * formulas), and every figure says it is an illustration.
  */
@@ -41,6 +42,22 @@ function Pt({ x, y, className }: { x: number; y: number; className: string }) {
   return <rect className={className} x={x - 5} y={y - 5} width={10} height={10} rx={3} />
 }
 
+/**
+ * A measured point of the depth curve (§5.9.3): a 12 px square, radius 3, in the canvas colour
+ * inside a 3 px ring of its side's colour. A Yellow ring also gets its 1 px ink edge (`--buy-edge`,
+ * none in dark), drawn just outside the ring.
+ */
+function RingPt({ x, y, side }: { x: number; y: number; side: 'sell' | 'buy' }) {
+  return (
+    <>
+      {side === 'buy' ? (
+        <rect className="doc-pt-edge" x={x - 8} y={y - 8} width={16} height={16} rx={4} />
+      ) : null}
+      <rect className={`doc-pt ${side}`} x={x - 6} y={y - 6} width={12} height={12} rx={3} />
+    </>
+  )
+}
+
 export function DepthSchematic() {
   const ref = useRef<HTMLDivElement | null>(null)
   const w = useChartWidth(ref, 560)
@@ -53,7 +70,8 @@ export function DepthSchematic() {
    * shorten to "−2 %" and "+2 %" and stay at their points (the x ticks and band name the level).
    */
   const narrow = w < 440
-  const fx = (p: number) => logPctX(p, cx, w / 2 - 6)
+  // ±5 % lands 10 px inside the edge, as on the Pool curve, so its ringed point is never cut.
+  const fx = (p: number) => logPctX(p, cx, w / 2 - 10)
   const fy = linear(0, 1, base, top)
   const side = (s: 'sell' | 'buy') => {
     const k = s === 'sell' ? -1 : 1
@@ -88,25 +106,18 @@ export function DepthSchematic() {
           role="img"
           aria-label="Illustration of a mirrored depth curve: dollars needed to move the price 1, 2 and 5 % down on the sell side and up on the buy side."
         >
-          <rect
-            className="curve-band"
-            x={fx(-2)}
-            y={top}
-            width={fx(2) - fx(-2)}
-            height={base - top}
-          />
+          {[-2, 2].map((p) => (
+            <line key={p} className="curve-band" x1={fx(p)} x2={fx(p)} y1={top} y2={base} />
+          ))}
           <path className="doc-area sell" d={area([s1, s2])} />
           <path className="doc-area buy" d={area(buy)} />
           <line className="curve-spine" x1={cx} x2={cx} y1={top} y2={base} />
-          <path className="c-line sell" d={pathD([[cx, base], s1, s2])} />
           <path className="c-line sell is-exhausted" d={pathD([s2, s5])} />
-          <path className="doc-edge" d={pathD([[cx, base], ...buy])} />
-          <path className="c-line buy" d={pathD([[cx, base], ...buy])} />
           {sell.map(([x, y]) => (
-            <Pt key={`s${x}`} x={x} y={y} className="doc-pt sell" />
+            <RingPt key={`s${x}`} x={x} y={y} side="sell" />
           ))}
           {buy.map(([x, y]) => (
-            <Pt key={`b${x}`} x={x} y={y} className="doc-pt buy" />
+            <RingPt key={`b${x}`} x={x} y={y} side="buy" />
           ))}
 
           {/* Anchored like the pool curve's labels: inward of the ±2 % points, 12 px above. */}

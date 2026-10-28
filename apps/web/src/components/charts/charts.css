@@ -140,6 +140,17 @@
     padding: 32px;
   }
 }
+/* From 840 px the block is as wide as its table, so the rows read as one compact unit; phones
+   keep the full width and the gutter-bleeding scroll wrapper. */
+@media (min-width: 52.5em) {
+  .band-data {
+    width: fit-content;
+    max-width: 100%;
+  }
+  .band-data :where(.tbl) {
+    width: auto;
+  }
+}
 .chart-note {
   margin: 0;
   font-size: var(--t-data);

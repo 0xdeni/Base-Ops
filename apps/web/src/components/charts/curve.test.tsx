@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PoolSnapshotDto } from '../../api/types.js'
 import { DepthCurveTable } from './ChartTables.js'
 import { placeChartTip } from './ChartTooltip.js'
@@ -20,6 +20,16 @@ import { DepthCurve } from './DepthCurve.js'
 afterEach(cleanup)
 
 const NB = ' '
+const MINUS = '−'
+
+// jsdom has no PointerEvent: a MouseEvent that carries `pointerType` stands in.
+class TestPointerEvent extends MouseEvent {
+  pointerType: string
+  constructor(type: string, init: PointerEventInit = {}) {
+    super(type, init)
+    this.pointerType = init.pointerType ?? 'mouse'
+  }
+}
 
 function exhausted(): PoolSnapshotDto {
   const depth = SNAPSHOT.depth.map((d) =>
@@ -201,6 +211,49 @@ describe('DepthCurve', () => {
     fireEvent.keyDown(img, { key: 'Escape' })
     expect(document.querySelector('.tip.chart-tip')).toBeNull()
     expect(container.querySelector('.xh')).toBeNull()
+  })
+
+  describe('pointer and touch', () => {
+    beforeEach(() => vi.stubGlobal('PointerEvent', TestPointerEvent))
+    afterEach(() => vi.unstubAllGlobals())
+    const tip = () => document.querySelector('.tip.chart-tip')
+    // jsdom lays nothing out: the plot starts at 0, so a point's centre is its x plus 6.
+    const xOf = (c: HTMLElement, i: number) =>
+      Number(c.querySelectorAll('rect.cv-pt')[i]?.getAttribute('x')) + 6
+    const tap = (el: Element, clientX: number) => {
+      fireEvent.pointerDown(el, { pointerType: 'touch', clientX })
+      fireEvent.pointerUp(el, { pointerType: 'touch', clientX })
+      // A lifting finger leaves the element too.
+      fireEvent.pointerLeave(el, { pointerType: 'touch', clientX })
+      fireEvent.click(el, { clientX })
+    }
+
+    it('follows a mouse and clears when it leaves the plot', () => {
+      const { container } = renderCurve()
+      const img = screen.getByRole('img')
+      fireEvent.pointerMove(img, { pointerType: 'mouse', clientX: xOf(container, 4) })
+      expect(tip()?.textContent).toContain(`+2${NB}%, buy side`)
+      fireEvent.pointerLeave(img, { pointerType: 'mouse' })
+      expect(tip()).toBeNull()
+    })
+
+    it('keeps a tapped point read after the finger lifts, until a second tap or a tap elsewhere', () => {
+      const { container } = renderCurve()
+      const img = screen.getByRole('img')
+      tap(img, xOf(container, 1))
+      expect(tip()?.textContent).toContain(`${MINUS}2${NB}%, sell side`)
+      expect(container.querySelector('rect.cv-pt.is-on')?.getAttribute('width')).toBe('16')
+      expect(container.querySelector('.xh')).toBeTruthy()
+      // A tap on the same point clears it; the next one reads it again.
+      tap(img, xOf(container, 1))
+      expect(tip()).toBeNull()
+      tap(img, xOf(container, 4))
+      expect(tip()?.textContent).toContain(`+2${NB}%, buy side`)
+      // A press anywhere outside the plot clears it.
+      fireEvent.pointerDown(document.body, { pointerType: 'touch' })
+      expect(tip()).toBeNull()
+      expect(container.querySelector('.xh')).toBeNull()
+    })
   })
 
   it('draws an exhausted side dashed with "Liquidity runs out"', () => {

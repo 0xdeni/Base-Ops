@@ -16,6 +16,7 @@ import { ColumnsMenu, SortSheet } from '../../components/ui/TableControls.js'
 import { count } from '../../lib/format.js'
 import {
   defaultDir,
+  hasTopShare,
   nextSort,
   type PoolsSortKey,
   sortPools,
@@ -55,15 +56,21 @@ export function TokenPools({
   const paged = sorted.length > TOKEN_ROWS
   const rows = paged && !allRows ? sorted.slice(0, TOKEN_ROWS) : sorted
   const onSort = (key: PoolsSortKey) => onChange({ ...state, ...nextSort(state, key) })
+  const topShare = hasTopShare(pools)
   const controls = phone ? (
     <SortSheet
       sort={sort}
       dir={dir}
       onSort={(key) => onChange({ ...state, sort: key, dir: defaultDir(key) })}
       onDir={(d) => onChange({ ...state, dir: d })}
+      topShare={topShare}
     />
   ) : (
-    <ColumnsMenu cols={cols} onChange={(next) => onChange({ ...state, cols: next })} />
+    <ColumnsMenu
+      cols={cols}
+      onChange={(next) => onChange({ ...state, cols: next })}
+      topShare={topShare}
+    />
   )
   return (
     <section className="wrap token-pools" aria-labelledby="s-pools">

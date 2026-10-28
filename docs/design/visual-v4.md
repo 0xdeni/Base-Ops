@@ -1006,8 +1006,8 @@ desktop (TB8).
 
 **Dense tables** (Show data, Details, Compare DEXes): 15 px; header 13 px / 650 `--text-2` over a
 2 px `--text-1` rule; cells padded 11 px, 1 px `--line` rules; a total row at 800 over a 2 px
-rule. On the band they sit in a white (dark: black) block. They scroll in a gutter-bleeding wrapper
-on phones.
+rule. On the band they sit in a white (dark: black) block, as wide as the table from 840 px. They
+scroll in a gutter-bleeding wrapper on phones.
 
 **Row lists** (gaps, previews, breaches): rows at least 64 px with a 1 px `--line` rule, a 2 px
 `--text-1` rule above the first; the pool cell, a sentence ("Trades 205× its depth a day", 15 px /
@@ -1102,6 +1102,8 @@ On the band. 340 px tall (240 on phones); plot top 72 (16 on phones), bottom 28.
   runs from the plot top to the point, the point grows to 16 px and the tooltip (§5.10) shows "+2 %,
   buy side", Depth $425K, Spent 425,100 USDC, Price Reached. Arrow keys step through the six points
   (the SVG is `tabindex="0"`), Escape and blur clear. The tooltip flips left near the right edge.
+  On touch the first tap reads the nearest point and keeps it until a tap elsewhere or a second tap
+  on it, as on the butterfly and the field.
 - **Foot row:** "Show data" (a ±1 / 2 / 5 % table of USD and token amounts per side and "Reached",
   then "Buying meets 10 % more depth than selling at ±2 %.") and the caption "Straight lines join
   measured points only. Nothing is drawn past ±5 %."
@@ -1142,8 +1144,9 @@ section shows whole-pool depth as a history multiple (§5.9.6) and says so.
 - A 3 px `currentColor` line with rounded joins through 10 px square points (canvas fill, 2.5 px
   ring), no fill (CH5).
 - **The y range is cropped and labelled:** a 2 px `--line-2` bracket at the right spans the data,
-  with the maximum and the minimum at its ends ("$810K", "$780K"). A 4 % range never reads as a
-  swing without its numbers.
+  with the maximum and the minimum at its ends in the head's format ("$812K", "$781K"). A 4 % range
+  never reads as a swing without its numbers. A series whose two ends print the same (a spread that
+  moves 0.00004 bps) draws level at mid-height with one label and no bracket.
 - **The x axis spans the snapshots' own time range,** with ticks every 15 minutes up to 2 h, then
   the v3 landmarks (6 h, weekdays, dates). The caption states the span: "Times in UTC. The axis
   spans the 51 minutes the snapshots cover; each range is labelled at its right. Both windows hold
@@ -1174,9 +1177,9 @@ carries the counts from core:
 ### 5.10 Floating layers
 
 - **Popover:** `position: fixed`, `min(380px, 100vw − 32px)`, padding 18, radius 16, `--surface`,
-  `--edge` and `--sh-3`, 14 px / 1.5; 8 px under its trigger, right-aligned to it, 16 px from the
-  viewport edge; `role="dialog"` with a label; closes on outside pointer-down or Escape, which
-  returns focus.
+  `--edge` and `--sh-3`, 14 px / 1.5; 8 px under its trigger (above it when there is no room
+  below), right-aligned to it, 16 px inside the viewport, scrolling when taller than that;
+  `role="dialog"` with a label; closes on outside pointer-down or Escape, which returns focus.
 - **Tooltip and chart tooltip:** max 300 px, padding 10 / 12, radius 12, Gray 100 with white text
   (Gray 80 in dark), 13 px / 1.4, `--sh-3`, `pointer-events: none`. Glossary and "Not rated"
   tooltips sit 10 px above their trigger (below when there is no room); the chart tooltip sits
@@ -1186,8 +1189,9 @@ carries the counts from core:
   `overscroll-behavior: contain`, scrim `--scrim`. A 44 × 5 grip in a 28 px drag area; title 24 px /
   800; options at least 52 px with a `--line` rule and a check on the selected one; a full-width
   primary "Done". Focus is trapped and returned; body scroll locks; a route change closes it.
-  Sheets: Filter pools (All DEXes and each DEX with its share, Rated only) and Sort pools (Health,
-  Depth ±2 %, Spread at $10K, 24 h volume, TVL, Gap score).
+  Sheets: Filter pools (two groups under 13 px / 650 headings: DEX, with All DEXes and each DEX
+  with its share; Rating, with All pools and Rated only) and Sort pools (Health, Depth ±2 %, Spread
+  at $10K, 24 h volume, TVL, Gap score; Top LP share only when a listed pool has it).
 
 ### 5.11 Embed badge
 

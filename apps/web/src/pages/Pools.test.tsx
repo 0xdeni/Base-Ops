@@ -141,6 +141,26 @@ describe('Pools: the table (TB2–TB4)', () => {
     expect((await screen.findByRole('tooltip')).textContent).toContain('Owners are not indexed')
   })
 
+  it('leaves the top LP share out of Columns while no pool has it measured', async () => {
+    const base = manyPools(12)
+    const client: ApiClient = {
+      ...base,
+      pools: async (query = {}) => {
+        const page = await base.pools(query)
+        return { ...page, items: page.items.map((p) => ({ ...p, ownerTop1Share: null })) }
+      },
+    }
+    renderAt('/pools', client)
+    await table()
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }))
+    const pop = await screen.findByRole('dialog', { name: 'Columns' })
+    expect(
+      within(pop)
+        .getAllByRole('checkbox')
+        .map((c) => c.getAttribute('aria-label') ?? c.closest('label')?.textContent),
+    ).toEqual(['TVL', 'Gap score', 'Price', 'Updated'])
+  })
+
   it('prices each pool from its base token in the Price column (N2, DV8)', async () => {
     renderAt('/pools?cols=price&q=cbbtc')
     const t = await table()

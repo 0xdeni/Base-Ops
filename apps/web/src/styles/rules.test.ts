@@ -81,6 +81,8 @@ describe('motion is written no-motion first (§3.8, §4)', () => {
     const allowed = inMedia(allCss, '(prefers-reduced-motion: no-preference)')
     expect(block(allowed, '::view-transition-old(main)')).toMatch(/var\(--d-route-out\)/)
     expect(block(allowed, '::view-transition-new(main)')).toMatch(/var\(--d-route-in\)/)
+    // The group's default size and position morph is off: only the two opacities animate.
+    expect(block(allowed, '::view-transition-group(main)')).toMatch(/^\s*animation:\s*none;\s*$/)
     const tokens = decls(tokensCss.replace(/[{}]/g, ';'))
     expect([tokens.get('--d-route-out'), tokens.get('--d-route-in')]).toEqual(['100ms', '180ms'])
     expect(allCss).toMatch(/::view-transition-new\(root\) \{\s*animation: none;/)
@@ -103,7 +105,9 @@ describe('touch targets and layering (A5, §5.5)', () => {
       expect(block(coarse, sel), sel).toMatch(/(height|min-height|width):\s*44px/)
     const at = (file: string) => read(join(SRC, file))
     expect(at('components/shell/DemoLine.tsx')).toMatch(/triggerClassName="quiet-link touch-hit"/)
-    expect(at('components/ui/GradeGlyph.tsx')).toMatch(/className="touch-hit"/)
+    // Every glossary term (the Not rated chip's included) and every footer link.
+    expect(at('components/ui/Glossary.tsx')).toMatch(/className=\{`gloss touch-hit/)
+    expect(at('components/shell/Footer.tsx').match(/className="touch-hit"/g)).toHaveLength(3)
   })
 
   it('keeps the Not rated chip reachable above a row link', () => {

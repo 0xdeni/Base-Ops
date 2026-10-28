@@ -6,9 +6,19 @@
  * labels sit above the plot at ±2 % on desktop; phones read them in a row above the chart.
  *
  * The pointer snaps to the nearest measured point: a dashed crosshair, the point grows to 16 px
- * and the tooltip shows. Arrow keys step through the points, Escape and blur clear (CH2).
+ * and the tooltip shows. A mouse clears it on leaving the plot; on touch the first tap reads the
+ * nearest point and keeps it until a tap elsewhere, a second tap on it, blur or Escape, like the
+ * butterfly and the field. Arrow keys step through the points, Escape and blur clear (CH2). The
+ * tooltip follows its point when the page scrolls.
  */
-import { type PointerEvent, type ReactNode, useRef, useState } from 'react'
+import {
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import type { PoolSnapshotDto } from '../../api/types.js'
 import { MINUS, NB, pct, usd, usdTick } from '../../lib/format.js'
 import { useIsPhone } from '../../lib/useMediaQuery.js'
@@ -87,11 +97,53 @@ export function DepthCurve({ snapshot, token0, token1, heading, children }: Dept
     setSel(-1)
     setAnchor(null)
   }
+  const nearestAt = (e: { clientX: number; currentTarget: Element }) =>
+    nearestPoint(points, fx, e.clientX - e.currentTarget.getBoundingClientRect().left)
+  /** The kind of the latest press on the plot: a tap reads on its click, a mouse on the move. */
+  const pointer = useRef('mouse')
   const onMove = (e: PointerEvent<SVGSVGElement>) => {
-    const r = e.currentTarget.getBoundingClientRect()
-    const i = nearestPoint(points, fx, e.clientX - r.left)
+    if (e.pointerType !== 'mouse') return
+    const i = nearestAt(e)
     if (i >= 0 && i !== sel) select(i)
   }
+  const onDown = (e: PointerEvent<SVGSVGElement>) => {
+    pointer.current = e.pointerType
+    if (e.pointerType === 'mouse') onMove(e)
+  }
+  // A tap (a click that follows a touch or pen press, so never a scroll) reads the nearest point;
+  // a second tap on the point that is read clears it.
+  const onTap = (e: MouseEvent<SVGSVGElement>) => {
+    if (pointer.current === 'mouse') return
+    const i = nearestAt(e)
+    if (i < 0) return
+    if (i === sel) clear()
+    else select(i)
+  }
+  const reanchor = useRef(() => {})
+  reanchor.current = () => {
+    if (sel >= 0) select(sel)
+  }
+
+  // While a point is read: a press outside the plot clears it, and a scroll or resize moves the
+  // tooltip with its point.
+  const reading = sel >= 0
+  useEffect(() => {
+    if (!reading) return
+    const outside = (e: globalThis.PointerEvent) => {
+      if (svgRef.current?.contains(e.target as Node)) return
+      setSel(-1)
+      setAnchor(null)
+    }
+    const follow = () => reanchor.current()
+    document.addEventListener('pointerdown', outside)
+    window.addEventListener('scroll', follow, { passive: true })
+    window.addEventListener('resize', follow)
+    return () => {
+      document.removeEventListener('pointerdown', outside)
+      window.removeEventListener('scroll', follow)
+      window.removeEventListener('resize', follow)
+    }
+  }, [reading])
 
   const missing = (side: 'sell' | 'buy') => !points.some((p) => p.side === side)
   const sell2 = twoPct(points, 'sell')
@@ -150,8 +202,12 @@ export function DepthCurve({ snapshot, token0, token1, heading, children }: Dept
           height={H}
           viewBox={`0 0 ${W} ${H}`}
           onPointerMove={onMove}
-          onPointerDown={onMove}
-          onPointerLeave={clear}
+          onPointerDown={onDown}
+          onClick={onTap}
+          onPointerLeave={(e) => {
+            // A finger lifting fires pointerleave too: only a mouse leaving the plot clears.
+            if (e.pointerType === 'mouse') clear()
+          }}
           onBlur={clear}
           onKeyDown={(e) => {
             if (e.key === 'ArrowRight') select(Math.min(points.length - 1, sel + 1))

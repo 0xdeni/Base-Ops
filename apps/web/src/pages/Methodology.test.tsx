@@ -191,6 +191,21 @@ describe('Methodology: sections', () => {
     expect(within(section('scorecards')).getByRole('img', { name: /KPI line/ })).toBeTruthy()
   })
 
+  it('draws the depth schematic like the Pool curve: flat areas, ringed points, no filled band', () => {
+    renderAt('/methodology')
+    const img = within(section('depth')).getByRole('img', { name: /mirrored depth curve/ })
+    // The ±2 % band is two dashed rules, so no side mark sits on a filled well (§2.4).
+    expect([...img.querySelectorAll('.curve-band')].map((e) => e.tagName)).toEqual(['line', 'line'])
+    expect(img.querySelectorAll('path.doc-area')).toHaveLength(2)
+    const pts = [...img.querySelectorAll('rect.doc-pt')]
+    expect(pts).toHaveLength(6)
+    expect(pts.every((r) => r.getAttribute('width') === '12' && r.getAttribute('rx') === '3')).toBe(
+      true,
+    )
+    // Each Yellow ring carries its ink edge; the sell points need none.
+    expect(img.querySelectorAll('rect.doc-pt-edge')).toHaveLength(3)
+  })
+
   it('shows the weighted health bar and the grade bands read from core', () => {
     renderAt('/methodology')
     const health = section('health')
