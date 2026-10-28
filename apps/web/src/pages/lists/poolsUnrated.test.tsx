@@ -27,9 +27,9 @@ describe('Pools: rated and unrated pools', () => {
   it('lists the rated pools and keeps the unrated ones behind one row', async () => {
     const h = renderAt('/pools')
     const t = await table()
-    expect(bodyRows(t)).toHaveLength(15)
+    expect(bodyRows(t)).toHaveLength(17)
     expect(chips(t)).toHaveLength(0)
-    expect(within(t).getAllByRole('img', { name: /^Grade [ABCDF]$/ })).toHaveLength(15)
+    expect(within(t).getAllByRole('img', { name: /^Grade [ABCDF]$/ })).toHaveLength(17)
     const show = await screen.findByRole('button', { name: 'Show 3 unrated pools' })
     expect(show.getAttribute('aria-expanded')).toBe('false')
     expect(last(h)).toBe('/pools')
@@ -39,8 +39,8 @@ describe('Pools: rated and unrated pools', () => {
     await waitFor(() => expect(chips(t)).toHaveLength(3))
     // the rated pools, one heading row, the unrated pools
     const rows = bodyRows(t)
-    expect(rows).toHaveLength(15 + 1 + 3)
-    expect(rows[15]?.textContent).toBe('Unrated pools')
+    expect(rows).toHaveLength(17 + 1 + 3)
+    expect(rows[17]?.textContent).toBe('Unrated pools')
     // the same button, still focused: it says it is open and what it does next
     expect(show.isConnected).toBe(true)
     expect(document.activeElement).toBe(show)
@@ -48,7 +48,7 @@ describe('Pools: rated and unrated pools', () => {
     expect(show.textContent).toBe('Hide unrated pools')
     expect(screen.queryByRole('button', { name: /Show \d+ unrated pools/ })).toBeNull()
     // the live caption keeps counting the rated pools and says the unrated ones were added
-    const caption = screen.getByText('15 rated pools, plus 3 unrated')
+    const caption = screen.getByText('17 rated pools, plus 3 unrated')
     expect(caption.getAttribute('aria-live')).toBe('polite')
     // a chip says why, in plain words, on focus
     const reasons: string[] = []
@@ -74,8 +74,8 @@ describe('Pools: rated and unrated pools', () => {
       const flags = rows
         .filter((r) => !r.classList.contains('group-row'))
         .map((r) => chips(r).length)
-      expect(flags.slice(0, 15).every((n) => n === 0)).toBe(true)
-      expect(flags.slice(15)).toEqual([1, 1, 1])
+      expect(flags.slice(0, 17).every((n) => n === 0)).toBe(true)
+      expect(flags.slice(17)).toEqual([1, 1, 1])
       cleanup()
     }
   })
@@ -94,11 +94,11 @@ describe('Pools: rated and unrated pools', () => {
     expect(screen.getByRole('button', { name: 'Show 3 unrated pools' })).toBe(hide)
     expect(document.activeElement).toBe(hide)
     expect(hide.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.getByText('15 rated pools').getAttribute('aria-live')).toBe('polite')
+    expect(screen.getByText('17 rated pools').getAttribute('aria-live')).toBe('polite')
     fireEvent.click(screen.getByRole('radio', { name: 'Rated only' }))
     await waitFor(() => expect(last(h)).toBe('/pools?rated=1'))
     await waitFor(() => expect(screen.queryByRole('button', { name: /unrated pools/ })).toBeNull())
-    expect(bodyRows(await table())).toHaveLength(15)
+    expect(bodyRows(await table())).toHaveLength(17)
     expect(screen.getByRole('radio', { name: 'Rated only' }).getAttribute('aria-checked')).toBe(
       'true',
     )
@@ -129,16 +129,16 @@ describe('Pools: rated and unrated pools', () => {
     toggle.focus()
     fireEvent.click(toggle)
     await waitFor(() => expect(last(h)).toBe('/pools?unrated=1'))
-    await screen.findByText('15 rated pools, plus 50 of 120 unrated')
+    await screen.findByText('17 rated pools, plus 50 of 120 unrated')
     // "Show 50 more" sits beside the toggle, which is the same button and still has focus
     const more = await screen.findByRole('button', { name: 'Show 50 more unrated pools' })
     expect(document.activeElement).toBe(toggle)
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     fireEvent.click(more)
     await waitFor(() => expect(last(h)).toBe('/pools?unrated=2'))
-    await screen.findByText('15 rated pools, plus 100 of 120 unrated')
+    await screen.findByText('17 rated pools, plus 100 of 120 unrated')
     fireEvent.click(await screen.findByRole('button', { name: 'Show 20 more unrated pools' }))
-    await screen.findByText('15 rated pools, plus 120 unrated')
+    await screen.findByText('17 rated pools, plus 120 unrated')
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: /more unrated pools/ })).toBeNull(),
     )
@@ -146,7 +146,7 @@ describe('Pools: rated and unrated pools', () => {
     // hiding takes all of them out at once
     fireEvent.click(toggle)
     await waitFor(() => expect(last(h)).toBe('/pools'))
-    await screen.findByText('15 rated pools')
+    await screen.findByText('17 rated pools')
     expect(toggle.textContent).toBe('Show 120 unrated pools')
   })
 
@@ -187,10 +187,10 @@ describe('Pools: rated and unrated pools', () => {
     const list = await screen.findByRole('list', { name: 'Pools' })
     await waitFor(() => expect(chips(list)).toHaveLength(3))
     const items = within(list).getAllByRole('listitem')
-    expect(items).toHaveLength(15 + 1 + 3)
-    expect(items[15]?.textContent).toBe('Unrated pools')
+    expect(items).toHaveLength(17 + 1 + 3)
+    expect(items[17]?.textContent).toBe('Unrated pools')
     // a pool with no grade has no score to show: the sort value is "—" and the chip says why
-    expect(items[16]?.querySelector('.metric')?.textContent).toBe('—')
+    expect(items[18]?.querySelector('.metric')?.textContent).toBe('—')
     fireEvent.click(screen.getByRole('button', { name: 'All DEXes' }))
     const sheet = await screen.findByRole('dialog', { name: 'Filter pools' })
     fireEvent.click(within(sheet).getByRole('radio', { name: 'Rated only' }))

@@ -12,7 +12,7 @@
  */
 import { Fragment, useRef } from 'react'
 import type { PoolSummary } from '../../api/types.js'
-import { NB, price } from '../../lib/format.js'
+import { NB, price, tokenText } from '../../lib/format.js'
 import { basePrice, baseQuote } from '../../lib/orient.js'
 import {
   glyphMax,
@@ -47,11 +47,11 @@ function PriceCell({ pool }: { pool: PoolSummary }) {
   const { base, quote } = baseQuote(pool.pool, pool.price)
   const text = price(basePrice(pool.price))
   return (
-    <span title={`1${NB}${base.symbol} = ${text}${NB}${quote.symbol}`}>
+    <span title={`1${NB}${tokenText(base)} = ${text}${NB}${tokenText(quote)}`}>
       {text}
       <span className="td-unit">
         {NB}
-        {quote.symbol}
+        {tokenText(quote)}
       </span>
     </span>
   )

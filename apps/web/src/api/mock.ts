@@ -68,8 +68,8 @@ const DISCOVERED: Readonly<Record<Dex, number>> = {
   'uniswap-v4': 627,
   'aerodrome-v2': 2311,
   'aerodrome-slipstream': 418,
-  'aero-v2': 0,
-  'aero-slipstream': 0,
+  'aero-v2': 300,
+  'aero-slipstream': 489,
 }
 
 /** The median health total over the rated pools only; null when none is rated. */
@@ -108,6 +108,7 @@ function historySeed(p: MockPool): HistorySeed {
     health: p.score.total,
     price: p.snapshot.price,
     tvlUsd: p.snapshot.tvlUsd,
+    feePips: p.meta.feePips,
     sparse: p.persistence24h.stability === null,
   }
 }

@@ -6,7 +6,16 @@
  * and in any order.
  */
 import type { PoolMetaDto, PoolSummary, TokenDetail } from '../../api/types.js'
-import { count, dexLabel, isPoolId, NB, pairLabel, shareOf, usd } from '../../lib/format.js'
+import {
+  count,
+  dexLabel,
+  isPoolId,
+  NB,
+  pairLabel,
+  shareOf,
+  tokenText,
+  usd,
+} from '../../lib/format.js'
 import { swapSides } from '../../lib/orient.js'
 
 /** The non-pool edge a route can cross, in words (ia-v3 §4.7). */
@@ -37,7 +46,7 @@ export type TokenTotals = Pick<TokenDetail, 'total' | 'depth2UsdTotal'>
  * the token's scored pools out, it says so: "across 2 of WETH’s 3 scored pools".
  */
 export function tokenAnswer(detail: TokenDetail): string {
-  const sym = detail.token.symbol
+  const sym = tokenText(detail.token)
   const n = detail.total
   if (n === 0) return `${sym} has no scored pools yet.`
   if (detail.usd === null)

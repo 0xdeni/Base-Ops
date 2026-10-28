@@ -13,14 +13,17 @@ names packages, functions and routes that implementation agents must match.
 - A mandate is identified by a slug `id` and is keyed to exactly one `poolId`. Several mandates
   may point at the same pool.
 - `addresses` are the market maker's on-chain identities, lowercase, non-empty:
-  - Uniswap v3 / v4 / Slipstream: position owners as reported by `readPositions` (NFPM /
-    PositionManager `ownerOf`, or hook/vault contracts for v4 direct positions).
-  - Slipstream: positions staked in the pool's `CLGauge` show the gauge as owner; the chain
-    reader resolves them to the **depositor** (see §3) so the depositor address is what a
-    project registers.
-  - Aerodrome v2: LP-token holders; gauge-staked LP tokens count too (resolved via the Voter).
-    Gauge-staked attribution (here and for Slipstream) reads the live Voter / `CLPool.gauge()`;
-    the Voter killed its main gauges at block ~52,918,274 (docs/research/base-contracts.md §2.8).
+  - Uniswap v3 / v4 / Slipstream (Aerodrome and Aero): position owners as reported by
+    `readPositions` (NFPM / PositionManager `ownerOf`, or hook/vault contracts for v4 direct
+    positions).
+  - Slipstream (Aerodrome and Aero): positions staked in the pool's `CLGauge` show the gauge as
+    owner; the chain reader resolves them to the **depositor** (see §3) so the depositor address
+    is what a project registers.
+  - Aerodrome v2 and Aero v2: LP-token holders; gauge-staked LP tokens count too (Aerodrome v2:
+    the gauge from the Voter; Aero v2: from `FactoryRegistry.targetToGauge(pool)`). Gauge-staked
+    attribution reads the live Voter, registry or `CLPool.gauge()`; the old Voter killed its
+    gauges at block ~52,918,274 (docs/research/base-contracts.md §2.8), and liquidity re-staked in
+    Aero's gauges sits in Aero's pools, which need mandates of their own.
 - KPIs (`MandateKpis`): `minDepthUsd` on each side at `±bandPct`; optional `maxSpreadBps` at
   `spreadNotionalUsd`; `targetUptime` is informational. Defaults in `DEFAULT_MANDATE_KPIS`.
 - Alerts: `alertWebhookUrl` (optional) and `alertAfterSamples` (default 3). The webhook URL is a bearer
@@ -114,10 +117,11 @@ summarizeScorecard(mandate: Mandate, samples: readonly MmSample[] /* ascending, 
 Add to `ChainReader`:
 
 ```ts
-// Aerodrome v2 only. Pool is the LP token: balanceOf(addr), totalSupply(); gauge = Voter.gauges(pool);
+// Aerodrome v2 and Aero v2. Pool is the LP token: balanceOf(addr), totalSupply(); gauge =
+// Voter.gauges(pool) (Aerodrome v2) or FactoryRegistry.targetToGauge(pool) (Aero v2);
 // when gauge ≠ 0x0: gauge.balanceOf(addr) → staked. Multicall-batched. Other DEX kinds → throws.
 readLpHoldings(pool: PoolMeta, addresses: readonly Address[], blockNumber?: bigint): Promise<LpHolding[]>
-// Slipstream only. For positions whose owner equals the pool's gauge (CLPool.gauge()), call
+// Slipstream only (Aerodrome and Aero). For positions whose owner equals the pool's gauge (CLPool.gauge()), call
 // CLGauge.stakedContains(candidate, tokenId) for each candidate; rewrite `owner` to the matching
 // candidate (first match wins; log/ignore multiple). Other positions pass through unchanged.
 // Non-Slipstream pools → returns positions unchanged.
@@ -164,9 +168,11 @@ JSON via core helpers (`attribution_json` holds `MmAttribution`, no bigints).
 
   For each active mandate of the pool: concentrated → `positions` (from the db, as the snapshot
   uses) → `resolveStakedOwners` for Slipstream when any position owner equals the pool's gauge →
-  `filterPositionsByOwners` → `buildMmConcentratedState`; aerodrome-v2 → `readLpHoldings` →
-  `buildMmReserveState`; a hooked Uniswap v4 pool (`isHookedPool`: not modelled) → attribution
-  failure `hooked pool: not modelled` for every mandate, no sample; a concentrated pool whose
+  `filterPositionsByOwners` → `buildMmConcentratedState`; a reserve pool (aerodrome-v2, aero-v2)
+  → `readLpHoldings` (gauge from the Voter or the FactoryRegistry) → `buildMmReserveState`; a
+  hooked pool (`isHookedPool`: a Uniswap v4 hook, or an Aero Slipstream pool off its reviewed
+  hook; not modelled) → attribution failure `hooked pool: not modelled` for every mandate, no
+  sample; a concentrated pool whose
   positions are not published (`positions:<pool>:lastBlock` unset) → attribution failure, no
   sample; `positions === null` on an indexed pool → method `'none'`.
   Then `computeMmAttribution` → `evaluateKpis` → `MmSample`.

@@ -150,7 +150,7 @@ export function Pools() {
         eyebrow={
           <>
             <span>Pools</span>
-            <span>Uniswap and Aerodrome</span>
+            <span>Uniswap, Aerodrome and Aero</span>
           </>
         }
       >

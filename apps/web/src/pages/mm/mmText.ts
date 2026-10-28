@@ -15,8 +15,9 @@ import {
   bps,
   count,
   dexLabel,
-  fee,
+  feeText,
   hours,
+  type NamedToken,
   NB,
   pairLabel,
   shortAddress,
@@ -231,10 +232,13 @@ export function capital(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
-/** The mandated pool in words: "USDC / AERO, Aerodrome v2", or its DEX and address when unknown. */
+/**
+ * The mandated pool in words: "USDC / AERO (Aerodrome), Aerodrome v2" (token labels), or its DEX
+ * and address when unknown.
+ */
 export function poolWords(
   poolId: string,
-  meta: { token0: { symbol: string }; token1: { symbol: string } } | null | undefined,
+  meta: { token0: NamedToken; token1: NamedToken } | null | undefined,
 ): { pair: string; dex: string } {
   const { dex, key } = splitPoolId(poolId)
   const dexName = dex ? dexLabel(dex) : 'Pool'
@@ -242,9 +246,9 @@ export function poolWords(
   return { pair: shortAddress(key, 4), dex: dexName }
 }
 
-/** "Aerodrome v2, 0.3 %": the pool's DEX and fee after its pair. */
+/** "Aerodrome v2, 0.3 %": the pool's DEX and fee after its pair ("… dynamic" for a Slipstream). */
 export function poolDexFee(meta: { dex: string; feePips: number }): string {
-  return `${dexLabel(meta.dex)}, ${fee(meta.feePips)}`
+  return `${dexLabel(meta.dex)}, ${feeText(meta)}`
 }
 
 /**
@@ -253,14 +257,11 @@ export function poolDexFee(meta: { dex: string; feePips: number }): string {
  */
 export function mandateWhere(
   mandate: { marketMaker: string; poolId: string },
-  meta:
-    | { token0: { symbol: string }; token1: { symbol: string }; dex: string; feePips: number }
-    | null
-    | undefined,
+  meta: { token0: NamedToken; token1: NamedToken; dex: string; feePips: number } | null | undefined,
 ): string {
   const words = poolWords(mandate.poolId, meta)
   const where = meta
-    ? `${words.pair}, ${dexLabel(meta.dex)} ${fee(meta.feePips)}`
+    ? `${words.pair}, ${dexLabel(meta.dex)} ${feeText(meta)}`
     : `${words.pair}, ${words.dex}`
   return `${mandate.marketMaker} on ${where}`
 }

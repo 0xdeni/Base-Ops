@@ -1,4 +1,6 @@
+import { DEXES } from '@depthwatch/core'
 import { describe, expect, it } from 'vitest'
+import { DEX_SHORT } from '../components/charts/butterflyModel.js'
 import {
   abs,
   ago,
@@ -7,13 +9,16 @@ import {
   cantAbsorb,
   count,
   DASH,
+  DEX_LABEL,
   dated,
   day,
   fee,
+  feeText,
   full,
   gradeTone,
   group,
   hours,
+  pairLabel,
   pct,
   poolDesc,
   price,
@@ -25,6 +30,7 @@ import {
   shareOf,
   spreadText,
   tokenAmount,
+  tokenText,
   uptime,
   usd,
   usdTick,
@@ -242,11 +248,51 @@ describe('bps, prices, amounts and fees', () => {
     expect(fee(3000)).toBe(nb('0.3~%'))
     expect(fee(10_000)).toBe(nb('1~%'))
     expect(poolDesc({ dex: 'aerodrome-slipstream', feePips: 500 })).toBe(
-      nb('Aerodrome Slipstream, 0.05~%'),
+      nb('Aerodrome Slipstream, 0.05~% dynamic'),
     )
     expect(poolDesc({ dex: 'aerodrome-v2', feePips: 3000, stable: true })).toBe(
       nb('Aerodrome v2, 0.3~%, stable pair'),
     )
+    expect(poolDesc({ dex: 'aero-v2', feePips: 500, stable: true })).toBe(
+      nb('Aero v2, 0.05~%, stable pair'),
+    )
+  })
+  it('marks the fee of both Slipstreams dynamic, and only theirs', () => {
+    const fees = DEXES.map((dex) => feeText({ dex, feePips: 465 }))
+    expect(fees).toEqual([
+      nb('0.0465~%'),
+      nb('0.0465~%'),
+      nb('0.0465~%'),
+      nb('0.0465~% dynamic'),
+      nb('0.0465~%'),
+      nb('0.0465~% dynamic'),
+    ])
+    expect(poolDesc({ dex: 'aero-slipstream', feePips: 2055 })).toBe(
+      nb('Aero Slipstream, 0.2055~% dynamic'),
+    )
+  })
+  it('names a token by its label, or by its symbol from a server that sends none', () => {
+    const old = { symbol: 'AERO', label: 'AERO (Aerodrome)' }
+    const aero = { symbol: 'AERO', label: 'AERO (Aero)' }
+    expect(tokenText(old)).toBe('AERO (Aerodrome)')
+    expect(tokenText({ symbol: 'AERO' })).toBe('AERO')
+    expect(pairLabel(aero, { symbol: 'USDC', label: 'USDC' })).toBe('AERO (Aero) / USDC')
+    expect(pairLabel({ symbol: 'WETH' }, { symbol: 'USDC' })).toBe('WETH / USDC')
+  })
+  it('gives every DEX a long and a short name, each one its own', () => {
+    const long = DEXES.map((dex) => DEX_LABEL[dex])
+    const short = DEXES.map((dex) => DEX_SHORT[dex])
+    expect(new Set(long).size).toBe(DEXES.length)
+    expect(new Set(short).size).toBe(DEXES.length)
+    expect(long).toEqual([
+      'Uniswap v3',
+      'Uniswap v4',
+      'Aerodrome v2',
+      'Aerodrome Slipstream',
+      'Aero v2',
+      'Aero Slipstream',
+    ])
+    expect(short.slice(3)).toEqual(['Aerodrome CL', 'Aero v2', 'Aero CL'])
   })
   it('groups counts and block numbers (BigInt for blocks)', () => {
     expect(count(1284)).toBe('1,284')

@@ -84,6 +84,28 @@ describe('DexFilter (§5.4)', () => {
     expect(group.className).toBe('dexf')
   })
 
+  it('names all six DEXes apart, the Aero venues beside the Aerodrome ones', () => {
+    const six = [...BY_DEX, stat('aero-v2', 1_200_000), stat('aero-slipstream', 9_800_000)]
+    const rows = dexShares(six, 60_900_000)
+    expect(rows).toHaveLength(7)
+    expect(rows.map((r) => r.label)).toEqual([
+      'All DEXes',
+      'Uniswap v3',
+      'Aero Slipstream',
+      'Aerodrome Slipstream',
+      'Uniswap v4',
+      'Aero v2',
+      'Aerodrome v2',
+    ])
+    render(<DexFilter rows={rows} value="aero-slipstream" onChange={() => {}} />)
+    const checked = screen
+      .getAllByRole('radio')
+      .filter((r) => r.getAttribute('aria-checked') === 'true')
+    expect(checked.map((r) => r.getAttribute('aria-label'))).toEqual([
+      'Aero Slipstream, 16 % of the depth within 2 %',
+    ])
+  })
+
   it('moves the selection with the arrow keys, Home and End, flagged as keyboard', () => {
     const onChange = vi.fn()
     render(<Harness onChange={onChange} />)

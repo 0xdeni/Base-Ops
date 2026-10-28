@@ -1,19 +1,20 @@
 # Depthwatch
 
-An open liquidity observatory for Base mainnet. Depthwatch indexes Uniswap v3, Uniswap v4 and
-Aerodrome (v2 AMM and Slipstream concentrated) pools on Base: every pool of those factories with
-log discovery, or the pools between the 14 reference tokens (plus any `--seed-token`) with
-`discover --seed`. It publishes, per pool, how much capital it takes to move the price by 1, 2
-and 5 percent in each direction, the effective spread a
-trader pays on a $1k / $10k / $100k / $1M round trip with fees included, how concentrated the
-liquidity is by tick range and by owner, how stable that depth has been over the last 24 hours and
-7 days, and a single 0–100 Liquidity Health Score, graded A–F for the pools deep enough to be
-rated (both sides of the ±2 % depth known, the thinner holding at least $5,000; the others show
-"not rated" and why). A "liquidity gaps" feed lists pools that have real
-trading volume but thin depth. Price trackers show price and pool TVL; Depthwatch measures
-executable depth, which is what market makers quote against and what protocol teams need when they
-evaluate one. There is no token, no custody and no trading capital: it is indexing, analytics and a
-dashboard, released under MIT.
+An open liquidity observatory for Base mainnet. Depthwatch indexes Uniswap v3, Uniswap v4, Aerodrome
+(v2 AMM and Slipstream concentrated) and Aero (v2 AMM and Slipstream concentrated) pools on Base:
+every pool of those factories with log discovery, or the pools between the 15 reference tokens (plus
+any `--seed-token`) with `discover --seed`. On 2026-10-21 Aerodrome moved to a new platform, Aero,
+with new factories, a new AERO token and new gauges; Aerodrome's pools still trade, so both are
+indexed, each pool under its own DEX id. It publishes, per pool, how much capital it takes to move
+the price by 1, 2 and 5 percent in each direction, the effective spread a trader pays on a $1k /
+$10k / $100k / $1M round trip with fees included, how concentrated the liquidity is by tick range
+and by owner, how stable that depth has been over the last 24 hours and 7 days, and a single 0–100
+Liquidity Health Score, graded A–F for the pools deep enough to be rated (both sides of the ±2 %
+depth known, the thinner holding at least $5,000; the others show "not rated" and why). A "liquidity
+gaps" feed lists pools that have real trading volume but thin depth. Price trackers show price and
+pool TVL; Depthwatch measures executable depth, which is what market makers quote against and what
+protocol teams need when they evaluate one. There is no token, no custody and no trading capital: it
+is indexing, analytics and a dashboard, released under MIT.
 
 The same snapshots feed **market-maker scorecards**: a project registers a mandate (one pool,
 the market maker's addresses, the depth and spread KPIs from its agreement) and gets a public
@@ -183,9 +184,10 @@ multicalls and block headers stay on `DEPTHWATCH_RPC_URL`; with one URL nothing 
   ```
 
   or `DEPTHWATCH_LOG_CHUNK=10 depthwatch run --seed --once`. At 10 blocks per request, volume
-  costs one `eth_getLogs` per 10 blocks per event source (three: Uniswap v3 and Slipstream share
-  one): the first pass reads 24 h, about 13,600 requests and about 1.0 M compute units with all
-  four DEXes tracked (the measured pass, read before the two shared a filter, is in
+  costs one `eth_getLogs` per 10 blocks per event source (three for six DEXes: Uniswap v3 and both
+  Slipstreams share one, Aerodrome v2 and Aero v2 another): the first pass reads 24 h, about 13,600
+  requests and about 1.0 M compute units with all six DEXes tracked (the measured pass, read
+  before Uniswap v3 and Slipstream shared a filter, is in
   [Measured on Base](#measured-on-base-2026-10-25)). A later pass starts at the hour that held the
   previous pass's head, so it rereads up to an hour: about 100 requests per event source five
   minutes after the last pass, about 300 an hour after. Keeping volume current therefore reads
@@ -258,10 +260,11 @@ endpoint that takes 2,000-block spans), no 7-day run and no swap cross-check
 | `mm deactivate <id>`                                                                                                                | Stop sampling a mandate; its scorecard stays served as `inactive`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `mm sample`                                                                                                                         | Sample every active mandate now against the latest block (pool state from the chain, positions from the database) without waiting for the next `snapshot`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
-`--dex` takes `uniswap-v3`, `uniswap-v4`, `aerodrome-v2` or `aerodrome-slipstream` (repeatable or
-comma-separated); `--pool` takes pool ids such as `uniswap-v3:0x…` (repeatable). The global flags
-`--db`, `--rpc-url`, `--logs-rpc-url`, `--log-chunk`, `--log-level`, `--port`, `--host`, `--top`
-and `--public-url` mirror the environment variables above. Ctrl-C finishes the current step and
+`--dex` takes `uniswap-v3`, `uniswap-v4`, `aerodrome-v2`, `aerodrome-slipstream`, `aero-v2` or
+`aero-slipstream` (repeatable or comma-separated); `--pool` takes pool ids such as
+`uniswap-v3:0x…` (repeatable). The global flags `--db`, `--rpc-url`, `--logs-rpc-url`,
+`--log-chunk`, `--log-level`, `--port`, `--host`, `--top` and `--public-url` mirror the
+environment variables above. Ctrl-C finishes the current step and
 shuts down cleanly; `start` stops the step in flight instead, so SIGTERM ends it within seconds.
 `mm sample` is a live command like `snapshot`; the other `mm` commands only touch the database.
 
@@ -324,7 +327,7 @@ gzip-compressed when the client accepts it and carry an `ETag` (`304` on a match
 | `GET /api/stats`                                     | `{ byDex: [{ dex, pools, tracked, scored, rated, depth2Usd, depthKnownPools, volume24hUsd, medianHealth }], totals }`: per DEX and overall, the sum of ±2 % depth (stale quotes left out) with the number of pools it covers, the sum of 24 h volume and the median health over rated pools (`null` when none is rated)                                                                                                                                                                                                                  |
 | `GET /api/pools`                                     | `{ items: PoolSummary[], total }`; query `sort=health\|depth\|volume\|gap\|tvl\|spread\|top` (default `health`; `spread` is `spread10kBps`, `top` is `ownerTop1Share`), `dir=asc\|desc` (default `desc`), `dex`, `q` (substring of a token symbol or address, pool address or v4 pool id), `minVolume` (USD), `rated=true\|false`, `limit` (default 50, max 200), `offset`                                                                                                                                                               |
 | `GET /api/pools/:id`                                 | `{ pool, tracked, latest, score, gap, persistence24h, persistence7d, volume24hUsd, scoredAt }`; `latest` is the newest snapshot; it and the score fields are `null` until the pool has been snapshotted and scored                                                                                                                                                                                                                                                                                                                       |
-| `GET /api/pools/:id/history?window=24h\|7d`          | `{ window, from, to, points: [{ timestamp, price, depth2Usd, spread10kBps, tvlUsd, health }] }`; the window ends at the pool's newest snapshot; `Cache-Control: public, max-age=60`                                                                                                                                                                                                                                                                                                                                                      |
+| `GET /api/pools/:id/history?window=24h\|7d`          | `{ window, from, to, points: [{ timestamp, price, depth2Usd, spread10kBps, tvlUsd, health, feePips }] }` (`feePips`: the fee that snapshot used); the window ends at the pool's newest snapshot; `Cache-Control: public, max-age=60`                                                                                                                                                                                                                                                                                                     |
 | `GET /api/gaps?limit=&offset=&minVolume=`            | `{ items: [{ pool: PoolSummary, gap: { volume24hUsd, depth2Usd, turnoverRatio, gapScore } }], total, meaningful, minVolumeUsd }`: pools with 24 h volume ≥ `minVolume` (default $10k) ranked by gap score; `total` counts the whole feed and `meaningful` its pools trading 3× their ±2 % depth or more, ignoring `limit` / `offset`                                                                                                                                                                                                     |
 | `GET /api/tokens/:address`                           | `{ token, usd, via, priceUpdatedAt, pools: PoolSummary[], total, poolCount, depth2UsdTotal, depthKnownPools }`: USD price with the pool ids it was derived through (plus `wrap:weth` for the ETH ↔ WETH step), and the scored pools containing the token (`sort`, `dir`, `limit`, `offset` as for `/api/pools`; default deepest first); `depth2UsdTotal` sums the ±2 % depth of every scored pool of the token with a known depth and no stale quote (`depthKnownPools` of them), whatever the page                                      |
 | `GET /api/mm?pool=&active=`                          | `{ items: ScorecardSummary[] }`: one scorecard per registered mandate (mandate with `alertWebhookConfigured`, never the webhook URL; latest sample, uptime 24 h / 7 d / 30 d, worst excursions, current streak, status), active first then by name; `pool` filters by pool id, `active` by `true` / `false`                                                                                                                                                                                                                              |
@@ -337,18 +340,25 @@ gzip-compressed when the client accepts it and carry an `ETag` (`304` on a match
 | `GET /llms.txt`                                      | llms.txt index of the agent documents and the main routes; `text/plain; charset=utf-8`                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `GET /openapi.json`                                  | Hand-written OpenAPI 3.1 description of every GET route and its response schema; `application/json`                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
-`PoolSummary` is `{ pool, price, tvlUsd, depth2Usd, depth2UpUsd, depth2DownUsd, spread10kBps, priceDeviationBps, staleQuote, health: { total, grade, rated, unratedReason, concentrationBasis }, gapScore, volume24hUsd, ownerTop1Share, updatedAt }`
-(`ownerTop1Share`: the largest LP's share, `null` unless indexed owners in the band cover at least 90 % of the pool's
-in-band liquidity);
-`depth2UpUsd` and `depth2DownUsd` are the buy and sell sides of the ±2 % depth from the newest snapshot (`null` for a
-side whose token has no USD price). `health` is always present: `grade` is `null` and `rated` false for a pool whose
-thinner ±2 % side holds under $5,000, with `unratedReason` `thin`, `one-sided` or `unpriced`, or for a Uniswap v4 pool
-with a hook (`hooked`, no depth, spread or concentration computed); its `total` is kept. `concentrationBasis` says what the
-20 concentration points rest on: `owners` (indexed owners covering at least 90 % of the in-band liquidity), `ranges` (the
-range HHI) or `neutral` (docs/METRICS.md). `priceDeviationBps` is how far the pool's price is from the one its tokens' USD
-prices imply, and `staleQuote` is true from 500 bps: such a pool's depth is left out of the depth sums (the stats and a
-token's `depth2UsdTotal`) and sorts last on depth (docs/METRICS.md, Stale quotes). Every other `null` means "not measured
-(yet)".
+`PoolSummary` is `{ pool, price, tvlUsd, depth2Usd, depth2UpUsd, depth2DownUsd, spread10kBps,
+priceDeviationBps, staleQuote, health: { total, grade, rated, unratedReason, concentrationBasis },
+gapScore, volume24hUsd, ownerTop1Share, updatedAt }` (`ownerTop1Share`: the largest LP's share,
+`null` unless indexed owners in the band cover at least 90 % of the pool's in-band liquidity);
+`depth2UpUsd` and `depth2DownUsd` are the buy and sell sides of the ±2 % depth from the newest
+snapshot (`null` for a side whose token has no USD price). `health` is always present: `grade` is
+`null` and `rated` false for a pool whose thinner ±2 % side holds under $5,000, with `unratedReason`
+`thin`, `one-sided` or `unpriced`, or for a pool with a swap hook Depthwatch does not model
+(`hooked`: a Uniswap v4 pool with a hook, or an Aero Slipstream pool off its reviewed hook; no
+depth, spread or concentration computed); its `total` is kept. `concentrationBasis` says what the 20
+concentration points rest on: `owners` (indexed owners covering at least 90 % of the in-band
+liquidity), `ranges` (the range HHI) or `neutral` (docs/METRICS.md). `priceDeviationBps` is how far
+the pool's price is from the one its tokens' USD prices imply, and `staleQuote` is true from 500
+bps: such a pool's depth is left out of the depth sums (the stats and a token's `depth2UsdTotal`)
+and sorts last on depth (docs/METRICS.md, Stale quotes). Every token object (`pool.token0`,
+`pool.token1`, `TokenDetail.token`) adds `label`, the name to display: the symbol, or `SYMBOL
+(name)` when another token of a scored pool shares that symbol (`AERO (Aerodrome)`, `AERO (Aero)`),
+or `SYMBOL (0x3f5b…a4ee)` when the name is shared too; the address stays the identity. Every other
+`null` means "not measured (yet)".
 
 ## For AI agents
 
@@ -368,8 +378,8 @@ to the trading pillar, measuring the liquidity that trades on Base execute again
 ## Market-maker scorecards
 
 A mandate names one pool, the market maker's addresses (position owners on Uniswap v3 / v4 and
-Slipstream, gauge depositors for staked Slipstream positions, LP-token holders on Aerodrome v2,
-staked LP tokens included) and the KPIs of the agreement: `minDepthUsd` on each side at
+Slipstream, gauge depositors for staked Slipstream positions, LP-token holders on Aerodrome v2 and
+Aero v2, staked LP tokens included) and the KPIs of the agreement: `minDepthUsd` on each side at
 `±bandPct` (default 2 %), optionally `maxSpreadBps` at `spreadNotionalUsd` (default $10k), and an
 informational `targetUptime`. Every snapshot of the pool yields one sample: the depth and spread
 of a pool state that contains only the market maker's positions (or the reserves scaled by its LP
@@ -401,9 +411,9 @@ registers two demo mandates, one within KPI and one breached.
 
 Three layers, each only started once the previous one has users. Details, week-by-week milestones,
 acceptance criteria and explicit non-goals are in [docs/ROADMAP.md](docs/ROADMAP.md).
-1. **Observatory (this repository, weeks 1–4).** Index Aerodrome and Uniswap v3/v4 pools on Base
-   (every pool of their factories with log discovery); depth, spread, concentration, persistence,
-   health score, gaps feed; public API and dashboard; validated against mainnet.
+1. **Observatory (this repository, weeks 1–4).** Index Aerodrome, Aero and Uniswap v3/v4 pools on
+   Base (every pool of their factories with log discovery); depth, spread, concentration,
+   persistence, health score, gaps feed; public API and dashboard; validated against mainnet.
 2. **Market-maker scorecards (weeks 5–8; engineering delivered, see above).** A project registers
    its market maker's addresses and KPIs (minimum depth, maximum spread, target uptime) and gets a
    live public scorecard computed from the same data. Onboarding of the first projects is open.

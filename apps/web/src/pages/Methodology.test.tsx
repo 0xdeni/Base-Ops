@@ -172,6 +172,13 @@ describe('Methodology: sections', () => {
   it('measures the spread up to $1M and says a gap ranks turnover, not fee income', () => {
     renderAt('/methodology')
     expect(section('spread').textContent).toContain('It is measured at $1K, $10K, $100K and $1M')
+    expect(section('spread').textContent).toContain(
+      'The fee of every Slipstream pool, Aerodrome or Aero, is read at each snapshot',
+    )
+    expect(section('spread').textContent).toContain('marked “dynamic”')
+    expect(section('concentration').textContent).toContain(
+      'Aerodrome v2 and Aero v2 pools are one full-range position by construction.',
+    )
     const gaps = section('gaps').textContent ?? ''
     expect(gaps).toContain('It ranks turnover, not fee income')
     expect(gaps).toContain('fee tier')
@@ -193,6 +200,7 @@ describe('Methodology: sections', () => {
     expect(h2.textContent).toBe('USD prices')
     const text = prices.textContent ?? ''
     expect(text).toContain('USDC, USDbC, DAI and USDT count as $1 by convention')
+    expect(text).toContain('Aerodrome’s AERO and Aero’s AERO are two tokens with one symbol')
     expect(text).toContain('a valuation convention for depth and volume, not an oracle')
     const button = within(prices).getByRole('button', { name: 'Show formula' })
     fireEvent.click(button, { detail: 0 })

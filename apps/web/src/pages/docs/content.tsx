@@ -48,7 +48,7 @@ export const SECTIONS: readonly MetricSection[] = [
           {`The buy side is the money spent buying the first token to lift the price; the sell side is the first token sold to push it down. Both sides added at ±${u(2, '%')} give the headline number used for sorting and scoring. A stretch with no liquidity costs nothing to cross, as on chain, so when the ±${u(5, '%')} amount equals the ±${u(2, '%')} amount, nothing sits between the two prices. When the target lies past the liquidity the snapshot read, the side is marked “Liquidity runs out”, and the amount is what it took to get that far.`}
         </p>
         <p>
-          {`A pool whose own price sits ${u(5, '%')} or more from the price its tokens’ dollar prices imply is marked “Stale price”: its depth is measured at a price nobody trades, so it stays out of the totals and sorts last by depth. A Uniswap v4 pool with a hook runs the hook’s own code on every swap, so its depth and spread are not modelled at all.`}
+          {`A pool whose own price sits ${u(5, '%')} or more from the price its tokens’ dollar prices imply is marked “Stale price”: its depth is measured at a price nobody trades, so it stays out of the totals and sorts last by depth. A pool with a swap hook Depthwatch does not model (a Uniswap v4 pool with a hook, or an Aero Slipstream pool off its reviewed hook) runs that code on every swap, so its depth and spread are not modelled at all.`}
         </p>
       </>
     ),
@@ -67,9 +67,14 @@ export const SECTIONS: readonly MetricSection[] = [
     definition: `What a round trip of ${notionals('or')} costs, fees included.`,
     title: 'effective spread',
     body: (
-      <p>
-        {`Effective spread is what a round trip costs: buy N dollars of the first token, sell N dollars of it back, and compare the two average prices with the mid price. The swap fee and price impact are both included (the LP fee, plus on Uniswap v4 the protocol fee, which the fee shown for a pool does not include), so even an infinitely deep pool shows about twice its swap fee. It is measured at ${notionals('and')}, because the cheapest pool for a small trade is often not the cheapest for a large one; the spread at $10K is the headline. If either leg cannot be filled from known liquidity, or one leg pays more than half of its value in price impact, the pool can’t absorb that trade and shows no spread. A spread that is shown is therefore never above 10,000 bps.`}
-      </p>
+      <>
+        <p>
+          {`Effective spread is what a round trip costs: buy N dollars of the first token, sell N dollars of it back, and compare the two average prices with the mid price. The swap fee and price impact are both included (the LP fee, plus on Uniswap v4 the protocol fee, which the fee shown for a pool does not include), so even an infinitely deep pool shows about twice its swap fee. It is measured at ${notionals('and')}, because the cheapest pool for a small trade is often not the cheapest for a large one; the spread at $10K is the headline. If either leg cannot be filled from known liquidity, or one leg pays more than half of its value in price impact, the pool can’t absorb that trade and shows no spread. A spread that is shown is therefore never above 10,000 bps.`}
+        </p>
+        <p>
+          {`The fee of every Slipstream pool, Aerodrome or Aero, is read at each snapshot: it can change from one block to the next, and an Aero Slipstream pool’s swap hook sets it every block, up to its cap. The fee shown and used is the one read at the latest snapshot, marked “dynamic”, so a spread can move with the fee alone.`}
+        </p>
+      </>
     ),
     formula: [
       'buyAvg    = N of token1 in / token0 out',
@@ -85,7 +90,7 @@ export const SECTIONS: readonly MetricSection[] = [
     title: 'LP concentration',
     body: (
       <p>
-        {`Concentration asks whether the depth is many independent positions or one that can be pulled in a single transaction. Inside ±${u(5, '%')} of the price, every tick range is weighted by the liquidity it holds: the range HHI is 1 when everything sits in one range. When positions are indexed, they are also grouped by owner, which gives the top LP’s share, the top three’s share and an owner HHI, and the coverage: how much of the pool’s liquidity near the price those owners account for. A Slipstream gauge holds staked positions for their depositors, so it is not counted as an owner. Aerodrome v2 pools are one full-range position by construction.`}
+        {`Concentration asks whether the depth is many independent positions or one that can be pulled in a single transaction. Inside ±${u(5, '%')} of the price, every tick range is weighted by the liquidity it holds: the range HHI is 1 when everything sits in one range. When positions are indexed, they are also grouped by owner, which gives the top LP’s share, the top three’s share and an owner HHI, and the coverage: how much of the pool’s liquidity near the price those owners account for. A Slipstream gauge, Aerodrome’s or Aero’s, holds staked positions for their depositors, so it is not counted as an owner. Aerodrome v2 and Aero v2 pools are one full-range position by construction.`}
       </p>
     ),
     formula: [
@@ -134,7 +139,7 @@ export const SECTIONS: readonly MetricSection[] = [
           midpoint, with a note.
         </p>
         <p>
-          {`Concentration counts the largest LP’s share only when the indexed owners cover at least ${u(90, '%')} of the liquidity near the price; otherwise a concentrated pool is scored from how its liquidity spreads over price ranges, and an Aerodrome v2 pool, one full range by construction, scores the neutral 10. A grade that does not rest on LP owners carries a star that says so.`}
+          {`Concentration counts the largest LP’s share only when the indexed owners cover at least ${u(90, '%')} of the liquidity near the price; otherwise a concentrated pool is scored from how its liquidity spreads over price ranges, and an Aerodrome v2 or Aero v2 pool, one full range by construction, scores the neutral 10. A grade that does not rest on LP owners carries a star that says so.`}
         </p>
         <p>
           {`A grade only means something where there is liquidity to grade. A pool is rated when both sides within ±${u(2, '%')} are known and the thinner one holds at least $5K. Any other pool shows “Not rated” instead of a letter, with the reason: too thin to rate, too thin on one side, no USD price, or a hooked pool that is not modelled. It keeps its score and its four parts, and stays in every list; the median health on Home and in the stats counts rated pools only.`}
@@ -209,12 +214,12 @@ export const PRICES: MetricSection = {
   title: 'USD prices',
   body: (
     <p>
-      {`Every dollar figure comes from the pools themselves. Four stablecoins are the anchors: USDC, USDbC, DAI and USDT count as $1 by convention, whatever their own pools say. Every other token is priced through pools, along the route from an anchor whose weakest pool is the deepest, where a pool counts with the thinner of its two sides within ±${u(2, '%')}, both in dollars as the route reaches it. A Uniswap v4 pool with a hook is no route. Native ETH is tied to WETH one for one. A token that no route reaches has no USD price, and every dollar figure that needs it is unknown. This is a valuation convention for depth and volume, not an oracle: a stablecoin trading slightly off its peg still counts as $1.`}
+      {`Every dollar figure comes from the pools themselves. Four stablecoins are the anchors: USDC, USDbC, DAI and USDT count as $1 by convention, whatever their own pools say. Every other token is priced through pools, along the route from an anchor whose weakest pool is the deepest, where a pool counts with the thinner of its two sides within ±${u(2, '%')}, both in dollars as the route reaches it. A pool with a swap hook Depthwatch does not model is no route. Native ETH is tied to WETH one for one. Aerodrome moved to a new platform, Aero, on 21 October 2026: Aerodrome’s AERO and Aero’s AERO are two tokens with one symbol, each priced from its own pools, with no peg between them. A token that no route reaches has no USD price, and every dollar figure that needs it is unknown. This is a valuation convention for depth and volume, not an oracle: a stablecoin trading slightly off its peg still counts as $1.`}
     </p>
   ),
   formula: [
     'anchors = USDC, USDbC, DAI and USDT at $1, by convention',
-    'edge    = a pool with a usable mid, at its price (token1 per token0), no v4 hook',
+    'edge    = a pool with a usable mid, at its price (token1 per token0), no unmodelled hook',
     `weight  = min(up × token1Usd, down × token0Usd) at ±${u(2, '%')}, the thinner side`,
     '          the settled token at its USD price, the other at the price the pool implies',
     'route   = from an anchor, the path whose weakest edge weighs the most',

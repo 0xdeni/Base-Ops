@@ -200,7 +200,7 @@ describe('PoolsTable: one name per pool', () => {
     )
 
   it('names each link by its pair and second line, and tells same-named pools apart', () => {
-    const slipName = `WETH / cbBTC, Aerodrome Slipstream, 0.05${NB}%`
+    const slipName = `WETH / cbBTC, Aerodrome Slipstream, 0.05${NB}% dynamic`
     for (const phone of [false, true]) {
       const { unmount } = table(phone)
       const names = screen.getAllByRole('link').map((a) => a.getAttribute('aria-label'))
@@ -212,7 +212,7 @@ describe('PoolsTable: one name per pool', () => {
       ])
       // The second line shows the same words, so sighted readers can tell the rows apart too.
       const lines = [...document.querySelectorAll('.pd')].map((el) => el.textContent)
-      expect(lines[2]).toBe(`Aerodrome Slipstream, 0.05${NB}%, tick spacing 50`)
+      expect(lines[2]).toBe(`Aerodrome Slipstream, 0.05${NB}% dynamic, tick spacing 50`)
       expect(lines[3]).toBe(`Uniswap v3, 0.05${NB}%`)
       unmount()
     }

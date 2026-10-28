@@ -26,7 +26,7 @@ const DATA_LINE: Readonly<Record<DataSourceKind, string>> = {
 }
 
 export const FOOTER_PROMISE =
-  'Open source and read-only. No token, no custody. Built on Base: it indexes Uniswap and Aerodrome pools on Base mainnet.'
+  'Open source and read-only. No token, no custody. Built on Base: it indexes Uniswap, Aerodrome and Aero pools on Base mainnet.'
 
 export function Footer({ source }: { source: DataSourceKind }) {
   return (

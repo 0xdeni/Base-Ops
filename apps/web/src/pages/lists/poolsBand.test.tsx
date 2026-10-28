@@ -40,7 +40,7 @@ describe('Pools band: title, answer and DEX filter', () => {
     const band = await screen.findByRole('region', { name: 'pools' })
     expect(band.classList.contains('band')).toBe(true)
     expect(within(band).getByRole('heading', { level: 1 }).textContent).toBe('pools')
-    expect(band.querySelector('.eyebrow')?.textContent).toBe('PoolsUniswap and Aerodrome')
+    expect(band.querySelector('.eyebrow')?.textContent).toBe('PoolsUniswap, Aerodrome and Aero')
     await waitFor(() => expect(band.querySelector('#pools-answer')).toBeTruthy())
     // The table sheet stacks over the band's lower edge, plane 2.
     const sheet = document.querySelector('.lists-sheet')

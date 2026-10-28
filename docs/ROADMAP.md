@@ -6,10 +6,14 @@ start of development. Acceptance criteria are written so that an outsider can ch
 
 ## Layer 1: Observatory MVP (weeks 1–4)
 
-Index Uniswap v3, Uniswap v4, Aerodrome v2 and Aerodrome Slipstream pools on Base (every pool of
-those factories with log discovery, the pools between the reference tokens with `discover --seed`);
-publish depth at ±1/2/5 %, effective spread, LP concentration, liquidity persistence, a Liquidity
-Health Score and a liquidity gaps feed through a public API and dashboard.
+Index Uniswap v3, Uniswap v4, Aerodrome v2, Aerodrome Slipstream, Aero v2 and Aero Slipstream pools
+on Base (every pool of those factories with log discovery, the pools between the reference tokens
+with `discover --seed`); publish depth at ±1/2/5 %, effective spread, LP concentration, liquidity
+persistence, a Liquidity Health Score and a liquidity gaps feed through a public API and dashboard.
+
+**2026-10-28.** Aerodrome moved to a new platform, Aero, on 2026-10-21: new v2 and Slipstream
+factories, a new AERO token and new gauges. Aero's venues are indexed as two DEXes of their own
+(`aero-v2`, `aero-slipstream`) beside Aerodrome's, whose pools still trade and keep their ids.
 
 ### Week 1: core math and storage
 
@@ -65,6 +69,24 @@ Acceptance: the 7-day run completes without manual restarts; the swap cross-chec
 committed under `docs/validation/`; the README status note is updated from "not yet validated" to a
 dated statement of what was validated; the gaps feed lists only pools with ≥ $10k 24 h volume.
 
+### After Layer 1: Aero follow-ups
+
+- **Unknown factories.** Aero's FactoryRegistry approves the factories its pools may come from.
+  A check at every pass that compares its `targetFactories()` with the factories in
+  `addresses.ts` and warns about any other, so a new factory is reviewed and indexed instead of
+  missed.
+- **A complete index of the young factories.** `discover --seed` asks Aero's factories for the
+  pairs of the reference tokens, like the others; an `allPools` mode would list every pool of
+  those factories (279 volatile, 21 stable and 489 Slipstream pools at block 53,211,601) without
+  log discovery.
+- **The initial fee.** An Aero Slipstream pool whose swap hook charges each block's first swap a
+  fixed initial fee is marked hooked, not modelled (none does today). Modelling that fee would
+  rate those pools too.
+
+Acceptance: a factory outside `addresses.ts` produces a warning in the pass that first sees it;
+the `allPools` mode stores every pool of the Aero factories with its creation block; a pool with
+the initial fee enabled gets depth and spread with that fee on the first swap.
+
 ### After Layer 1: near-real-time depth with Flashblocks
 
 Flashblocks (sub-block preconfirmations, about 200 ms) have been live on Base mainnet since July
@@ -86,16 +108,16 @@ onboarding items of weeks 7–8 remain open.
 
 ### Scope
 
-- **Registration.** A mandate names one pool, the market maker's addresses (position owners for
-  v3 / v4 / Slipstream, gauge depositors for staked Slipstream positions, LP-token holders for
-  Aerodrome v2 with staked LP tokens included) and KPIs: minimum depth in USD on each side at
+- **Registration.** A mandate names one pool, the market maker's addresses (position owners for v3 /
+  v4 / Slipstream, gauge depositors for staked Slipstream positions, LP-token holders for Aerodrome
+  v2 and Aero v2 with staked LP tokens included) and KPIs: minimum depth in USD on each side at
   `±bandPct` (default 2 %), optionally a maximum effective spread in bps at a notional (default
-  $10k), and an informational target uptime. Registration is a JSON file through
-  `depthwatch mm register` or `POST /api/mm` behind an admin token.
-- **Attribution.** The market maker's contribution is computed from its holdings only: a pool
-  state containing just its positions (concentrated pools) or the reserves scaled by its LP share
-  (Aerodrome v2). The whole pool's depth and spread are reported alongside, so the scorecard
-  distinguishes "the pool is deep" from "the market maker is providing".
+  $10k), and an informational target uptime. Registration is a JSON file through `depthwatch mm
+  register` or `POST /api/mm` behind an admin token.
+- **Attribution.** The market maker's contribution is computed from its holdings only: a pool state
+  containing just its positions (concentrated pools) or the reserves scaled by its LP share
+  (Aerodrome v2 and Aero v2). The whole pool's depth and spread are reported alongside, so the
+  scorecard distinguishes "the pool is deep" from "the market maker is providing".
 - **Sampling.** Every snapshot of a mandated pool is a sample, taken inside the `snapshot` step
   and stored in the same transaction, with the block number so any reading can be reproduced.
   A sample is within KPI, breached, or not evaluable (a USD price was missing); uptime is the share

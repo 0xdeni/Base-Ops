@@ -5,7 +5,7 @@
  * addresses link to Basescan and can be copied. A Uniswap v4 pool lives in the singleton
  * PoolManager and is keyed by a bytes32 id, which has no explorer page, so it is text.
  */
-import { NATIVE_ETH, type PoolKind } from '@depthwatch/core'
+import { hasDynamicFee, NATIVE_ETH, type PoolKind } from '@depthwatch/core'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useDataNow } from '../../api/context.js'
@@ -24,6 +24,7 @@ import {
   ratio,
   score,
   tokenHref,
+  tokenText,
 } from '../../lib/format.js'
 
 const KIND: Readonly<Record<PoolKind, string>> = {
@@ -48,7 +49,10 @@ export function ChainId({ id, href }: { id: string; href?: string }) {
 
 const basescan = (address: string) => `https://basescan.org/address/${address}`
 
-/** The hooks contract of a v4 pool; null for none (null, or the zero address v4 stores). */
+/**
+ * The hooks contract of a v4 pool, or an Aero Slipstream pool's swap hook when it is not the
+ * reviewed one; null for none (null, or the zero address v4 stores).
+ */
 export function hooksOf(pool: PoolMetaDto): string | null {
   return pool.hooks && pool.hooks !== NATIVE_ETH ? pool.hooks : null
 }
@@ -74,7 +78,11 @@ export function PoolAbout({ detail }: { detail: PoolDetail }) {
           {dexLabel(pool.dex)}, {KIND[pool.kind]}
           {pool.stable ? ', stable pair' : ''}
         </Row>
-        <Row term="Fee">{fee(pool.feePips)}</Row>
+        <Row term="Fee">
+          {hasDynamicFee(pool)
+            ? `${fee(pool.feePips)}, dynamic (read at the latest snapshot)`
+            : fee(pool.feePips)}
+        </Row>
         <Row
           term={
             <Glossary
@@ -104,11 +112,11 @@ export function PoolAbout({ detail }: { detail: PoolDetail }) {
         ) : null}
         <Row term="Tokens">
           <Link className="tlink" to={tokenHref(pool.token0.address)}>
-            {pool.token0.symbol}
+            {tokenText(pool.token0)}
           </Link>
           and
           <Link className="tlink" to={tokenHref(pool.token1.address)}>
-            {pool.token1.symbol}
+            {tokenText(pool.token1)}
           </Link>
         </Row>
         <Row term="Tracked">
@@ -130,7 +138,7 @@ export function PoolAbout({ detail }: { detail: PoolDetail }) {
         <Row term="Scored">{detail.scoredAt ? ago(detail.scoredAt, now) : 'Not scored yet'}</Row>
         <Row term="Prices used">
           {latest
-            ? `${pool.token0.symbol} ${usdPrice(latest.token0Usd)}, ${pool.token1.symbol} ${usdPrice(latest.token1Usd)}`
+            ? `${tokenText(pool.token0)} ${usdPrice(latest.token0Usd)}, ${tokenText(pool.token1)} ${usdPrice(latest.token1Usd)}`
             : DASH}
         </Row>
         <Row

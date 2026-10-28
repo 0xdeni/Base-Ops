@@ -28,6 +28,7 @@ import {
   score,
   scoreExact,
   shareOf,
+  tokenText,
   uptime,
   usd,
 } from '../../lib/format.js'
@@ -51,10 +52,10 @@ export function poolAnswer(detail: Pick<PoolDetail, 'pool' | 'latest'>): string 
   const { pool } = detail
   if (!detail.latest) return 'No snapshot yet. Depth appears after the first snapshot.'
   if (isHookedPool(pool))
-    return 'This pool has a Uniswap v4 hook that runs its own swap code: its depth is not modelled.'
+    return 'This pool has a swap hook Depthwatch does not model: its depth is not computed.'
   const latest = detail.latest
-  const t0 = pool.token0.symbol
-  const t1 = pool.token1.symbol
+  const t0 = tokenText(pool.token0)
+  const t1 = tokenText(pool.token1)
   const usdRow = latest.depthUsd.find((d) => d.pct === 2)
   const raw = latest.depth.find((d) => d.pct === 2)
   const up = usdRow?.upUsd ?? null

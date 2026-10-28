@@ -28,7 +28,7 @@ describe('Pools: phone (TB7, PH4)', () => {
     const list = await screen.findByRole('list', { name: 'Pools' })
     expect(screen.queryByRole('table', { name: 'Pools' })).toBeNull()
     const items = within(list).getAllByRole('listitem')
-    expect(items).toHaveLength(15)
+    expect(items).toHaveLength(17)
     expect(items[0]?.querySelector('.metric')?.textContent).toBe('95')
     expect(screen.getByRole('button', { name: 'All DEXes' })).toBeTruthy()
     expect(screen.queryByRole('radiogroup', { name: 'DEX' })).toBeNull()
@@ -111,7 +111,7 @@ describe('Pools: phone (TB7, PH4)', () => {
     fireEvent.click(within(sheet).getByRole('radio', { name: /^Aerodrome Slipstream,/ }))
     await waitFor(() => expect(last(h)).toBe('/pools?dex=aerodrome-slipstream'))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    expect(screen.getByRole('button', { name: 'Slipstream' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Aerodrome CL' })).toBeTruthy()
   })
 })
 
@@ -151,7 +151,7 @@ describe('Pools: phone pages (§5.8)', () => {
     cleanup()
     renderAt('/pools')
     await screen.findByRole('list', { name: 'Pools' })
-    expect(rows()).toHaveLength(15)
+    expect(rows()).toHaveLength(17)
     expect(screen.queryByRole('button', { name: /Show all/ })).toBeNull()
   })
 

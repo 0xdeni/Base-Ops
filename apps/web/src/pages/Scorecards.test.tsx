@@ -93,7 +93,9 @@ describe('/mm scorecards list (ia-v3 §4.5, visual-v4 §6.6)', () => {
     const link = within(aero).getByRole('link', { name: /^Demo Markets . Aerodrome AERO\/USDC$/ })
     expect(link.getAttribute('href')).toBe(`/mm/${MOCK_MM_BREACHED_ID}`)
     expect(within(aero).getByText('Breached')).toBeTruthy()
-    expect(await within(aero).findByText('Demo Markets on USDC / AERO, Aerodrome v2')).toBeTruthy()
+    expect(
+      await within(aero).findByText('Demo Markets on USDC / AERO (Aerodrome), Aerodrome v2'),
+    ).toBeTruthy()
     expect(
       within(aero).getByRole('img', {
         name: `7 day uptime 24${NB}% against a 90${NB}% target`,
@@ -166,7 +168,7 @@ describe('/mm scorecards list (ia-v3 §4.5, visual-v4 §6.6)', () => {
     expect(
       within(aero).getByRole('link', { name: /^Demo Markets . Aerodrome AERO\/USDC$/ }),
     ).toBeTruthy()
-    const pool = await within(aero).findByRole('link', { name: 'USDC / AERO' })
+    const pool = await within(aero).findByRole('link', { name: 'USDC / AERO (Aerodrome)' })
     expect(pool.getAttribute('href')).toBe(poolHref(MOCK_MM_BREACHED_POOL))
     expect(within(aero).getByText('Aerodrome v2, 0.3 %')).toBeTruthy()
     // Both sides below the $25K KPI (marked), the spread within its 40 bps KPI.

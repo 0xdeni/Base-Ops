@@ -56,11 +56,11 @@ describe('Pools: answer and caption', () => {
     const stats = await h.client.stats()
     await waitFor(() => expect(answerText()).toBe(poolsAnswer(stats, '')))
     expect(answerText()).toBe(
-      `18 pools on 4 DEXes hold ${usd(stats.totals.depth2Usd)} within 2${NB}% of the price.`,
+      `20 pools on 6 DEXes hold ${usd(stats.totals.depth2Usd)} within 2${NB}% of the price.`,
     )
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('pools')
     await table()
-    expect(screen.getByText('15 rated pools').getAttribute('aria-live')).toBe('polite')
+    expect(screen.getByText('17 rated pools').getAttribute('aria-live')).toBe('polite')
   })
 
   it('words the answer per DEX and announces the filtered count', async () => {
@@ -262,7 +262,7 @@ describe('Pools: search ↔ URL', () => {
   it('says what is empty and clears the search (ST2)', async () => {
     const h = renderAt('/pools?q=zzz')
     await screen.findByText('No pools match “zzz”.')
-    await screen.findByText('Showing 0 of 15 rated')
+    await screen.findByText('Showing 0 of 17 rated')
     fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
     await waitFor(() => expect(last(h)).toBe('/pools'))
     await table()

@@ -4,10 +4,14 @@
  * image and a hosting platform set unset), the README "Environment" table and the docs/DEPLOY.md
  * schedule table give each schedule variable its default, and `--help` names every schedule
  * flag. The Docker documents publish the port on loopback only and drop privileges for good.
+ * DEPLOY.md's upgrade notes quote the refusal an older build gives the current schema version and
+ * name the DEX ids an explicit `--dex` list has to add.
  */
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { DEXES } from '@depthwatch/core'
+import { SCHEMA_VERSION } from '@depthwatch/db'
 import { describe, expect, it } from 'vitest'
 import { usage } from '../main.js'
 import { formatSeconds } from './scheduler.js'
@@ -83,5 +87,29 @@ describe('start settings in the documents', () => {
       if (setting.flag !== undefined) expect(usage()).toContain(setting.flag)
       expect(usage()).toContain(formatSeconds(SCHEDULE_DEFAULTS[key]))
     }
+  })
+})
+
+describe('docs/DEPLOY.md: upgrading', () => {
+  const deploy = read('docs', 'DEPLOY.md')
+  const upgrading = deploy.slice(deploy.indexOf('\n## Upgrading\n')).replace(/\s+/g, ' ')
+
+  it('quotes the refusal an older build gives this schema version, and says to back up first', () => {
+    expect(deploy).toContain('\n## Upgrading\n')
+    expect(upgrading).toContain(
+      `database schema version ${SCHEMA_VERSION} is newer than this build (${SCHEMA_VERSION - 1}); upgrade depthwatch`,
+    )
+    expect(upgrading).toContain('[Backups](#backups)')
+  })
+
+  it('names the DEX ids an explicit --dex list must add, all of them DEXES', () => {
+    for (const dex of ['aero-v2', 'aero-slipstream']) {
+      expect(DEXES).toContain(dex)
+      expect(upgrading).toContain(`\`${dex}\``)
+    }
+    expect(DEXES).toHaveLength(6)
+    expect(upgrading).toContain('`start` covers every DEX by default, now six.')
+    for (const reason of ['swap hook changed', 'initial fee enabled', 'fee module changed'])
+      expect(upgrading).toContain(reason)
   })
 })
