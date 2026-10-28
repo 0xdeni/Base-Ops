@@ -27,7 +27,8 @@ end to end against recorded fixtures, but coverage of the long tail of pools, US
 traded tokens and RPC cost at full scale are still being measured. Numbers from a live deployment
 should be read with that in mind until the validation milestone in [docs/ROADMAP.md](docs/ROADMAP.md)
 is reached. What has run on mainnet so far, and what it cost, is in
-[Measured on Base, 2026-10-25](#measured-on-base-2026-10-25).
+[Measured on Base, 2026-10-25](#measured-on-base-2026-10-25) and
+[2026-10-28](#measured-on-base-2026-10-28).
 
 ## What it measures
 
@@ -238,6 +239,32 @@ What this did not cover, so the status above stands: only pools between the refe
 (the seed; no factory-log discovery), 24 h of volume, no LP ownership (`positions` needs a logs
 endpoint that takes 2,000-block spans), no 7-day run and no swap cross-check
 ([docs/ROADMAP.md](docs/ROADMAP.md), week 4).
+
+### Measured on Base, 2026-10-28
+
+A second pass ran on 2026-10-28, after Aerodrome's move to Aero, on all six DEXes through the same
+free tier, again with every HTTP request counted:
+- **`discover --seed`**: 4,060 candidate pairs gave 644 pools (Uniswap v3 235, Uniswap v4 166,
+  Aerodrome v2 87, Aerodrome Slipstream 101, Aero v2 21, Aero Slipstream 34) at head 53,218,002,
+  in 631 s; 15,135 HTTP requests, 490 of them answered HTTP 429 and retried; about 381,000
+  compute units.
+- **`snapshot`** over the 552 tracked pools: about 1,320 requests and about 33,000 compute units
+  per pass, about a minute each, at blocks 53,218,323, 53,219,192 and 53,219,391.
+- **`volume`** at 10-block chunks over 24 h (blocks 53,173,059 to 53,218,359), three event
+  sources: 13,593 chunks in 27.6 minutes; 15,855 HTTP requests, 13,599 served and 2,256 answered
+  HTTP 429 and retried, about 1.02 M compute units; 362,121 swaps in the 24 h window.
+- **Where the depth sits**: of the $87.4 M within ±2 % of the price, the Aero factories held
+  $26.3 M (30.1 %) and the original Aerodrome factories $7.2 M (8.3 %); of the $449.1 M traded in
+  24 h, Aero carried $233.7 M (52.0 %) and Aerodrome $69.2 M (15.4 %). The 163 tracked pools whose
+  quote sat 5 % or more off the USD price graph are left out of the depth sums, which the
+  2026-10-25 pass did not do, so the two totals are not comparable.
+- **Coverage**: the seed found 21 of the 300 Aero v2 pools and 34 of the 489 Aero Slipstream pools
+  that the factories listed at block 53,213,030 (reference-token pairs only).
+- **Independent check**: ETH and cbBTC prices, the ±2 % depth of the deepest Aero Slipstream pool
+  and of an Aero v2 pool, and the hourly swaps of five pools reproduced from direct RPC reads and
+  Swap logs at block 53,219,391.
+
+The limits of the 2026-10-25 pass apply here too: the seed only, 24 h of volume, no LP ownership.
 
 ### CLI commands
 
