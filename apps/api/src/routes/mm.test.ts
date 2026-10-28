@@ -218,7 +218,9 @@ describe('GET /api/mm/:id/samples', () => {
     const from = seed.now - 30 * DAY
     const stamps = [from - 1, from, from + 1, seed.now - 1, seed.now, seed.now + 1]
     db.mmSamples.insertMany(
-      stamps.map((timestamp) => fixtureMmSample({ mandateId: mandate.id, timestamp })),
+      stamps.map((timestamp) =>
+        fixtureMmSample({ mandateId: mandate.id, timestamp, blockNumber: BigInt(timestamp) }),
+      ),
     )
     const body = await samples(mandate.id, '?window=30d')
     expect(body.points.map((p) => p.timestamp)).toEqual([from, from + 1, seed.now - 1, seed.now])

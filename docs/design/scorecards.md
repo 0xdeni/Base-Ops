@@ -130,12 +130,13 @@ stake the Slipstream pool's `[-300, 300]` position (owner index 1) in a CLGauge 
 
 New migration (append; bump `SCHEMA_VERSION`):
 - `mandates(id TEXT PK, name, pool_id, market_maker, addresses_json, kpis_json, alert_webhook_url NULL, alert_after_samples INTEGER, active INTEGER, created_at INTEGER, notes NULL)` + index `(pool_id)`.
-- `mm_samples(id INTEGER PK AUTOINCREMENT, mandate_id, pool_id, block_number TEXT, timestamp INTEGER, attribution_json, within_kpi INTEGER NULL, breaches_json)` + index `(mandate_id, timestamp)`.
+- `mm_samples(id INTEGER PK AUTOINCREMENT, mandate_id, pool_id, block_number TEXT, timestamp INTEGER, attribution_json, within_kpi INTEGER NULL, breaches_json)` + index `(mandate_id, timestamp)`; unique `(mandate_id, block_number)` since schema version 3 (one sample per mandate and block).
 - `mm_alerts(id INTEGER PK AUTOINCREMENT, mandate_id, timestamp INTEGER, kind TEXT, streak_samples INTEGER, payload_json, delivered INTEGER, response_status INTEGER NULL, error TEXT NULL)` + index `(mandate_id, timestamp)`.
 
 Repositories on `Database`: `mandates` (`upsert(m)`, `get(id)`, `list({ active?, poolId? })`,
 `forPools(poolIds) → Map<poolId, Mandate[]>`, `setActive(id, active)`, `delete(id)`,
-`count()`), `mmSamples` (`insertMany`, `seriesFor(mandateId, fromTs, toTs?)` ascending,
+`count()`), `mmSamples` (`insertMany`: skips a sample already stored for its mandate and block and
+returns the number stored, `seriesFor(mandateId, fromTs, toTs?)` ascending,
 `latestFor(mandateId)`, `latestForMany(ids)`, `pruneBefore(ts)`, `countFor(mandateId)`),
 `mmAlerts` (`insert`, `latestFor(mandateId)`, `listFor(mandateId, limit)`). bigints as TEXT,
 JSON via core helpers (`attribution_json` holds `MmAttribution`, no bigints).

@@ -270,7 +270,7 @@ pool is tracked whether or not it ranks in the top N. A pool the database does n
 (`depthwatch discover` has not seen it) is accepted with a warning; the snapshot skips the mandate
 until the pool is discovered and the scorecard reads `no-data` meanwhile. `sample` reads the latest
 block, the pool state and the stored positions, and inserts one sample per active mandate of each
-mandated pool without writing a snapshot row and without waiting for the next pipeline pass; it
+mandated pool (a mandate already sampled at that block keeps the sample it has) without writing a snapshot row and without waiting for the next pipeline pass; it
 needs `DEPTHWATCH_RPC_URL`. Exit codes follow the rest of the CLI: 0 ok, 1 error, 2 usage.
 
 ### With the API

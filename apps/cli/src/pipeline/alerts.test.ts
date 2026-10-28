@@ -71,8 +71,12 @@ function startReceiver(): Promise<{
   })
 }
 
+/** A sample at block `timestamp` unless given one: a mandate has one sample per block. */
+const at = (overrides: Partial<MmSample>): MmSample =>
+  fixtureMmSample({ blockNumber: BigInt(overrides.timestamp ?? T0), ...overrides })
+
 function breached(overrides: Partial<MmSample> = {}): MmSample {
-  return fixtureMmSample({
+  return at({
     withinKpi: false,
     breaches: ['depthDown'],
     attribution: fixtureAttribution({ depthDownUsd: 12_000 }),
@@ -81,7 +85,7 @@ function breached(overrides: Partial<MmSample> = {}): MmSample {
 }
 
 function within(overrides: Partial<MmSample> = {}): MmSample {
-  return fixtureMmSample({ withinKpi: true, breaches: [], ...overrides })
+  return at({ withinKpi: true, breaches: [], ...overrides })
 }
 
 describe('decideAlert', () => {
@@ -315,8 +319,7 @@ describe('deliverAlerts against a local webhook', () => {
       db.mmSamples.insert({ ...sample, mandateId: gappy.id })
       await deliverAlerts(ctx, [gappy], { fetch: recording })
     }
-    const unevaluable = (i: number) =>
-      fixtureMmSample({ withinKpi: null, breaches: [], timestamp: T0 + i })
+    const unevaluable = (i: number) => at({ withinKpi: null, breaches: [], timestamp: T0 + i })
     for (const i of [0, 1, 2]) await step(breached({ timestamp: T0 + i }))
     expect(posted).toEqual(['breach'])
     await step(breached({ timestamp: T0 + 3 }))

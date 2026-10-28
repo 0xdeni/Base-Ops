@@ -92,8 +92,9 @@ docker compose -f deploy/compose.yaml up -d --build
   -u node depthwatch depthwatch mm list` without Compose). `docker exec` defaults to root; `-u
   node` runs the command as the server's own user, so it never needs the root start-up path and
   creates no root-owned file in `/data`. Do not run the live commands (`snapshot`, `volume`,
-  `mm sample`, …) beside `start`: it runs them on its schedule, and a second writer appends
-  duplicate rows.
+  `mm sample`, …) beside `start`: it runs them on its schedule, and every extra run adds snapshots
+  and samples between passes (a row for a block already stored is skipped), each one more sample
+  in streaks, uptime and persistence.
 
 ## A reverse proxy with TLS
 

@@ -30,7 +30,7 @@ function rawSnapshotAt(timestamp: number, depth2Usd: number | null): PoolSnapsho
   return buildSnapshot({
     pool,
     timestamp,
-    blockNumber: 1n,
+    blockNumber: BigInt(timestamp),
     price: 3000,
     decimals0: 18,
     decimals1: 6,

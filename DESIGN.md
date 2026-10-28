@@ -215,16 +215,25 @@ Protocol specifics (addresses live in `src/addresses.ts`, overridable via `creat
 
 ## Storage (packages/db)
 
-`node:sqlite` (`DatabaseSync`). `openDatabase(path | ':memory:')` runs migrations. Tables:
+`node:sqlite` (`DatabaseSync`). `openDatabase(path | ':memory:')` sets `busy_timeout` (5 000 ms) first, then WAL journaling
+(only when the file is not in WAL yet, retried for up to 5 s while another process holds the lock: SQLite's busy handler does not
+cover the switch) and `synchronous = NORMAL`, then runs migrations. A database at the current version is opened without a write
+lock; otherwise `BEGIN IMMEDIATE` comes before `schema_version` is read, so of several processes opening one file at once the first
+applies each pending migration and the others read the version it recorded. Schema version 3. Tables:
 - `tokens(address PK, symbol, name, decimals)`
 - `pools(id PK, dex, kind, address, pool_id, token0, token1, fee_pips, tick_spacing, stable, hooks, created_at_block, tracked INTEGER, first_seen_at)`
-- `snapshots(id PK AUTOINCREMENT, pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd, active_liquidity TEXT, depth_json, depth_usd_json, spreads_json, concentration_json)` + index `(pool_id, timestamp)`
+- `snapshots(id PK AUTOINCREMENT, pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd, active_liquidity TEXT, depth_json, depth_usd_json, spreads_json, concentration_json)` + index `(pool_id, timestamp)` + unique index `(pool_id, block_number)`
 - `volume_hourly(pool_id, hour_start, volume_token0 TEXT, volume_token1 TEXT, volume_usd, swap_count, PK(pool_id, hour_start))`
 - `positions(pool_id, token_id TEXT, owner, tick_lower, tick_upper, liquidity TEXT, updated_block, PK(pool_id, token_id))`; rows under `<pool id>#catch-up` hold a windowed first scan that has not reached the head (never read as a pool's positions)
 - `prices(token PK, usd, via_json, updated_at)`
 - `scores(pool_id PK, timestamp, health_json, gap_json, persistence_24h_json, persistence_7d_json, volume_24h_usd, depth2_usd, health_total, gap_score)`; `health_json.rated` is the rating flag (a row without one reads as unrated until `score` runs again)
 - `sync_state(key PK, value)` (e.g. `discover:uniswap-v3:lastBlock`; `seed:<dex>:lastBlock` records the block of the last `discover --seed`; `volume:<pool>:lastBlock` / `volume:<pool>:fromTs` the volume coverage of a pool; `volume:lastBlock` / `volume:lastTs` the head of the last volume pass; `positions:<pool>:lastBlock` the positions cursor, `positions:<pool>:catchUpBlock` that of a staged first scan; `start:<step>:lastRunAt` the unix ms of `start`'s last volume / positions run)
 
+One snapshot per pool and block, one market-maker sample per mandate and block (`mm_samples` unique on `(mandate_id, block_number)`,
+docs/design/scorecards.md §4): migration 3 deleted the later copies a second writer had stored and added both unique indexes, and
+`snapshots.insert` / `mmSamples.insert` skip a row already stored (`INSERT OR IGNORE`), returning its row id or `null`, while
+`insertMany` returns the number stored. A second process writing the same block adds nothing. `packages/db/src/schema.test.ts` pins a
+sha256 of every shipped migration: a shipped entry is never edited, a change is a new migration.
 bigint columns are TEXT (decimal strings). JSON columns hold the core types with bigint → string.
 Reads apply core's spread cap (`feasibleSpreadBps`): a snapshot stored before it comes back with the points whose legs are above `SPREAD_MAX_LEG_IMPACT_BPS` infeasible, and `SnapshotSummary.spread10kBps` is derived from the stored $10k point, never read from the denormalised `spread10k_bps` column; the score feeds
 derive it in SQL through `dw_spread10k_bps(point, price)`, a function `openDatabase` registers on the connection that runs core's rule, so

@@ -42,8 +42,13 @@ describe('loadScorecard', () => {
     db.mandates.upsert(mandate)
     const edge = summaryWindowStart(seed.now)
     db.mmSamples.insertMany([
-      fixtureMmSample({ mandateId: mandate.id, timestamp: edge - 1, withinKpi: false }),
-      fixtureMmSample({ mandateId: mandate.id, timestamp: edge, withinKpi: true }),
+      fixtureMmSample({
+        mandateId: mandate.id,
+        timestamp: edge - 1,
+        blockNumber: 1n,
+        withinKpi: false,
+      }),
+      fixtureMmSample({ mandateId: mandate.id, timestamp: edge, blockNumber: 2n, withinKpi: true }),
     ])
     const summary = loadScorecard(ctx, mandate)
     // The sample exactly at the bound is read; it sits outside the (now − 30 d, now] uptime

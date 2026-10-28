@@ -180,7 +180,11 @@ function nextRound(
   return { fromBlock, toBlock, plans: open.filter((plan) => plan.next <= toBlock) }
 }
 
-/** Merges `fresh` into the pool's set and moves its cursor; publishes once it reaches `head`. */
+/**
+ * Merges `fresh` into the pool's set and moves its cursor; publishes once it reaches `head`. The
+ * stored set is read inside the write transaction, so a set another process stored meanwhile is
+ * merged rather than overwritten.
+ */
 function store(
   db: Database,
   plan: PoolPlan,
@@ -191,9 +195,9 @@ function store(
   const { pool, mode } = plan
   const staging = positionsStagingId(pool.id)
   const existingId = mode === 'cursor' ? pool.id : mode === 'staged' ? staging : undefined
-  const merged = mergePositions(existingId ? db.positions.forPool(existingId) : [], fresh)
   const published = mode === 'cursor' || toBlock >= head
-  db.transaction(() => {
+  return db.transaction(() => {
+    const merged = mergePositions(existingId ? db.positions.forPool(existingId) : [], fresh)
     if (published) {
       db.positions.replaceForPool(pool.id, merged, { updatedBlock: toBlock })
       db.syncState.setBigInt(syncKeys.positions(pool.id), toBlock)
@@ -205,8 +209,8 @@ function store(
       db.positions.replaceForPool(staging, merged, { updatedBlock: toBlock })
       db.syncState.setBigInt(syncKeys.positionsCatchUp(pool.id), toBlock)
     }
+    return { stored: merged.length, published }
   })
-  return { stored: merged.length, published }
 }
 
 /** Thrown for a pool the spent budget did not start: deferred, not failed. */

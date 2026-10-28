@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../config.js'
 import { createDemoChain } from '../demo.js'
 import { createLogger } from '../log.js'
-import { createPipelineContext } from './context.js'
+import { createPipelineContext, syncKeys } from './context.js'
 import { discoverStep } from './discover.js'
 import { defaultPositionPools, mergePositions, positionKey, positionsStep } from './positions.js'
 import { runIteration } from './run.js'
@@ -179,6 +179,59 @@ describe('positionsStep on a logs endpoint that cannot serve the chunk', () => {
       const ctx = createPipelineContext({ db, chain, config: loadConfig({}) })
       await expect(positionsStep(ctx, { pools })).rejects.toBe(limit)
       expect(reads).toBe(ctx.config.concurrency) // the pools already in flight, not all 20
+    } finally {
+      db.close()
+    }
+  })
+})
+
+describe('positionsStep storing a published pool', () => {
+  it('reads the stored set inside its write transaction and merges what was stored meanwhile', async () => {
+    const db = openDatabase(IN_MEMORY)
+    try {
+      const address = `0x${'7'.repeat(40)}` as Address
+      const pool: PoolMeta = {
+        id: `uniswap-v3:${address}`,
+        dex: 'uniswap-v3',
+        kind: 'concentrated',
+        address,
+        poolId: null,
+        token0: { address: alice, symbol: 'A', name: 'A', decimals: 18 },
+        token1: { address: bob, symbol: 'B', name: 'B', decimals: 6 },
+        feePips: 500,
+        tickSpacing: 10,
+        stable: false,
+        hooks: null,
+        createdAtBlock: 1n,
+      }
+      db.positions.replaceForPool(pool.id, [position({ tokenId: 1n })], { updatedBlock: 100n })
+      db.syncState.setBigInt(syncKeys.positions(pool.id), 100n)
+      const chain = {
+        getLatestBlock: async () => ({ number: 200n, timestamp: 1_800_000_000 }),
+        readPositions: async () => {
+          // Another writer stores the pool's set while this read is in flight.
+          db.positions.replaceForPool(
+            pool.id,
+            [position({ tokenId: 1n }), position({ tokenId: 2n, owner: bob })],
+            { updatedBlock: 150n },
+          )
+          return [position({ tokenId: 3n, tickLower: -200 })]
+        },
+      } as unknown as ChainReader
+      const forPool = db.positions.forPool.bind(db.positions)
+      const inTransaction: boolean[] = []
+      vi.spyOn(db.positions, 'forPool').mockImplementation((poolId) => {
+        inTransaction.push(db.raw.isTransaction)
+        return forPool(poolId)
+      })
+
+      const ctx = createPipelineContext({ db, chain, config: loadConfig({}) })
+      const result = await positionsStep(ctx, { pools: [pool] })
+
+      expect(result.failed).toEqual([])
+      expect(inTransaction).toEqual([true])
+      expect(forPool(pool.id).map((p) => p.tokenId)).toEqual([3n, 1n, 2n])
+      expect(db.syncState.getBigInt(syncKeys.positions(pool.id))).toBe(200n)
     } finally {
       db.close()
     }
