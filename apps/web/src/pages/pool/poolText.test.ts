@@ -63,9 +63,11 @@ describe('healthTakeaway', () => {
   const inputs = {
     spread10kBps: 20,
     ownerTop1Share: 0.3,
+    ownerCoverage: 1,
     rangeHhi: 0.3,
+    poolKind: 'concentrated',
     persistence: null,
-  }
+  } as const
 
   it('names the weakest part of a rated pool', () => {
     const health = computeHealthScore({ ...inputs, depth2UpUsd: 20_000, depth2DownUsd: 20_000 })
@@ -79,6 +81,7 @@ describe('healthTakeaway', () => {
       grade: 'B',
       rated: true,
       unratedReason: null,
+      concentrationBasis: 'owners',
       components: { depth: 33.7, spread: 11.8, concentration: 13.6, persistence: 15 },
       notes: [],
     }

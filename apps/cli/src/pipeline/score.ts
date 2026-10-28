@@ -16,6 +16,7 @@ import {
   computePersistence,
   computeVolume24hUsd,
   GAP_FEED_MIN_VOLUME_USD,
+  type PoolKind,
   type PoolSnapshot,
   scoringVolumeWindow,
   type VolumeWindow,
@@ -50,6 +51,7 @@ export const PERSISTENCE_WINDOWS_HOURS = Object.freeze({ day: 24, week: 168 })
 /** Score of one pool from its snapshot series (ascending), newest snapshot and 24 h volume. */
 export function scorePool(
   poolId: string,
+  poolKind: PoolKind,
   series: readonly PoolSnapshot[],
   latest: PoolSnapshot,
   volume24hUsd: number | null,
@@ -66,7 +68,9 @@ export function scorePool(
     ...snapshotDepthSides(latest),
     spread10kBps: summary.spread10kBps,
     ownerTop1Share: summary.ownerTop1Share,
+    ownerCoverage: latest.concentration?.owners?.coverage ?? null,
     rangeHhi: latest.concentration?.rangeHhi ?? null,
+    poolKind,
     persistence: persistence24h,
   })
   return {
@@ -123,9 +127,11 @@ export async function scoreStep(ctx: PipelineContext): Promise<ScoreResult> {
 
   const scores: PoolScore[] = []
   const weekAgo = now - PERSISTENCE_WINDOWS_HOURS.week * 3600
+  const pools = db.pools.getMany(ids)
   for (const id of ids) {
     const latest = db.snapshots.latestForPool(id)
-    if (latest === undefined) {
+    const pool = pools.get(id)
+    if (latest === undefined || pool === undefined) {
       result.unsnapshotted++
       continue
     }
@@ -138,7 +144,7 @@ export async function scoreStep(ctx: PipelineContext): Promise<ScoreResult> {
             coveredFromTs(db, id, end.block),
             db.volume.series(id, window.fromTs, window.toTs),
           )
-    const score = scorePool(id, series, latest, volume24hUsd, now)
+    const score = scorePool(id, pool.kind, series, latest, volume24hUsd, now)
     scores.push(score)
     if (score.gap.gapScore !== null && (volume24hUsd ?? 0) >= GAP_FEED_MIN_VOLUME_USD) result.gaps++
   }

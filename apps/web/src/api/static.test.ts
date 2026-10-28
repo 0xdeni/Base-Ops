@@ -57,7 +57,13 @@ function inflated(count: number): StaticBundle {
   bundle.pools = Array.from({ length: count }, (_, i) => ({
     ...structuredClone(template),
     pool: { ...template.pool, id: `uniswap-v3:0x${i.toString(16).padStart(40, '0')}` },
-    health: { total: i % 100, grade: 'C', rated: true, unratedReason: null },
+    health: {
+      total: i % 100,
+      grade: 'C',
+      rated: true,
+      unratedReason: null,
+      concentrationBasis: 'owners',
+    },
   }))
   return bundle
 }

@@ -75,6 +75,7 @@ export function PoolFacts({ detail }: { detail: PoolDetail }) {
             )
           }
           grade={health?.rated ? health.grade : null}
+          gradeBasis={health?.concentrationBasis}
           label={
             <>
               <Glossary

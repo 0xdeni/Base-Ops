@@ -1,10 +1,10 @@
 # Metric definitions
 
-This page is the single definition of every number Depthwatch publishes. Each metric is
-implemented once, in `packages/core`, and `packages/core/src/metrics/workedExamples.test.ts`
-reproduces the worked examples below to the digit (raw amounts to the wei, USD and bps figures to
-the two decimals printed here). If the dashboard, the API and this page ever disagree, this page
-and the core tests are what gets fixed first.
+This page is the single definition of every number Depthwatch publishes. Each metric is implemented
+once, in `packages/core`, and `packages/core/src/metrics/workedExamples.test.ts` (the health score's
+in `workedExamples.health.test.ts`) reproduces the worked examples below to the digit (raw amounts
+to the wei, USD and bps figures to the two decimals printed here). If the dashboard, the API and
+this page ever disagree, this page and the core tests are what gets fixed first.
 
 ## Conventions
 
@@ -216,12 +216,27 @@ For each indexed position overlapping the band: `weight = liquidity × (clipped 
 √Plower)`, aggregated by owner (lowercase address). Positions with zero liquidity or no overlap
 are skipped.
 - `count` = owners with weight > 0
-- `top1Share`, `top3Share` = share of the largest owner, of the three largest (capped at 1)
+- `top1Share`, `top3Share` = share of the largest owner, of the three largest (capped at 1), out
+  of the owners' total weight
 - `hhi = Σ share²` over owners (0..1)
+- `coverage = min(1, Σ owner weights / poolBandWeight)` (0..1): the share of the pool's whole
+  in-band liquidity weight (the range HHI's `Σ weight`, same clipped band) that the indexed
+  owners account for; 0 when the band holds no liquidity.
+
+The shares describe the indexed positions only; `coverage` says how much of the pool those are.
+It is below 1 when part of the liquidity was never indexed: Uniswap v3 positions minted on the
+pool directly rather than through the NonfungiblePositionManager (vault managers do this), or a
+pool whose position history was not read to the head.
+
+**Custodians.** A contract that holds positions on behalf of depositors is not an owner. A
+Slipstream pool's CLGauge (`CLPool.gauge()`) holds every staked NFT, so all staked liquidity would
+read as one LP. `depthwatch positions` records the gauge of each Slipstream pool it indexes, and
+the gauge's positions count as uncovered: they are left out of the owners, their shares and
+`coverage`.
 
 `owners` is `null` when positions were not indexed for the pool (`depthwatch positions` has not
 run for it, or the DEX has no observable positions). When positions were indexed but none overlap
-the band, `count = 0` and all shares are 0.
+the band (or only a custodian's do), `count = 0`, all shares are 0 and `coverage = 0`.
 
 ### Reserve pools
 
@@ -232,7 +247,10 @@ indexed in the MVP).
 **Worked example.** A pool with three in-band ranges weighing 60, 30 and 10 (any unit): shares
 0.6, 0.3, 0.1 → `rangeHhi = 0.36 + 0.09 + 0.01 = 0.46`. If the current tick is in the 60 range,
 `activeRangeShare = 0.6`. Three owners with weights 42, 38, 20 → `top1Share = 0.42`, `top3Share =
-1`, `hhi = 0.1764 + 0.1444 + 0.04 = 0.3608`, `count = 3`.
+1`, `hhi = 0.1764 + 0.1444 + 0.04 = 0.3608`, `count = 3`, `coverage = 100 / 100 = 1`. If the
+owner of the 20 were the pool's gauge, the owners would be 42 and 38: `top1Share = 42 / 80 =
+0.525`, `count = 2`, `coverage = 80 / 100 = 0.8`. If only positions weighing 40 had been indexed,
+`coverage = 0.4`.
 
 ## Liquidity persistence (window W hours)
 
@@ -284,8 +302,9 @@ for the pools that have enough liquidity to be rated at all.
 Four components, maximum 35 + 25 + 20 + 20 = 100. Each component is rounded to two decimals; the
 total is the sum of the rounded components. Inputs: `depth2UpUsd` and `depth2DownUsd` (the two
 sides of the ±2 % level of the latest snapshot), `spread10kBps` (from the latest snapshot),
-`ownerTop1Share` and `rangeHhi` (from the latest snapshot's concentration), and the 24 h
-persistence. Every pool keeps its numeric total and components; only a _rated_ pool gets a grade.
+`ownerTop1Share`, `ownerCoverage` and `rangeHhi` (from the latest snapshot's concentration), the
+pool's kind, and the 24 h persistence. Every pool keeps its numeric total and components; only a
+_rated_ pool gets a grade.
 
 ### Rated and unrated pools
 
@@ -312,10 +331,10 @@ _Why $5,000._ The headline spread is measured on a $10,000 trade. A pool whose t
 under $5,000 within 2 % cannot absorb half of that trade on that side without moving more than
 2 %, so a grade would compare nothing. On the first live database (492 scored pools) the number of
 pools whose thinner side holds at least $1,000 / $2,500 / $5,000 / $10,000 is 81 / 64 / 50 / 40,
-and the share graded F among them is 24 of 81, 7 of 64, 3 of 50 and 1 of 40: at $1,000 the rated
+and the share graded F among them is 23 of 81, 6 of 64, 2 of 50 and 0 of 40: at $1,000 the rated
 set is still full of dust that earns an F, at $5,000 an F means a real pool that is poor.
 $10,000 would rate 40 pools and leave out pools that do trade. With $5,000, 50 pools are rated
-(7 A, 18 B, 9 C, 13 D, 3 F; median 61.66, grade C) and 442 are not (431 thin, 11 one-sided,
+(7 A, 18 B, 9 C, 14 D, 2 F; median 61.66, grade C) and 442 are not (431 thin, 11 one-sided,
 0 unpriced). Before this rule 390 of the 492 were graded F and the median was 20 (F).
 
 Of the 492, the 144 pools that held nothing on either side and the 348 others all had a 24 h
@@ -353,13 +372,42 @@ Example: 30 bps → `(log10 300 − log10 30) = 1` exactly, divided by `1.4771` 
 
 ### Concentration (max 20)
 
-- Owners known (`ownerTop1Share` not null and > 0): `20 × (1 − top1Share)`
-- Otherwise, `rangeHhi` known: `20 × (1 − rangeHhi)`
-- Neither: **10** with the note `concentration neutral: no position or range data`
+The first rule that applies gives the component and `concentrationBasis`, which the score
+publishes so that a reader knows what the 20 points stand on:
+- `owners`: owners known (`ownerTop1Share` not null and > 0) and covering the pool (`ownerCoverage
+  ≥ OWNER_COVERAGE_MIN = 0.9`): `20 × (1 − top1Share)`.
+- `ranges`: a concentrated pool with `rangeHhi` known: `20 × (1 − rangeHhi)`.
+- `neutral`: otherwise **10**. Without known owners the note is `concentration neutral: LP owners
+  not indexed` for a reserve pool and `concentration neutral: no position or range data` for a
+  concentrated pool without range data.
 
-Example: `top1Share = 0.42` → **11.6**. Owners unknown, `rangeHhi = 0.18` → **16.4**. A reserve
-pool always has `rangeHhi = 1` and no owners in the MVP, so it scores 0 here; that is a known
-limitation that LP-token holder indexing will lift.
+Owners known but not used (coverage under 90 %) add the note `owner data covers X % of in-band
+liquidity`, with X = `ownerCoverage × 100` rounded down (so 89.9 % never reads as 90 %), or `owner
+data covers an unknown share of in-band liquidity` for a snapshot stored before coverage was
+recorded.
+
+Example: `top1Share = 0.42` with `ownerCoverage = 0.95` → **11.6** (`owners`). The same owners with
+`ownerCoverage = 0.4` and `rangeHhi = 0.18` → **16.4** (`ranges`) with the note `owner data covers
+40 % of in-band liquidity`. Owners unknown, `rangeHhi = 0.18` → **16.4** (`ranges`). An Aerodrome
+v2 pool → **10** (`neutral`).
+
+_Why coverage._ Owner shares are relative to the indexed positions. A pool indexed in part, or a
+Slipstream pool whose staked liquidity sits with its gauge, would show one owner with 70 to 100 %
+and score close to 0 here while nobody controls the pool. Below 90 % the owners say too little,
+and the structural measure is used instead.
+
+_Why reserve pools are neutral._ A reserve pool is one full range by construction, so its `rangeHhi
+= 1` describes the AMM, not its LPs, and LP-token holders are not indexed. Scored from `rangeHhi` it
+got 0 of 20: on the first live database all 86 Aerodrome v2 pools did, so a whole DEX started 20
+points down. With no information either way it scores the neutral 10, like any other unknown: the
+four rated v2 pools of that database move from 22.8 to 39.05 (three F, one D) to 32.8 to 49.05 (two
+F, two D).
+
+_What `ranges` means._ The range HHI says how the in-band liquidity is spread over price ranges, not
+who owns it: twenty ranges can belong to one LP. It is the best structural signal without owners, so
+concentrated pools keep it, and `concentrationBasis` marks every score that rests on it (the
+dashboard marks such a grade). The first live database indexed no positions, so all 46 of its rated
+concentrated pools rest on it.
 
 ### Persistence (max 20)
 
@@ -374,7 +422,7 @@ Example: `stability = 0.6585`, `uptime = 0.8333` → `20 × 0.7459` → **14.92*
 ### Grade
 
 For rated pools only: A ≥ 80, B ≥ 65, C ≥ 50, D ≥ 35, else F. The thresholds are unchanged; on
-the 50 rated pools of the first live database they give 7 A, 18 B, 9 C, 13 D and 3 F.
+the 50 rated pools of the first live database they give 7 A, 18 B, 9 C, 14 D and 2 F.
 
 ### Medians over rated pools
 
@@ -390,7 +438,8 @@ Example: five scored pools with totals 85, 70, 55 (rated) and 20, 12 (unrated): 
 
 ### Worked examples
 
-Unless stated, "known" persistence is the 14.92 example above.
+Unless stated, "known" persistence is the 14.92 example above, and known owners cover at least
+90 % of the in-band liquidity.
 1. $1.2M on each side, `spread10kBps = 30`, `top1Share = 0.42`, persistence known: depth 35 +
    spread 16.92 + concentration 11.6 + persistence 14.92 = **78.44, rated, grade B**, no notes.
 2. $25,000 on each side, `spread10kBps = 100`, owners unknown with `rangeHhi = 0.18`, fewer than
@@ -409,6 +458,12 @@ Unless stated, "known" persistence is the 14.92 example above.
    **0** (a dead pool earns nothing). Three snapshots with a depth of 100,000 a minute apart:
    unknown, persistence **10** with the note `persistence neutral: samples cover under 25 % of the
    window`.
+8. As example 1, but the indexed owners cover 40 % of the in-band liquidity and `rangeHhi = 0.18`:
+   35 + 16.92 + 16.4 + 14.92 = **83.24, rated, grade A**, `concentrationBasis = ranges`, note
+   `owner data covers 40 % of in-band liquidity`.
+9. An Aerodrome v2 pool with $25,000 on each side, `spread10kBps = 100`, persistence known:
+   19.82 + 8.08 + 10 + 14.92 = **52.82, rated, grade C**, `concentrationBasis = neutral`, note
+   `concentration neutral: LP owners not indexed`; scored from `rangeHhi = 1` it was 42.82 (D).
 
 ## 24 h volume
 
@@ -476,8 +531,9 @@ feed. Example: a feed of 250 pools of which 120 trade 3× or more answers `total
 
 `tvlUsd = human(reserve0) × token0Usd + human(reserve1) × token1Usd`. A side without a USD price
 is skipped, so a one-sided value is a lower bound; when neither side is priced, `null`. For the
-worked-example pool: `1,000 × 2,500 + 2,500,000 × 1 = $5,000,000`. Uniswap v4 pools expose no
-cheap balance read; their reserves are reported as 0 and TVL ranking falls back to liquidity.
+worked-example pool: `1,000 × 2,500 + 2,500,000 × 1 = $5,000,000`. Uniswap v4 pools hold no
+reserves of their own (the singleton PoolManager holds every pool's tokens), so their `tvlUsd` is
+`null`, and the snapshot ranks them by the USD value of their ±2 % depth instead.
 
 TVL ranks which pools get full depth snapshots; it is not a liquidity metric. Two pools with the
 same TVL can differ by an order of magnitude in ±2 % depth, which is the point of this project.
@@ -548,16 +604,16 @@ reproduced by anyone with an RPC endpoint and this page.
 
 ## Where each metric lives
 
-| Metric                   | Module                                              | Function(s)                                                                                       |
-| ------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Depth                    | `packages/core/src/metrics/depth.ts`                | `computeDepth`, `depthToUsd`                                                                      |
-| Effective spread         | `packages/core/src/metrics/spread.ts`               | `computeEffectiveSpread`, `feasibleSpreadBps`, `SPREAD_MAX_LEG_IMPACT_BPS`                        |
-| Concentration            | `packages/core/src/metrics/concentration.ts`        | `computeConcentration`, `computeConcentrationForReserves`, `bandSqrtBounds`                       |
-| Persistence              | `packages/core/src/metrics/persistence.ts`          | `computePersistence`, `PERSISTENCE_MIN_COVERAGE`                                                  |
-| Health score, rating     | `packages/core/src/metrics/health.ts`               | `computeHealthScore`, `healthGrade`, `rateDepth`, `HEALTH_RATING_MIN_SIDE_USD`, `HEALTH_MAX`      |
-| Gap score                | `packages/core/src/metrics/gap.ts`                  | `computeGap`, `GAP_FEED_MIN_VOLUME_USD`, `MEANINGFUL_GAP_TURNOVER`, `isMeaningfulGap`             |
-| TVL                      | `packages/core/src/metrics/tvl.ts`                  | `tvlUsd`                                                                                          |
-| 24 h volume              | `packages/core/src/metrics/volume.ts`               | `volumeWindow`, `scoringVolumeWindow`, `computeVolume24hUsd`                                      |
-| USD prices               | `packages/core/src/pricing.ts`                      | `derivePrices`; edge weights in `apps/cli/src/pipeline/prices.ts` (`edgeWeight`, `usdEdgeWeight`) |
-| Swap simulation          | `packages/core/src/swap/`                           | `simulateSwapExactIn`, `simulateSwapToPrice`, `midPrice`, `swapFeePips`, `v4SwapFeePips`          |
-| Tick and sqrt-price math | `packages/core/src/tickMath.ts`, `sqrtPriceMath.ts` | `getSqrtRatioAtTick`, `getTickAtSqrtRatio`, `sqrtPriceX96ToPrice`, `priceToSqrtPriceX96`          |
+| Metric                   | Module                                              | Function(s)                                                                                                        |
+| ------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Depth                    | `packages/core/src/metrics/depth.ts`                | `computeDepth`, `depthToUsd`                                                                                       |
+| Effective spread         | `packages/core/src/metrics/spread.ts`               | `computeEffectiveSpread`, `feasibleSpreadBps`, `SPREAD_MAX_LEG_IMPACT_BPS`                                         |
+| Concentration            | `packages/core/src/metrics/concentration.ts`        | `computeConcentration`, `computeConcentrationForReserves`, `bandSqrtBounds`                                        |
+| Persistence              | `packages/core/src/metrics/persistence.ts`          | `computePersistence`, `PERSISTENCE_MIN_COVERAGE`                                                                   |
+| Health score, rating     | `packages/core/src/metrics/health.ts`               | `computeHealthScore`, `healthGrade`, `rateDepth`, `HEALTH_RATING_MIN_SIDE_USD`, `HEALTH_MAX`, `OWNER_COVERAGE_MIN` |
+| Gap score                | `packages/core/src/metrics/gap.ts`                  | `computeGap`, `GAP_FEED_MIN_VOLUME_USD`, `MEANINGFUL_GAP_TURNOVER`, `isMeaningfulGap`                              |
+| TVL                      | `packages/core/src/metrics/tvl.ts`                  | `tvlUsd`                                                                                                           |
+| 24 h volume              | `packages/core/src/metrics/volume.ts`               | `volumeWindow`, `scoringVolumeWindow`, `computeVolume24hUsd`                                                       |
+| USD prices               | `packages/core/src/pricing.ts`                      | `derivePrices`; edge weights in `apps/cli/src/pipeline/prices.ts` (`edgeWeight`, `usdEdgeWeight`)                  |
+| Swap simulation          | `packages/core/src/swap/`                           | `simulateSwapExactIn`, `simulateSwapToPrice`, `midPrice`, `swapFeePips`, `v4SwapFeePips`                           |
+| Tick and sqrt-price math | `packages/core/src/tickMath.ts`, `sqrtPriceMath.ts` | `getSqrtRatioAtTick`, `getTickAtSqrtRatio`, `sqrtPriceX96ToPrice`, `priceToSqrtPriceX96`                           |

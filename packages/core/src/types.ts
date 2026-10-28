@@ -181,10 +181,16 @@ export interface Position {
 export interface OwnerConcentration {
   /** Owners with a positive share of in-band liquidity. */
   count: number
+  /** Shares are out of the owners' total weight (the indexed positions only). */
   top1Share: number
   top3Share: number
   /** Herfindahl–Hirschman index over owner shares, 0..1. */
   hhi: number
+  /**
+   * Σ owner weights / the pool's whole in-band weight, 0..1 (clamped): how much of the pool the
+   * indexed owners account for. A custodian's positions (a Slipstream gauge) count as uncovered.
+   */
+  coverage: number
 }
 
 export interface ConcentrationMetrics {
@@ -239,6 +245,13 @@ export type HealthGrade = 'A' | 'B' | 'C' | 'D' | 'F'
  */
 export type UnratedReason = 'thin' | 'one-sided' | 'unpriced'
 
+/**
+ * What the concentration component was scored from (docs/METRICS.md, "Concentration (max 20)"):
+ * owner shares covering at least `OWNER_COVERAGE_MIN` of the in-band liquidity, the range HHI of a
+ * concentrated pool, or the neutral midpoint.
+ */
+export type ConcentrationBasis = 'owners' | 'ranges' | 'neutral'
+
 export interface HealthScore {
   /** 0..100. Present for unrated pools too. */
   total: number
@@ -248,6 +261,11 @@ export interface HealthScore {
   rated: boolean
   /** Null when rated. */
   unratedReason: UnratedReason | null
+  /**
+   * Basis of the concentration component. Null only for a score stored before the basis was
+   * recorded, until the next `score` run replaces it.
+   */
+  concentrationBasis: ConcentrationBasis | null
   components: HealthComponents
   /** Human-readable caveats, e.g. "persistence neutral: fewer than 3 samples". */
   notes: string[]
@@ -260,7 +278,11 @@ export interface HealthInputs {
   depth2DownUsd: number | null
   spread10kBps: number | null
   ownerTop1Share: number | null
+  /** `concentration.owners.coverage`; null when owners are unknown or stored without coverage. */
+  ownerCoverage: number | null
   rangeHhi: number | null
+  /** The pool's kind: a reserve pool's `rangeHhi = 1` holds by construction and is not scored. */
+  poolKind: PoolKind
   persistence: PersistenceMetrics | null
 }
 

@@ -22,6 +22,7 @@ export function toPoolSummary(row: ScoredPoolRow): PoolSummary {
       grade: score.health.grade,
       rated: score.health.rated,
       unratedReason: score.health.unratedReason,
+      concentrationBasis: score.health.concentrationBasis,
     },
     gapScore: score.gap.gapScore,
     volume24hUsd: score.volume24hUsd,

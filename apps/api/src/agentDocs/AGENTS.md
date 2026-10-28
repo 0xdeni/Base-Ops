@@ -98,9 +98,11 @@ from a live deployment have not yet been validated against Base mainnet at scale
   a 125-pip protocol fee), so a v4 pool's spread floor is above twice its `feePips`.
 - **Concentration**, inside ±5 % of the mid price: `rangeHhi` (0..1, 1 = all in-band liquidity
   in one tick range), `activeRangeShare` (share in the range holding the current price) and
-  `owners` (`count`, `top1Share`, `top3Share`, `hhi`; `null` when positions were not indexed for
-  the pool). A `top1Share` near 1 means one owner controls most of the depth and can withdraw
-  it at once.
+  `owners` (`count`, `top1Share`, `top3Share`, `hhi`, `coverage`; `null` when positions were not
+  indexed for the pool). The shares are out of the indexed owners; `coverage` (0..1) is how much
+  of the pool's in-band liquidity those owners account for, and a Slipstream gauge holding
+  staked positions is not counted as an owner. A `top1Share` near 1 with a `coverage` near 1
+  means one owner controls most of the depth and can withdraw it at once.
 - **Persistence**, over 24 h and 7 d of stored snapshots: `stability` = p10 / median of the
   ±2 % depth samples (0..1); `uptime` = share of samples with depth ≥ half the median (0..1);
   both `null` (unknown) with fewer than 3 samples or when the oldest and newest sample are less
@@ -108,8 +110,11 @@ from a live deployment have not yet been validated against Base mainnet at scale
   (a dead pool).
 - **Liquidity Health Score**: 0–100, the sum of depth (max 35), spread (max 25), concentration
   (max 20) and persistence (max 20); `components` holds the four parts and `notes` explains any
-  part that was scored 0 or neutral for lack of data. Depth counts twice the thinner of the two
-  ±2 % sides, so a one-sided pool scores 0 for it. **Rated pools** are those with both ±2 %
+  part that was scored 0 or neutral for lack of data. `concentrationBasis` says what the
+  concentration part rests on: `owners` (`20 × (1 − top1Share)`, owners covering at least 90 %
+  of the in-band liquidity), `ranges` (`20 × (1 − rangeHhi)`, a concentrated pool without such
+  owners) or `neutral` (10: an Aerodrome v2 pool, or no data). Depth counts twice the thinner of
+  the two ±2 % sides, so a one-sided pool scores 0 for it. **Rated pools** are those with both ±2 %
   sides known and the thinner at least $5,000 (`rated: true`); only they have a **grade**: A ≥ 80,
   B ≥ 65, C ≥ 50, D ≥ 35, else F. The others have `grade: null`, keep their `total`, and say why
   in `unratedReason`: `thin` (neither side holds $5,000), `one-sided` (the deeper side does, the
@@ -186,8 +191,8 @@ number of matching pools ignoring `limit` / `offset`.
 `symbol`, `name`, `decimals`), `feePips`, `tickSpacing`, `stable`, `hooks`, `createdAtBlock`),
 `price`, `tvlUsd`, `depth2Usd`, `depth2UpUsd` (USD of token1 that lifts the price 2 %, the buy
 side), `depth2DownUsd` (USD of token0 that pushes it down 2 %, the sell side), `spread10kBps`,
-`health` (`total`, `grade`, `rated`, `unratedReason`), `gapScore`, `volume24hUsd`,
-`ownerTop1Share`, `updatedAt`. `health` is always present; `grade` is `null` for an unrated pool,
+`health` (`total`, `grade`, `rated`, `unratedReason`, `concentrationBasis`), `gapScore`,
+`volume24hUsd`, `ownerTop1Share`, `updatedAt`. `health` is always present; `grade` is `null` for an unrated pool,
 and sorting by health puts unrated pools after the rated ones in both directions. The two sides come from the newest snapshot's ±2 % level; a side is `null`
 when its token has no USD price, and when liquidity runs out before 2 % it is the total up to
 that point (`latest.depth[].up.reached` / `.down.reached` on `GET /api/pools/:id` say which).
@@ -200,8 +205,9 @@ One pool, scored or not; 404 `pool not found` for an unknown id. Fields:
   `token0Usd`, `token1Usd`, `tvlUsd`, `activeLiquidity`, `depth` (raw amounts per level and
   side), `depthUsd` (USD per level and side), `spreads` (`notionalUsd` 1000 / 10000 / 100000,
   `spreadBps`, `feasible`, `buyAvgPrice`, `sellAvgPrice`), `concentration`.
-- `score`: `total`, `grade` (`null` when unrated), `rated`, `unratedReason`, `components`
-  (`depth`, `spread`, `concentration`, `persistence`), `notes`; `gap`: `volume24hUsd`, `depth2Usd`, `turnoverRatio`, `gapScore`.
+- `score`: `total`, `grade` (`null` when unrated), `rated`, `unratedReason`,
+  `concentrationBasis`, `components` (`depth`, `spread`, `concentration`, `persistence`), `notes`;
+  `gap`: `volume24hUsd`, `depth2Usd`, `turnoverRatio`, `gapScore`.
 - `persistence24h`, `persistence7d`: `windowHours`, `samples`, `depthUsdMedian`, `depthUsdP10`,
   `depthUsdMin`, `stability`, `uptime`.
 - `volume24hUsd`: the score's 24 h volume (the 24 whole hours before the hour of the last block

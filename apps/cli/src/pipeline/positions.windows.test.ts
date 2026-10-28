@@ -75,6 +75,7 @@ interface Read {
 function fakeChain(reads: Read[], clock: { ms: number }): ChainReader {
   return {
     getLatestBlock: async () => ({ number: HEAD, timestamp: 1_800_000_000 }),
+    readCustodians: async () => [],
     readPositions: async (p: PoolMeta, range: { fromBlock: bigint; toBlock: bigint }) => {
       reads.push({ pool: p.id, ...range })
       await Promise.resolve()

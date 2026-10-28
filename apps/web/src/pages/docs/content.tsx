@@ -83,7 +83,7 @@ export const SECTIONS: readonly MetricSection[] = [
     title: 'LP concentration',
     body: (
       <p>
-        {`Concentration asks whether the depth is many independent positions or one that can be pulled in a single transaction. Inside ±${u(5, '%')} of the price, every tick range is weighted by the liquidity it holds: the range HHI is 1 when everything sits in one range. When positions are indexed, they are also grouped by owner, which gives the top LP’s share, the top three’s share and an owner HHI. Aerodrome v2 pools are one full-range position by construction.`}
+        {`Concentration asks whether the depth is many independent positions or one that can be pulled in a single transaction. Inside ±${u(5, '%')} of the price, every tick range is weighted by the liquidity it holds: the range HHI is 1 when everything sits in one range. When positions are indexed, they are also grouped by owner, which gives the top LP’s share, the top three’s share and an owner HHI, and the coverage: how much of the pool’s liquidity near the price those owners account for. A Slipstream gauge holds staked positions for their depositors, so it is not counted as an owner. Aerodrome v2 pools are one full-range position by construction.`}
       </p>
     ),
     formula: [
@@ -92,6 +92,7 @@ export const SECTIONS: readonly MetricSection[] = [
       'rangeHhi = sum of share_i²',
       'owners   : top1Share = the largest share, top3Share = the three largest,',
       '           ownerHhi = sum of each owner’s share²',
+      'coverage = the owners’ weight / the pool’s weight, 0..1',
     ].join('\n'),
   },
   {
@@ -131,6 +132,9 @@ export const SECTIONS: readonly MetricSection[] = [
           midpoint, with a note.
         </p>
         <p>
+          {`Concentration counts the largest LP’s share only when the indexed owners cover at least ${u(90, '%')} of the liquidity near the price; otherwise a concentrated pool is scored from how its liquidity spreads over price ranges, and an Aerodrome v2 pool, one full range by construction, scores the neutral 10. A grade that does not rest on LP owners carries a star that says so.`}
+        </p>
+        <p>
           {`A grade only means something where there is liquidity to grade. A pool is rated when both sides within ±${u(2, '%')} are known and the thinner one holds at least $5K. Any other pool shows “Not rated” instead of a letter, with the reason: too thin to rate, too thin on one side, or no USD price. It keeps its score and its four parts, and stays in every list; the median health on Home and in the stats counts rated pools only.`}
         </p>
       </>
@@ -141,7 +145,8 @@ export const SECTIONS: readonly MetricSection[] = [
       '               $500 on each side scores 0, $500K on each side scores 35',
       'spread         25 × clamp(log10(300 / spread10kBps) / log10 30, 0, 1)',
       '               300 bps scores 0, 10 bps scores 25',
-      'concentration  20 × (1 − top1Share), else 20 × (1 − rangeHhi), else 10',
+      'concentration  20 × (1 − top1Share) when owners cover ≥ 90 % of the band,',
+      '               else 20 × (1 − rangeHhi) (concentrated pools), else 10',
       `persistence    20 × (0.5 × stability + 0.5 × uptime) over ${u(24, 'h')}, else 10`,
       'rated          both sides known and min(up, down) ≥ $5K',
       'grade          rated pools only: A ≥ 80, B ≥ 65, C ≥ 50, D ≥ 35, else F',

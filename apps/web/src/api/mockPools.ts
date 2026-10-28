@@ -230,7 +230,9 @@ export function buildPool(seed: PoolSeed, now: number): MockPool {
     depth2DownUsd: level2?.downUsd ?? null,
     spread10kBps,
     ownerTop1Share: concentration.owners?.top1Share ?? null,
+    ownerCoverage: concentration.owners?.coverage ?? null,
     rangeHhi: concentration.rangeHhi,
+    poolKind: seed.kind,
     persistence: persistence24h,
   })
   const gap = computeGap(volume24hUsd, depth2Usd)
@@ -281,6 +283,7 @@ export function summarize(p: MockPool): PoolSummary {
       grade: p.score.grade,
       rated: p.score.rated,
       unratedReason: p.score.unratedReason,
+      concentrationBasis: p.score.concentrationBasis,
     },
     gapScore: p.gap.gapScore,
     volume24hUsd: p.volume24hUsd,

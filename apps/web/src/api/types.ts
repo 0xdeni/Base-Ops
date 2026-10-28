@@ -10,6 +10,7 @@
 import type {
   BreachKind,
   BreachStreak,
+  ConcentrationBasis,
   ConcentrationMetrics,
   DepthLevel,
   DepthLevelUsd,
@@ -186,6 +187,12 @@ export interface PoolHealthSummary {
   rated: boolean
   /** Why there is no grade; null when rated. */
   unratedReason: UnratedReason | null
+  /**
+   * What the concentration component stands on (`HealthScore.concentrationBasis`): `owners`,
+   * `ranges` (the range HHI: owners not indexed or covering under 90 %) or `neutral`; null for a
+   * score stored before the basis was recorded.
+   */
+  concentrationBasis: ConcentrationBasis | null
 }
 
 /**

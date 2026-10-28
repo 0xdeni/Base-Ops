@@ -5,10 +5,13 @@ import {
   HEALTH_RATING_MIN_SIDE_USD,
   healthGrade,
   NOTE_CONCENTRATION_NEUTRAL,
+  NOTE_CONCENTRATION_RESERVES,
   NOTE_DEPTH_UNKNOWN,
   NOTE_PERSISTENCE_NEUTRAL,
   NOTE_PERSISTENCE_SHORT,
   NOTE_SPREAD_INFEASIBLE,
+  OWNER_COVERAGE_MIN,
+  ownerCoverageNote,
   rateDepth,
   thinnerSideUsd,
 } from './health.js'
@@ -34,7 +37,9 @@ const perfect: HealthInputs = {
   ...balanced(500_000),
   spread10kBps: 10,
   ownerTop1Share: 0.001,
+  ownerCoverage: 1,
   rangeHhi: 0.1,
+  poolKind: 'concentrated',
   persistence: persistence(1, 1),
 }
 
@@ -154,6 +159,56 @@ describe('computeHealthScore', () => {
     expect(neutral.notes).toContain(NOTE_CONCENTRATION_NEUTRAL)
   })
 
+  it('records the basis: owners covering the pool, else ranges, else neutral', () => {
+    expect(computeHealthScore(perfect).concentrationBasis).toBe('owners')
+    const ranges = computeHealthScore({ ...perfect, ownerTop1Share: null, ownerCoverage: null })
+    expect(ranges.concentrationBasis).toBe('ranges')
+    expect(ranges.notes).toEqual([])
+    const neutral = computeHealthScore({ ...perfect, ownerTop1Share: null, rangeHhi: null })
+    expect(neutral.concentrationBasis).toBe('neutral')
+  })
+
+  it('uses owner shares only from OWNER_COVERAGE_MIN of the in-band liquidity', () => {
+    expect(OWNER_COVERAGE_MIN).toBe(0.9)
+    const owners = { ...perfect, ownerTop1Share: 0.42, rangeHhi: 0.18 }
+    const at = computeHealthScore({ ...owners, ownerCoverage: 0.9 })
+    expect(at.components.concentration).toBe(11.6)
+    expect(at.concentrationBasis).toBe('owners')
+    expect(at.notes).toEqual([])
+    // 40 % coverage: one gauge or a late position window must not decide the score
+    const partial = computeHealthScore({ ...owners, ownerCoverage: 0.4 })
+    expect(partial.components.concentration).toBe(16.4)
+    expect(partial.concentrationBasis).toBe('ranges')
+    expect(partial.notes).toEqual(['owner data covers 40 % of in-band liquidity'])
+    const below = computeHealthScore({ ...owners, ownerCoverage: 0.899 })
+    expect(below.concentrationBasis).toBe('ranges')
+    expect(below.notes).toEqual(['owner data covers 89 % of in-band liquidity'])
+    // a snapshot stored before coverage was recorded
+    const unknown = computeHealthScore({ ...owners, ownerCoverage: null })
+    expect(unknown.concentrationBasis).toBe('ranges')
+    expect(unknown.notes).toEqual([ownerCoverageNote(null)])
+    expect(ownerCoverageNote(null)).toBe('owner data covers an unknown share of in-band liquidity')
+  })
+
+  it('scores a reserve pool without owners neutral, not from its rangeHhi of 1', () => {
+    for (const poolKind of ['constant-product', 'stable-swap'] as const) {
+      const v2 = computeHealthScore({
+        ...perfect,
+        ownerTop1Share: null,
+        ownerCoverage: null,
+        rangeHhi: 1,
+        poolKind,
+      })
+      expect(v2.components.concentration).toBe(10)
+      expect(v2.concentrationBasis).toBe('neutral')
+      expect(v2.notes).toEqual([NOTE_CONCENTRATION_RESERVES])
+    }
+    // a concentrated pool whose band is one range still scores that range
+    const single = computeHealthScore({ ...perfect, ownerTop1Share: null, rangeHhi: 1 })
+    expect(single.components.concentration).toBe(0)
+    expect(single.concentrationBasis).toBe('ranges')
+  })
+
   it('persistence is neutral when unknown, with the note that names the cause', () => {
     expect(
       computeHealthScore({ ...perfect, persistence: persistence(0.5, 1) }).components.persistence,
@@ -187,7 +242,9 @@ describe('computeHealthScore', () => {
       ...balanced(5_000),
       spread10kBps: 1000,
       ownerTop1Share: 1,
+      ownerCoverage: 1,
       rangeHhi: 1,
+      poolKind: 'concentrated',
       persistence: persistence(0, 0),
     })
     expect(worst.components).toEqual({ depth: 11.67, spread: 0, concentration: 0, persistence: 0 })
@@ -198,7 +255,9 @@ describe('computeHealthScore', () => {
       ...balanced(10),
       spread10kBps: 1000,
       ownerTop1Share: 1,
+      ownerCoverage: 1,
       rangeHhi: 1,
+      poolKind: 'concentrated',
       persistence: persistence(0, 0),
     })
     expect(empty.total).toBe(0)
@@ -209,7 +268,9 @@ describe('computeHealthScore', () => {
       depth2DownUsd: null,
       spread10kBps: null,
       ownerTop1Share: null,
+      ownerCoverage: null,
       rangeHhi: null,
+      poolKind: 'concentrated',
       persistence: null,
     })
     expect(nothing.total).toBe(20)

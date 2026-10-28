@@ -60,6 +60,11 @@ export const syncKeys = {
    * positions.ts); its positions so far are stored under `positionsStagingId`, unpublished.
    */
   positionsCatchUp: (poolId: string) => `positions:${poolId}:catchUpBlock`,
+  /**
+   * The pool's custodians (a Slipstream gauge) as of its last published positions: lowercase,
+   * comma-separated; absent when it has none. Their positions count as uncovered (snapshot.ts).
+   */
+  positionsCustodians: (poolId: string) => `positions:${poolId}:custodians`,
   /** When `start` last ran a cadenced step (unix ms; start/scheduler.ts). */
   startLastRun: (step: string) => `start:${step}:lastRunAt`,
   snapshot: () => 'snapshot:lastBlock',

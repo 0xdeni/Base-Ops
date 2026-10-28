@@ -128,6 +128,7 @@ export function buildConcentration(
             top1Share: ownerTop1Share,
             top3Share: Math.min(1, ownerTop1Share * 1.6),
             hhi: Math.min(1, ownerTop1Share ** 2 + 0.05),
+            coverage: 0.96,
           },
   }
 }

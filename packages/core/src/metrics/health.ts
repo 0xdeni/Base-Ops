@@ -4,7 +4,9 @@
  * - depth (35):         35 · clamp((log10(2 · thinner) − 3) / 3, 0, 1)   thinner $500 → 0, $500k → 35
  *                       thinner = min(±2 % up USD, ±2 % down USD): a one-sided pool scores 0
  * - spread (25):        25 · clamp((log10 300 − log10 spread10kBps) / (log10 300 − log10 10), 0, 1)
- * - concentration (20): owners known → 20 · (1 − top1Share), else 20 · (1 − rangeHhi), else 10
+ * - concentration (20): owners known and covering ≥ OWNER_COVERAGE_MIN of the in-band liquidity →
+ *                       20 · (1 − top1Share); else a concentrated pool's 20 · (1 − rangeHhi);
+ *                       else 10 (`concentrationBasis` owners / ranges / neutral)
  * - persistence (20):   20 · (0.5 · stability + 0.5 · uptime), else 10 (unknown)
  * Rated: both sides known and the thinner at least HEALTH_RATING_MIN_SIDE_USD.
  * Grade (rated pools only): A ≥ 80, B ≥ 65, C ≥ 50, D ≥ 35, else F.
@@ -12,6 +14,7 @@
 
 import { clamp } from '../math.js'
 import {
+  type ConcentrationBasis,
   HEALTH_MAX,
   type HealthGrade,
   type HealthInputs,
@@ -22,6 +25,7 @@ import {
 export const NOTE_DEPTH_UNKNOWN = 'depth unknown: scored 0'
 export const NOTE_SPREAD_INFEASIBLE = 'spread infeasible at $10k: scored 0'
 export const NOTE_CONCENTRATION_NEUTRAL = 'concentration neutral: no position or range data'
+export const NOTE_CONCENTRATION_RESERVES = 'concentration neutral: LP owners not indexed'
 export const NOTE_PERSISTENCE_NEUTRAL = 'persistence neutral: fewer than 3 samples'
 export const NOTE_PERSISTENCE_SHORT = 'persistence neutral: samples cover under 25 % of the window'
 
@@ -30,6 +34,20 @@ export const NOTE_PERSISTENCE_SHORT = 'persistence neutral: samples cover under 
  * Half of the $10,000 spread notional; 50 of the 492 pools of the first live database.
  */
 export const HEALTH_RATING_MIN_SIDE_USD = 5_000
+
+/**
+ * Owner shares are scored only when the indexed owners account for at least this share of the
+ * pool's in-band liquidity (`OwnerConcentration.coverage`); below it the shares describe a part of
+ * the pool, and the range HHI is used instead.
+ */
+export const OWNER_COVERAGE_MIN = 0.9
+
+/** "owner data covers 40 % of in-band liquidity" (rounded down, so 89.9 % never reads as 90 %). */
+export function ownerCoverageNote(coverage: number | null): string {
+  if (coverage === null || !Number.isFinite(coverage))
+    return 'owner data covers an unknown share of in-band liquidity'
+  return `owner data covers ${Math.floor(clamp(coverage, 0, 1) * 100)} % of in-band liquidity`
+}
 
 const LOG_300 = Math.log10(300)
 const LOG_10 = Math.log10(10)
@@ -98,17 +116,7 @@ export function computeHealthScore(inputs: HealthInputs): HealthScore {
     spread = spreadScore(inputs.spread10kBps)
   }
 
-  let concentration: number
-  const top1 = inputs.ownerTop1Share
-  const rangeHhi = inputs.rangeHhi
-  if (top1 !== null && Number.isFinite(top1) && top1 > 0) {
-    concentration = HEALTH_MAX.concentration * (1 - clamp(top1, 0, 1))
-  } else if (rangeHhi !== null && Number.isFinite(rangeHhi)) {
-    concentration = HEALTH_MAX.concentration * (1 - clamp(rangeHhi, 0, 1))
-  } else {
-    concentration = HEALTH_MAX.concentration / 2
-    notes.push(NOTE_CONCENTRATION_NEUTRAL)
-  }
+  const { concentration, concentrationBasis } = concentrationScore(inputs, notes)
 
   let persistence: number
   const p = inputs.persistence
@@ -136,7 +144,36 @@ export function computeHealthScore(inputs: HealthInputs): HealthScore {
     grade: rated ? healthGrade(total) : null,
     rated,
     unratedReason,
+    concentrationBasis,
     components,
     notes,
   }
+}
+
+/** The concentration component and its basis (docs/METRICS.md, "Concentration (max 20)"). */
+function concentrationScore(
+  inputs: HealthInputs,
+  notes: string[],
+): { concentration: number; concentrationBasis: ConcentrationBasis } {
+  const top1 = inputs.ownerTop1Share
+  const coverage = inputs.ownerCoverage
+  const rangeHhi = inputs.rangeHhi
+  const ownersKnown = known(top1) && top1 > 0
+  if (ownersKnown && known(coverage) && coverage >= OWNER_COVERAGE_MIN)
+    return {
+      concentration: HEALTH_MAX.concentration * (1 - clamp(top1, 0, 1)),
+      concentrationBasis: 'owners',
+    }
+  // Owners known but covering too little of the pool: say so, whatever is used instead.
+  if (ownersKnown) notes.push(ownerCoverageNote(coverage))
+  if (inputs.poolKind === 'concentrated' && known(rangeHhi))
+    return {
+      concentration: HEALTH_MAX.concentration * (1 - clamp(rangeHhi, 0, 1)),
+      concentrationBasis: 'ranges',
+    }
+  if (!ownersKnown)
+    notes.push(
+      inputs.poolKind === 'concentrated' ? NOTE_CONCENTRATION_NEUTRAL : NOTE_CONCENTRATION_RESERVES,
+    )
+  return { concentration: HEALTH_MAX.concentration / 2, concentrationBasis: 'neutral' }
 }

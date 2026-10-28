@@ -139,7 +139,13 @@ describe('GET /api/mm/:id', () => {
     expect(body.mandate).toEqual(toPublicMandate(mandate))
     expect(body.status).toBe('ok')
     expect(body.pool?.pool.id).toBe(seed.pools.wethAeroSlip.id)
-    expect(body.pool?.health).toEqual({ total: 70, grade: 'B', rated: true, unratedReason: null })
+    expect(body.pool?.health).toEqual({
+      total: 70,
+      grade: 'B',
+      rated: true,
+      unratedReason: null,
+      concentrationBasis: 'owners',
+    })
     expect(body.pool?.depth2Usd).toBe(400_000)
     expect(body.latest?.blockNumber).toBe('20000000')
     expect(body.latest?.timestamp).toBe(seed.now)

@@ -38,6 +38,7 @@ import { errorMessage, type Logger } from '../log.js'
 import { type AlertsResult, deliverAlerts } from './alerts.js'
 import { type PipelineContext, settleConcurrent, syncKeys, throwIfStopped } from './context.js'
 import { activeMandatesByPool, sampleMandates, storedPositions } from './mm.js'
+import { storedCustodians } from './positions.js'
 import {
   computePrices,
   depthUsdFor,
@@ -139,6 +140,10 @@ export function selectTracked(
   return [...selected].sort()
 }
 
+/**
+ * One pool's snapshot. `custodians` (a Slipstream gauge, as `positions` recorded it) hold positions
+ * for depositors: their weight counts as uncovered in the owner concentration.
+ */
 export function buildSnapshot(
   pool: PoolMeta,
   view: PoolOverview,
@@ -146,6 +151,7 @@ export function buildSnapshot(
   prices: PriceMap,
   positions: Position[] | null,
   bandPct: number,
+  custodians: readonly string[] = [],
 ): PoolSnapshot {
   const { token0, token1 } = pool
   const price = midPrice(state, token0.decimals, token1.decimals)
@@ -167,7 +173,7 @@ export function buildSnapshot(
     spreads: computeEffectiveSpread(state, token0, token1, token0Usd, token1Usd),
     concentration:
       state.kind === 'concentrated'
-        ? computeConcentration(state, positions, bandPct)
+        ? computeConcentration(state, positions, bandPct, custodians)
         : computeConcentrationForReserves(state, bandPct),
   }
 }
@@ -278,8 +284,9 @@ export async function snapshotStep(
     const view = viewById.get(pool.id)
     if (view === undefined) continue
     const positions = storedPositions(db, pool)
+    const custodians = storedCustodians(db, pool.id)
     try {
-      snapshots.push(buildSnapshot(pool, view, state, prices, positions, bandPct))
+      snapshots.push(buildSnapshot(pool, view, state, prices, positions, bandPct, custodians))
     } catch (error) {
       const message = errorMessage(error)
       result.failed.push({ item: pool.id, error: message })
