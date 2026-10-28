@@ -76,4 +76,19 @@ describe('sortSummaries', () => {
     const byVolume = sortSummaries(all, 'volume', 'desc').map((s) => s.pool.id)
     expect(byVolume.slice(0, 3).some((id) => unrated.some((u) => u.pool.id === id))).toBe(false)
   })
+
+  it('puts stale quotes after the other pools when sorting by depth, in both directions', async () => {
+    const all = await summaries()
+    const deepest = sortSummaries(all, 'depth', 'desc')[0]
+    if (!deepest) throw new Error('no mock pools')
+    const marked = all.map((s) => (s === deepest ? { ...s, staleQuote: true } : s))
+    for (const dir of ['asc', 'desc'] as const) {
+      const sorted = sortSummaries(marked, 'depth', dir)
+      expect(sorted.at(-1)?.pool.id).toBe(deepest.pool.id)
+    }
+    // other keys do not care about the flag
+    expect(sortSummaries(marked, 'tvl', 'desc')[0]?.pool.id).toBe(
+      sortSummaries(all, 'tvl', 'desc')[0]?.pool.id,
+    )
+  })
 })

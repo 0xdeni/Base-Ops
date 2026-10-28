@@ -155,11 +155,13 @@ describe('Token page: the price route', () => {
     expect(row.textContent).toContain('oracle:chainlink')
   })
 
-  it('says an anchor is not routed', async () => {
+  it('says an anchor is not routed and is taken at $1 by convention', async () => {
     renderToken({ via: [] })
     await loaded()
     expect(within(facts()).getByText('Anchor')).toBeTruthy()
-    expect(routeRow().textContent).toMatch(/^Anchor/)
+    expect(within(facts()).getByText('$1 by convention, not routed')).toBeTruthy()
+    expect(routeRow().textContent).toMatch(/^Anchor: a stablecoin taken at \$1 by convention/)
+    expect(routeRow().textContent).toContain('Other tokens are priced through the pools')
   })
 })
 
@@ -271,6 +273,12 @@ describe('Token page: states', () => {
     )
     expect(await screen.findByRole('heading', { level: 1, name: 'token not found' })).toBeTruthy()
     expect(screen.getByText(missing)).toBeTruthy()
+    // What is covered, and where to look instead.
+    expect(screen.getByText(/covers the tokens of the pools it lists under Pools/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Browse pools' }).getAttribute('href')).toBe('/pools')
+    expect(screen.getByRole('link', { name: 'How it is measured' }).getAttribute('href')).toBe(
+      '/methodology',
+    )
   })
 })
 
@@ -331,6 +339,12 @@ describe('token helpers', () => {
       `$40M sits within 2${NB}% of the price across WETH’s 1,250 scored pools.`,
     )
     expect(poolsTakeaway(loaded, 'WETH', detail)).toBe(
+      `A / B on Uniswap v3 holds 25${NB}% of WETH’s depth.`,
+    )
+    // A stale quote is not in the API's total, so the share is never about it.
+    const deeper = pool('s', '0xaa', '0xcc', 30_000_000, 30_000_000)
+    const stale = { ...deeper, pool: { ...deeper.pool, dex: 'uniswap-v3' }, staleQuote: true }
+    expect(poolsTakeaway([stale, ...loaded] as PoolSummary[], 'WETH', detail)).toBe(
       `A / B on Uniswap v3 holds 25${NB}% of WETH’s depth.`,
     )
     expect(poolsTakeaway(loaded, 'WETH', { total: 1, depth2UsdTotal: 10_000_000 })).toBe(

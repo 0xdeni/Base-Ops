@@ -229,4 +229,11 @@ describe('poolAnswer', () => {
       'No snapshot yet. Depth appears after the first snapshot.',
     )
   })
+
+  it('says a hooked pool is not modelled, not that its tokens have no price', () => {
+    const hooked = { ...pool, hooks: '0x00000000000000000000000000000000000000c0' } as PoolMetaDto
+    expect(poolAnswer({ pool: hooked, latest: level(null, null).latest })).toBe(
+      'This pool has a Uniswap v4 hook that runs its own swap code: its depth is not modelled.',
+    )
+  })
 })

@@ -65,6 +65,34 @@ export class MmAlertsRepo {
     return row ? rowToMmAlert(row) : undefined
   }
 
+  /** The newest delivered alert of a mandate, whatever its kind. */
+  latestDeliveredFor(mandateId: string): MmAlert | undefined {
+    const row = this.ctx.get(
+      `SELECT ${COLUMNS} FROM mm_alerts WHERE mandate_id = ? AND delivered = 1 ${NEWEST_FIRST} LIMIT 1`,
+      [mandateId],
+    )
+    return row ? rowToMmAlert(row) : undefined
+  }
+
+  /**
+   * Attempts of one kind recorded for a mandate, delivered or not; with `afterTs`, those with
+   * `timestamp > afterTs` only (the breach attempts of the streak that follows a within-KPI
+   * sample, the recovery attempts that follow a delivered breach).
+   */
+  countAttempts(mandateId: string, kind: MmAlertKind, afterTs?: number): number {
+    const row =
+      afterTs === undefined
+        ? this.ctx.get('SELECT COUNT(*) AS n FROM mm_alerts WHERE mandate_id = ? AND kind = ?', [
+            mandateId,
+            kind,
+          ])
+        : this.ctx.get(
+            'SELECT COUNT(*) AS n FROM mm_alerts WHERE mandate_id = ? AND kind = ? AND timestamp > ?',
+            [mandateId, kind, afterTs],
+          )
+    return row ? colNumber(row, 'n') : 0
+  }
+
   /** The newest `limit` alerts of a mandate, newest first. */
   listFor(mandateId: string, limit: number): MmAlert[] {
     const [bound] = page(limit, undefined)

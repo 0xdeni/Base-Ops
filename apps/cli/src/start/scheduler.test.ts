@@ -64,6 +64,8 @@ interface FakeOptions {
   during?: (step: Step, call: number) => void
   /** What `needsPositions` answers (default false). */
   needsPositions?: () => boolean
+  /** What `needsPrune` answers (default false). */
+  needsPrune?: () => boolean
 }
 
 function fakeSteps(clock: FakeClock, opts: FakeOptions = {}) {
@@ -96,12 +98,14 @@ function fakeSteps(clock: FakeClock, opts: FakeOptions = {}) {
   const steps: SchedulerSteps = {
     needsSeed: () => !seeded,
     needsPositions: () => opts.needsPositions?.() ?? false,
+    needsPrune: () => opts.needsPrune?.() ?? false,
     seed: run('seed'),
     snapshot: run('snapshot'),
     volume: run('volume'),
     score: run('score'),
     positions: run('positions'),
     discover: run('discover'),
+    prune: run('prune'),
   }
   return {
     steps,
@@ -189,6 +193,29 @@ describe('runScheduler: bootstrap and cadences', () => {
     })
     await off.run()
     expect(off.fake.calls.map((c) => c.step)).not.toContain('positions')
+  })
+
+  it('closes a pass with prune when one is due, after the chain steps', async () => {
+    let due = true
+    const { fake, run } = setup({
+      passes: 3,
+      needsPrune: () => due,
+      during: (step) => {
+        if (step === 'prune') due = false
+      },
+    })
+    await run()
+    expect(fake.byPass(1)).toEqual([
+      'snapshot',
+      'volume',
+      'score',
+      'positions',
+      'discover',
+      'prune',
+    ])
+    expect(fake.byPass(2)).toEqual(['snapshot', 'score', 'discover'])
+    expect(fake.byPass(3)).toEqual(['snapshot', 'volume', 'score', 'discover'])
+    expect(fake.maxActive()).toBe(1)
   })
 
   it('keeps the cadence across a restart through the store', async () => {

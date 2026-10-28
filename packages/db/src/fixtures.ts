@@ -24,6 +24,7 @@ import {
   type PoolMeta,
   type PoolSnapshot,
   type Position,
+  priceDeviationBps,
   SPREAD_NOTIONALS_USD,
   type SpreadPoint,
   type TokenInfo,
@@ -145,7 +146,7 @@ export interface SnapshotFixtureOverrides extends Partial<PoolSnapshot> {
 
 export function fixtureSnapshot(overrides: SnapshotFixtureOverrides = {}): PoolSnapshot {
   const { depth2Usd = 250_000, spread10kBps = 12, ownerTop1Share = 0.4, ...rest } = overrides
-  return {
+  const snapshot: Omit<PoolSnapshot, 'priceDeviationBps'> = {
     poolId: fixturePool().id,
     blockNumber: 20_000_000n,
     timestamp: 1_700_000_000,
@@ -160,6 +161,12 @@ export function fixtureSnapshot(overrides: SnapshotFixtureOverrides = {}): PoolS
     concentration: fixtureConcentration(ownerTop1Share),
     ...rest,
   }
+  // Core's measure of the fixture's own price and USD prices unless the overrides name one.
+  const deviation =
+    rest.priceDeviationBps !== undefined
+      ? rest.priceDeviationBps
+      : priceDeviationBps(snapshot.price, snapshot.token0Usd, snapshot.token1Usd)
+  return { ...snapshot, priceDeviationBps: deviation }
 }
 
 export function healthGrade(total: number): HealthGrade {

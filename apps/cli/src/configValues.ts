@@ -2,7 +2,7 @@
  * Parsers of single configuration values (flags and environment variables) for config.ts and
  * start/settings.ts. Each throws a ConfigError naming the setting; none echoes an RPC URL.
  */
-import { DEXES, type Dex } from '@depthwatch/core'
+import { type Address, DEXES, type Dex } from '@depthwatch/core'
 import { isLogLevel, type LogLevel } from './log.js'
 
 /** Environment variables (`process.env` or a test's object). */
@@ -100,6 +100,24 @@ export function parsePoolIds(raw: readonly string[] | undefined): string[] {
     const [dex, key] = id.split(':', 2)
     const normalized = `${dex}:${(key ?? '').toLowerCase()}`
     if (!out.includes(normalized)) out.push(normalized)
+  }
+  return out
+}
+
+/**
+ * Token addresses (a repeated flag, or one comma-separated value), lowercased and deduplicated in
+ * order; each must be a 0x-prefixed 20-byte hex address.
+ */
+export function parseSeedTokens(raw: string | readonly string[] | undefined): Address[] {
+  if (raw === undefined) return []
+  const out: Address[] = []
+  for (const entry of (typeof raw === 'string' ? [raw] : raw).flatMap((v) => v.split(','))) {
+    const value = entry.trim()
+    if (value === '') continue
+    if (!/^0x[0-9a-fA-F]{40}$/.test(value))
+      throw new ConfigError(`seed token "${value}" must be a 0x-prefixed 20-byte address`)
+    const address = value.toLowerCase() as Address
+    if (!out.includes(address)) out.push(address)
   }
   return out
 }

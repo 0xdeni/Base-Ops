@@ -2,19 +2,22 @@
  * Regression for the live run at block 53,063,332: BRETT was priced at $17.96 instead of ~$0.0047
  * because a Uniswap v3 BRETT/USDC 0.3 % pool with no active liquidity, and liquidity only above
  * its stale price (2 % up: 32,059 USDC; 2 % down: nothing), out-weighed the real WETH route when
- * edges were weighted by their up side alone. Weighted by the thinner side, that pool is no route.
+ * edges were weighted by their up side alone. Weighted by the thinner side, that pool is no route,
+ * and its snapshot flags the quote as stale (docs/METRICS.md, "Stale quotes").
  */
 import type { PoolOverview } from '@depthwatch/chain'
 import {
   type Address,
   buildConcentratedState,
   getTickAtSqrtRatio,
+  isStaleQuote,
   type PoolMeta,
   priceToSqrtPriceX96,
   type TokenInfo,
 } from '@depthwatch/core'
 import { describe, expect, it } from 'vitest'
-import { buildPriceEdges, computePrices, depthSides, edgeWeight, pricingFor } from './prices.js'
+import { buildPriceEdges, computePrices, depthSides, pricingFor } from './prices.js'
+import { buildSnapshot } from './snapshot.js'
 
 const token = (address: string, symbol: string, decimals: number): TokenInfo => ({
   address: address as Address,
@@ -112,7 +115,7 @@ function oneSidedState() {
 describe('a one-sided pool is not a price route', () => {
   const states = new Map([[ONE_SIDED.pool.id, oneSidedState()]])
 
-  it('has depth on its up side only, so its edge weight is 0', () => {
+  it('has depth on its up side only, so it is no price edge', () => {
     const pricing = pricingFor(ONE_SIDED, states.get(ONE_SIDED.pool.id))
     expect(pricing.price).toBeCloseTo(17.96, 2)
     expect(pricing.state).toMatchObject({ liquidity: 0n })
@@ -120,7 +123,6 @@ describe('a one-sided pool is not a price route', () => {
     expect(upToken1).toBeGreaterThan(25_000) // ≈ 32,000 USDC, as measured on Base
     expect(upToken1).toBeLessThan(40_000)
     expect(downToken0).toBe(0)
-    expect(edgeWeight(pricing)).toBe(0)
     expect(buildPriceEdges([pricing])).toEqual([])
   })
 
@@ -134,5 +136,22 @@ describe('a one-sided pool is not a price route', () => {
     const stale = depthSides(pricingFor(ONE_SIDED, states.get(ONE_SIDED.pool.id))).upToken1
     expect(brett?.weight).toBeLessThan(stale)
     expect(brett?.weight).toBeGreaterThan(1_000)
+  })
+
+  it('records the stale quote on its snapshot, and none on the route it no longer beats', () => {
+    const prices = computePrices([WETH_USDC, WETH_BRETT, ONE_SIDED], ANCHORS, { states })
+    const state = oneSidedState()
+    const stale = buildSnapshot(ONE_SIDED.pool, ONE_SIDED, state, prices, null, 5)
+    // 17.96 USDC per BRETT against BRETT at $0.0047: about 3.8 × 10^7 bps off.
+    expect(stale.priceDeviationBps).toBeGreaterThan(3.8e7)
+    expect(stale.priceDeviationBps).toBeLessThan(3.9e7)
+    expect(isStaleQuote(stale.priceDeviationBps)).toBe(true)
+    // Its depth is still measured, at its own price: the up side alone.
+    expect(stale.depthUsd.find((level) => level.pct === 2)?.upUsd).toBeGreaterThan(25_000)
+    const route = pricingFor(WETH_BRETT)
+    if (route.state === null) throw new Error('no proxy state')
+    const onRoute = buildSnapshot(WETH_BRETT.pool, WETH_BRETT, route.state, prices, null, 5)
+    expect(onRoute.priceDeviationBps).toBeLessThan(1)
+    expect(isStaleQuote(onRoute.priceDeviationBps)).toBe(false)
   })
 })

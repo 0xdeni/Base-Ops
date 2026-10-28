@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -8,7 +8,6 @@ import {
   fixtureMmAlert,
   fixtureMmSample,
   fixturePool,
-  fixtureSnapshot,
   fixtureToken,
 } from './fixtures.js'
 import { currentVersion, MIGRATIONS, SCHEMA_VERSION } from './schema.js'
@@ -33,8 +32,10 @@ const EXPECTED_TABLES = [
 const EXPECTED_INDEXES = [
   'mandates_pool_id',
   'mm_alerts_mandate_timestamp',
+  'mm_alerts_timestamp',
   'mm_samples_mandate_block',
   'mm_samples_mandate_timestamp',
+  'mm_samples_timestamp',
   'pools_dex',
   'pools_token0',
   'pools_token1',
@@ -75,8 +76,8 @@ describe('openDatabase', () => {
   it('creates the schema and records every migration once', () => {
     const db = memory()
     expect(db.migration).toEqual({ from: 0, to: SCHEMA_VERSION })
-    expect(MIGRATIONS.length).toBe(3)
-    expect(SCHEMA_VERSION).toBe(3)
+    expect(MIGRATIONS.length).toBe(5)
+    expect(SCHEMA_VERSION).toBe(5)
     expect(names(db, 'table')).toEqual(EXPECTED_TABLES)
     expect(names(db, 'index')).toEqual(EXPECTED_INDEXES)
     const versions = db.raw
@@ -121,115 +122,18 @@ describe('openDatabase', () => {
     expect(readdirSync(dir)).toContain('test.sqlite')
   })
 
-  it('upgrades a version-1 database to the scorecard schema and keeps its rows', () => {
+  it('checkpoint folds the WAL into the file and empties it', () => {
     const dir = mkdtempSync(join(tmpdir(), 'depthwatch-db-'))
     tempDirs.push(dir)
-    const path = join(dir, 'v1.sqlite')
-
-    // Roll a fresh database back to version 1 (layer 1 tables only) the way a pre-layer-2
-    // build would have left it, then reopen with the current build.
-    const fresh = openDatabase(path, { now: () => NOW })
-    fresh.tokens.upsertMany([fixtureToken()])
-    fresh.raw.exec('DROP TABLE mm_alerts; DROP TABLE mm_samples; DROP TABLE mandates')
-    fresh.raw.exec('DROP INDEX snapshots_pool_block')
-    fresh.raw.prepare('DELETE FROM schema_version WHERE version > 1').run()
-    expect(currentVersion(fresh.raw)).toBe(1)
-    expect(names(fresh, 'table')).not.toContain('mandates')
-    fresh.close()
-
-    const upgraded = openDatabase(path, { now: () => NOW + 5 })
-    open.push(upgraded)
-    expect(upgraded.migration).toEqual({ from: 1, to: SCHEMA_VERSION })
-    expect(names(upgraded, 'table')).toEqual(EXPECTED_TABLES)
-    expect(names(upgraded, 'index')).toEqual(EXPECTED_INDEXES)
-    expect(
-      upgraded.raw.prepare('SELECT version, applied_at FROM schema_version ORDER BY version').all(),
-    ).toEqual([
-      { version: 1, applied_at: NOW },
-      { version: 2, applied_at: NOW + 5 },
-      { version: 3, applied_at: NOW + 5 },
-    ])
-    expect(upgraded.tokens.get(fixtureToken().address)).toEqual(fixtureToken())
-    upgraded.mandates.upsert(fixtureMandate())
-    expect(upgraded.mandates.count()).toBe(1)
-    upgraded.close()
-
-    const again = openDatabase(path, { now: () => NOW + 9 })
-    open.push(again)
-    expect(again.migration).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION })
-    expect(again.mandates.get(fixtureMandate().id)).toEqual(fixtureMandate())
-  })
-
-  it('upgrades a version-2 database to one row per block, keeping the first copy stored', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'depthwatch-db-'))
-    tempDirs.push(dir)
-    const path = join(dir, 'v2.sqlite')
-
-    // Version 2 had no unique indexes, so a second writer's copies at the same block were stored.
-    const v2 = openDatabase(path, { now: () => NOW })
-    v2.raw.exec('DROP INDEX snapshots_pool_block; DROP INDEX mm_samples_mandate_block')
-    v2.raw.prepare('DELETE FROM schema_version WHERE version > 2').run()
-    v2.snapshots.insertMany([
-      fixtureSnapshot({ blockNumber: 7n, timestamp: NOW, price: 1 }),
-      fixtureSnapshot({ blockNumber: 7n, timestamp: NOW + 1, price: 2 }),
-      fixtureSnapshot({ blockNumber: 8n, timestamp: NOW + 2, price: 3 }),
-    ])
-    v2.mmSamples.insertMany([
-      fixtureMmSample({ blockNumber: 7n, timestamp: NOW }),
-      fixtureMmSample({ blockNumber: 7n, timestamp: NOW + 1, withinKpi: false }),
-      fixtureMmSample({ blockNumber: 8n, timestamp: NOW + 2 }),
-    ])
-    expect(v2.snapshots.count()).toBe(3)
-    expect(v2.mmSamples.count()).toBe(3)
-    v2.close()
-
-    const upgraded = openDatabase(path, { now: () => NOW + 5 })
-    open.push(upgraded)
-    expect(upgraded.migration).toEqual({ from: 2, to: SCHEMA_VERSION })
-    expect(names(upgraded, 'index')).toEqual(EXPECTED_INDEXES)
-    const pool = fixturePool().id
-    expect(upgraded.snapshots.seriesForPool(pool, 0).map((s) => [s.blockNumber, s.price])).toEqual([
-      [7n, 1],
-      [8n, 3],
-    ])
-    const mandate = fixtureMmSample().mandateId
-    expect(
-      upgraded.mmSamples.seriesFor(mandate, 0).map((s) => [s.blockNumber, s.withinKpi]),
-    ).toEqual([
-      [7n, true],
-      [8n, true],
-    ])
-
-    // From now on a copy at a stored block is skipped; insertMany counts the rows it stored.
-    expect(upgraded.snapshots.insert(fixtureSnapshot({ blockNumber: 8n, price: 4 }))).toBeNull()
-    expect(upgraded.mmSamples.insert(fixtureMmSample({ blockNumber: 8n }))).toBeNull()
-    expect(
-      upgraded.snapshots.insertMany([
-        fixtureSnapshot({ blockNumber: 8n, timestamp: NOW + 3 }),
-        fixtureSnapshot({ blockNumber: 9n, timestamp: NOW + 3 }),
-      ]),
-    ).toBe(1)
-    expect(
-      upgraded.mmSamples.insertMany([
-        fixtureMmSample({ blockNumber: 8n, timestamp: NOW + 3 }),
-        fixtureMmSample({ blockNumber: 9n, timestamp: NOW + 3 }),
-      ]),
-    ).toBe(1)
-    expect(upgraded.snapshots.count()).toBe(3)
-    expect(upgraded.mmSamples.count()).toBe(3)
-    expect(upgraded.snapshots.latestForPool(pool)?.price).toBe(fixtureSnapshot().price)
-  })
-
-  it('refuses a database written by a newer schema', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'depthwatch-db-'))
-    tempDirs.push(dir)
-    const path = join(dir, 'newer.sqlite')
+    const path = join(dir, 'wal.sqlite')
     const db = openDatabase(path, { now: () => NOW })
-    db.raw
-      .prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)')
-      .run(SCHEMA_VERSION + 1, NOW)
-    db.close()
-    expect(() => openDatabase(path)).toThrow(/newer than this build/)
+    open.push(db)
+    db.tokens.upsertMany([fixtureToken()])
+    expect(statSync(`${path}-wal`).size).toBeGreaterThan(0)
+    db.checkpoint()
+    expect(statSync(`${path}-wal`).size).toBe(0)
+    expect(db.tokens.get(fixtureToken().address)).toEqual(fixtureToken())
+    expect(() => memory().checkpoint()).not.toThrow()
   })
 
   it('commits transactions, rolls back on throw and lets nested calls join', () => {

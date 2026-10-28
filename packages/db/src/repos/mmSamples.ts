@@ -124,6 +124,16 @@ export class MmSamplesRepo {
     return row ? colNumber(row, 'id') : null
   }
 
+  /** The timestamp of the mandate's newest sample within KPI: a breached streak starts after it. */
+  lastWithinKpiAt(mandateId: string): number | undefined {
+    const row = this.ctx.get(
+      'SELECT MAX(timestamp) AS ts FROM mm_samples WHERE mandate_id = ? AND within_kpi = 1',
+      [mandateId],
+    )
+    const ts = row ? colNumberOrNull(row, 'ts') : null
+    return ts === null ? undefined : ts
+  }
+
   /** The newest sample of each mandate, in one query. Mandates without samples are absent. */
   latestForMany(mandateIds: readonly string[]): Map<string, MmSample> {
     const out = new Map<string, MmSample>()

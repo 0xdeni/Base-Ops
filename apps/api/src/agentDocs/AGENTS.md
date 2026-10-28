@@ -2,9 +2,9 @@
 
 Depthwatch measures executable liquidity on Base mainnet (chain id 8453). For every Uniswap v3,
 Uniswap v4, Aerodrome v2 and Aerodrome Slipstream pool it tracks, it reports how much capital
-moves the price by 1, 2 and 5 % in each direction, what a $1k / $10k / $100k round trip costs
-with fees included, how concentrated the liquidity is, how stable it has been over 24 h and 7 d,
-and a 0–100 Liquidity Health Score. This server answers read-only JSON over HTTP.
+moves the price by 1, 2 and 5 % in each direction, what a $1k / $10k / $100k / $1M round trip
+costs with fees included, how concentrated the liquidity is, how stable it has been over 24 h and
+7 d, and a 0–100 Liquidity Health Score. This server answers read-only JSON over HTTP.
 
 Typical use: an agent about to trade on Base checks how deep the pool is on the side it will
 trade and what a round trip costs at its size, then verifies on chain and executes elsewhere.
@@ -47,7 +47,11 @@ Read `source` before anything else:
   `depthwatch` pipeline.
 
 The project status is MVP: the math is unit-tested against hand-computed values, but numbers
-from a live deployment have not yet been validated against Base mainnet at scale.
+from a live deployment have not yet been validated against Base mainnet at scale. Which pools a
+deployment covers depends on how its operator discovers them: factory log scans find every pool
+of the four DEXes, `depthwatch discover --seed` only the pools between the reference tokens (the
+major Base tokens plus any the operator adds). A pool missing from `/api/pools` may simply not be
+indexed; `GET /api/stats` counts the pools found, tracked and scored.
 
 ## Conventions and units
 
@@ -68,11 +72,19 @@ from a live deployment have not yet been validated against Base mainnet at scale
 - **Depth at ±p %** (p = 1, 2, 5): `latest.depth[].up.amountIn` is the raw token1 amount, fee
   included, that moves the price up by p %; `down.amountIn` is the raw token0 amount that moves
   it down by p %. `amountOut` is what the trader receives on the way. `reached: false` means
-  liquidity ran out or the known tick range ended first: the amounts are then totals to that
-  point, not depth. `latest.depthUsd[]` holds `upUsd`, `downUsd` and `totalUsd` (both sides
-  summed; only the priced side when one token has no USD price) per level.
+  the known tick range ended before the target (or the pool cannot move): the amounts are then
+  totals to that point, not depth. A stretch with no liquidity inside the known range costs
+  nothing to cross, as on chain, so the target is reached and a 5 % amount equal to the 2 %
+  amount means no liquidity sits between them. `latest.depthUsd[]` holds `upUsd`, `downUsd` and
+  `totalUsd` (both sides summed; only the priced side when one token has no USD price) per level.
 - **`depth2Usd`** (pool lists, history, gaps, stats) is the ±2 % total: up side plus down side
   (only the priced side when one token has no USD price).
+- **Stale quotes**: `priceDeviationBps` (pool lists, and `latest` on `GET /api/pools/:id`) is
+  `|price / (token0Usd / token1Usd) − 1| × 10,000`, how far the pool's own price is from the one
+  its tokens' USD prices imply (`null` when a token has no USD price). From 500 bps the pool's
+  quote is stale (`staleQuote: true` in pool lists): its depth is measured at a price nobody
+  trades, so the stats and a token's `depth2UsdTotal` leave it out of their depth sums and a depth
+  sort puts it last.
   For a trade in one direction, use that side, not the total: `depth2UpUsd` / `depth2DownUsd` in
   pool lists (the newest snapshot's ±2 % `upUsd` / `downUsd`, `null` for an unpriced side), or
   `latest.depthUsd[]` on `GET /api/pools/:id` for every level and the `reached` flags.
@@ -118,11 +130,14 @@ from a live deployment have not yet been validated against Base mainnet at scale
   sides known and the thinner at least $5,000 (`rated: true`); only they have a **grade**: A ≥ 80,
   B ≥ 65, C ≥ 50, D ≥ 35, else F. The others have `grade: null`, keep their `total`, and say why
   in `unratedReason`: `thin` (neither side holds $5,000), `one-sided` (the deeper side does, the
-  thinner does not) or `unpriced` (a side has no USD price).
+  thinner does not), `unpriced` (a side has no USD price) or `hooked` (a Uniswap v4 pool with a
+  hook, whose swaps the pool's state does not describe: no depth, spread or concentration is
+  computed, so those are empty or `null`, and the pool is not used to price tokens).
 - **Gap score**: `turnoverRatio = volume24hUsd / depth2Usd`;
   `gapScore = 100 × clamp(log10(turnoverRatio) / 2, 0, 1)`: 0 at a turnover of 1× or less, 50 at
   10×, 100 at 100× or more. A high gap score means a day's volume is large next to the ±2 %
-  depth: trades of typical size there move the price.
+  depth: trades of typical size there move the price. It ranks turnover, not fee income: what
+  the volume pays LPs also depends on `feePips`.
 - **TVL** (`tvlUsd`): reserves at USD prices, a lower bound when one token is unpriced. Uniswap
   v4 pools have no reserves of their own, so their `tvlUsd` is `null`. TVL is not a liquidity
   measure here; depth is.
@@ -166,7 +181,7 @@ for an hour (`depthwatch start` snapshots every 30 minutes by default).
 Totals per DEX and overall. `byDex` has one row per DEX in the fixed order `uniswap-v3`,
 `uniswap-v4`, `aerodrome-v2`, `aerodrome-slipstream` (zeros for a DEX without pools): `dex`,
 `pools` (discovered), `tracked`, `scored`, `rated` (scored pools that are rated), `depth2Usd`
-(sum of ±2 % depth over scored pools), `volume24hUsd` (sum over scored pools with a known volume; `null` when none has one), `medianHealth`
+(sum of ±2 % depth over scored pools, stale quotes left out), `volume24hUsd` (sum over scored pools with a known volume; `null` when none has one), `medianHealth`
 (median health total over rated pools only, `null` when none is rated). `totals` has the same
 fields without `dex`, its `medianHealth` taken over all rated pools.
 
@@ -191,11 +206,13 @@ number of matching pools ignoring `limit` / `offset`.
 `symbol`, `name`, `decimals`), `feePips`, `tickSpacing`, `stable`, `hooks`, `createdAtBlock`),
 `price`, `tvlUsd`, `depth2Usd`, `depth2UpUsd` (USD of token1 that lifts the price 2 %, the buy
 side), `depth2DownUsd` (USD of token0 that pushes it down 2 %, the sell side), `spread10kBps`,
-`health` (`total`, `grade`, `rated`, `unratedReason`, `concentrationBasis`), `gapScore`,
-`volume24hUsd`, `ownerTop1Share`, `updatedAt`. `health` is always present; `grade` is `null` for an unrated pool,
-and sorting by health puts unrated pools after the rated ones in both directions. The two sides come from the newest snapshot's ±2 % level; a side is `null`
-when its token has no USD price, and when liquidity runs out before 2 % it is the total up to
-that point (`latest.depth[].up.reached` / `.down.reached` on `GET /api/pools/:id` say which).
+`priceDeviationBps`, `staleQuote`, `health` (`total`, `grade`, `rated`, `unratedReason`,
+`concentrationBasis`), `gapScore`, `volume24hUsd`, `ownerTop1Share`, `updatedAt`. `health` is
+always present; `grade` is `null` for an unrated pool, and sorting by health puts unrated pools
+after the rated ones in both directions; sorting by depth puts stale quotes after the others. The
+two sides come from the newest snapshot's ±2 % level; a side is `null` when its token has no USD
+price, and when the known tick range ends before 2 % it is the total up to that point
+(`latest.depth[].up.reached` / `.down.reached` on `GET /api/pools/:id` say which).
 
 ### `GET /api/pools/:id`
 
@@ -203,8 +220,9 @@ One pool, scored or not; 404 `pool not found` for an unknown id. Fields:
 - `pool`: pool metadata as above; `tracked`: whether the pipeline snapshots it.
 - `latest`: the newest snapshot, or `null`: `poolId`, `blockNumber`, `timestamp`, `price`,
   `token0Usd`, `token1Usd`, `tvlUsd`, `activeLiquidity`, `depth` (raw amounts per level and
-  side), `depthUsd` (USD per level and side), `spreads` (`notionalUsd` 1000 / 10000 / 100000,
-  `spreadBps`, `feasible`, `buyAvgPrice`, `sellAvgPrice`), `concentration`.
+  side), `depthUsd` (USD per level and side), `spreads` (`notionalUsd` 1000 / 10000 / 100000 /
+  1000000, `spreadBps`, `feasible`, `buyAvgPrice`, `sellAvgPrice`; snapshots stored before the
+  $1M point have the first three), `concentration`, `priceDeviationBps`.
 - `score`: `total`, `grade` (`null` when unrated), `rated`, `unratedReason`,
   `concentrationBasis`, `components` (`depth`, `spread`, `concentration`, `persistence`), `notes`;
   `gap`: `volume24hUsd`, `depth2Usd`, `turnoverRatio`, `gapScore`.
@@ -263,8 +281,8 @@ any other non-pool source; empty for an anchor stable or an unpriced token),
 `priceUpdatedAt`, `pools` (`PoolSummary[]`, sorted as requested), `total` (scored pools with the
 token, ignoring `limit` / `offset`), `poolCount` (every discovered pool with the token, scored or
 not), `depth2UsdTotal` (the ±2 % depth, `depth2Usd`, summed over every scored pool of the token
-with a known depth, whatever the page; `null` when none has one) and `depthKnownPools` (how many
-pools that sum covers). A pool counts in full for each of its two tokens.
+with a known depth and no stale quote, whatever the page; `null` when none has one) and
+`depthKnownPools` (how many pools that sum covers). A pool counts in full for each of its two tokens.
 
 ### `GET /api/mm`
 
@@ -455,17 +473,19 @@ Say the trade is: buy token X with N USD worth of token Y on Base.
    `latest.price` by at most about 1 % plus the pool fee (`feePips`). If a level's
    `latest.depth[].up.reached` or `.down.reached` is `false`, the pool cannot move that far
    within known liquidity: treat it as too thin at that level.
-5. **Read the cost.** `latest.spreads[]` is the round-trip cost in bps at $1k, $10k and $100k. The
+5. **Read the cost.** `latest.spreads[]` is the round-trip cost in bps at $1k, $10k, $100k and
+   $1M; a pool that is cheapest at a small size can be unable to absorb a large one. The
    API does not report one-way cost; half the round-trip spread at the nearest notional is a
    rough one-way estimate.
 6. **Check that the depth is durable.** Prefer pools with `persistence24h.uptime` and
    `stability` near 1 (depth there whenever sampled) and with no single owner holding most of
    the in-band liquidity (`latest.concentration.owners.top1Share`; `null` means unknown). The
    health grade combines these; a low score's `notes` say what is missing. A pool with
-   `health.rated: false` has no grade: `unratedReason` says it is too thin, one-sided or
-   unpriced, and it is not a pool to size a trade against.
+   `health.rated: false` has no grade: `unratedReason` says it is too thin, one-sided, unpriced
+   or hooked (not modelled), and it is not a pool to size a trade against.
 7. **Check freshness and prices.** `latest.timestamp` against the current time; `token0Usd` /
    `token1Usd` come from Depthwatch's own price graph (`GET /api/tokens/:address` shows `via`).
+   A pool with `latest.priceDeviationBps` of 500 or more quotes a stale price: skip it.
 8. **Verify on chain, then execute elsewhere.** Every number describes the pool at
    `latest.blockNumber`, and the pool's state can change with every Base block. Before trading,
    read the pool's current state or a DEX quote through an RPC endpoint, and set a slippage

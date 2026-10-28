@@ -162,6 +162,26 @@ describe('MmSamplesRepo', () => {
     expect(() => db.mmSamples.recentFor(M1, 1.5)).toThrow(RangeError)
   })
 
+  it('finds the timestamp of the newest sample within KPI', () => {
+    expect(db.mmSamples.lastWithinKpiAt(M1)).toBeUndefined()
+    db.mmSamples.insertMany([
+      sample({ mandateId: M1, timestamp: 1, withinKpi: true }),
+      sample({ mandateId: M1, timestamp: 2, withinKpi: false }),
+      sample({ mandateId: M1, timestamp: 3, withinKpi: true }),
+      sample({
+        mandateId: M1,
+        timestamp: 4,
+        withinKpi: null,
+        attribution: fixtureAttribution({ depthUpUsd: null, depthDownUsd: null }),
+      }),
+      sample({ mandateId: M1, timestamp: 5, withinKpi: false }),
+      sample({ mandateId: M2, timestamp: 9, withinKpi: true }),
+    ])
+    expect(db.mmSamples.lastWithinKpiAt(M1)).toBe(3)
+    expect(db.mmSamples.lastWithinKpiAt(M2)).toBe(9)
+    expect(db.mmSamples.lastWithinKpiAt('missing')).toBeUndefined()
+  })
+
   it('prunes by timestamp across mandates and deletes per mandate', () => {
     db.mmSamples.insertMany([
       sample({ mandateId: M1, timestamp: 10 }),

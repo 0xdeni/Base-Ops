@@ -5,7 +5,8 @@
  * environment only, so it never appears in a process list.
  */
 import { parseArgs } from 'node:util'
-import type { Dex } from '@depthwatch/core'
+import type { Address, Dex } from '@depthwatch/core'
+import { type MmArgs, parseMmArgs } from './configMm.js'
 import {
   ConfigError,
   type Env,
@@ -18,6 +19,7 @@ import {
   parsePoolIds,
   parsePublicUrl,
   parseRpcUrl,
+  parseSeedTokens,
   pick,
 } from './configValues.js'
 import type { LogLevel } from './log.js'
@@ -27,6 +29,15 @@ import {
   type ScheduleSettings,
 } from './start/settings.js'
 
+export {
+  isMmSubcommand,
+  MM_ID_SUBCOMMANDS,
+  MM_LIVE_SUBCOMMANDS,
+  MM_SUBCOMMANDS,
+  type MmArgs,
+  type MmSubcommand,
+  parseMmArgs,
+} from './configMm.js'
 export { ConfigError, type Env } from './configValues.js'
 
 export const COMMANDS = [
@@ -35,6 +46,7 @@ export const COMMANDS = [
   'volume',
   'positions',
   'score',
+  'prune',
   'run',
   'start',
   'serve',
@@ -44,14 +56,8 @@ export const COMMANDS = [
 ] as const
 export type Command = (typeof COMMANDS)[number]
 
-/** Subcommands of `depthwatch mm` (market-maker scorecards, docs/design/scorecards.md §5). */
-export const MM_SUBCOMMANDS = ['register', 'list', 'show', 'deactivate', 'sample'] as const
-export type MmSubcommand = (typeof MM_SUBCOMMANDS)[number]
-
-/** `mm` subcommands that take a mandate id. */
-export const MM_ID_SUBCOMMANDS: readonly MmSubcommand[] = ['show', 'deactivate']
-/** `mm` subcommands that read the chain and therefore need DEPTHWATCH_RPC_URL. */
-export const MM_LIVE_SUBCOMMANDS: readonly MmSubcommand[] = ['sample']
+/** Commands that prune (`run` and `start` once a day), the only ones `--keep-days` applies to. */
+export const PRUNING_COMMANDS: readonly Command[] = ['prune', 'run', 'start']
 
 /** Commands that read the chain and therefore need DEPTHWATCH_RPC_URL. */
 export const LIVE_COMMANDS: readonly Command[] = [
@@ -70,6 +76,7 @@ export const DEFAULTS = Object.freeze({
   topPools: 200,
   logChunkSize: 2_000,
   intervalSeconds: 300,
+  keepDays: 30,
   hours: 24,
   bandPct: 5,
   concurrency: 4,
@@ -85,9 +92,11 @@ export interface CliFlags extends ScheduleFlags {
   pool?: string[]
   hours?: string
   interval?: string
+  keepDays?: string
   once?: boolean
   withPositions?: boolean
   seed?: boolean
+  seedToken?: string[]
   port?: string
   host?: string
   db?: string
@@ -98,13 +107,6 @@ export interface CliFlags extends ScheduleFlags {
   out?: string
   demo?: boolean
   note?: string
-}
-
-/** The `mm <subcommand> [id]` part of the command line. */
-export interface MmArgs {
-  subcommand: MmSubcommand
-  /** The mandate id of `show` / `deactivate`; undefined for the other subcommands. */
-  id: string | undefined
 }
 
 export interface CliArgs {
@@ -128,10 +130,14 @@ export interface Config {
   topPools: number
   logChunkSize: number
   intervalSeconds: number
+  /** `prune`: days of snapshots and hourly volume kept (snapshots at least 8; pipeline/prune.ts). */
+  keepDays: number
   runOnce: boolean
   withPositions: boolean
   /** `discover --seed` / `run --seed`: discovery from factory views, no logs (pipeline/seed.ts). */
   seed: boolean
+  /** ERC-20s seeded besides the reference tokens (`--seed-token`, DEPTHWATCH_SEED_TOKENS). */
+  seedTokens: Address[]
   hours: number
   dexes: Dex[]
   fromBlock: bigint | undefined
@@ -167,9 +173,11 @@ const PARSE_OPTIONS = {
   pool: { type: 'string', multiple: true },
   hours: { type: 'string' },
   interval: { type: 'string' },
+  'keep-days': { type: 'string' },
   once: { type: 'boolean' },
   'with-positions': { type: 'boolean' },
   seed: { type: 'boolean' },
+  'seed-token': { type: 'string', multiple: true },
   port: { type: 'string' },
   host: { type: 'string' },
   db: { type: 'string' },
@@ -203,33 +211,6 @@ const NOT_FOR_START = ['interval', 'once', 'with-positions', 'from-block'] as co
 
 export function isCommand(value: string): value is Command {
   return (COMMANDS as readonly string[]).includes(value)
-}
-
-export function isMmSubcommand(value: string): value is MmSubcommand {
-  return (MM_SUBCOMMANDS as readonly string[]).includes(value)
-}
-
-/**
- * The positionals after `mm`: a subcommand and, for `show` / `deactivate`, the mandate id. `mm`
- * alone yields undefined (main reports the missing subcommand as a usage error).
- */
-export function parseMmArgs(
-  positionals: readonly string[],
-  file: string | undefined,
-): MmArgs | undefined {
-  const [sub, id, ...rest] = positionals
-  if (sub === undefined) return undefined
-  if (!isMmSubcommand(sub))
-    throw new ConfigError(`unknown mm subcommand "${sub}" (one of ${MM_SUBCOMMANDS.join(', ')})`)
-  if (MM_ID_SUBCOMMANDS.includes(sub)) {
-    if (id === undefined) throw new ConfigError(`mm ${sub} needs a mandate id`)
-    if (rest.length > 0) throw new ConfigError(`unexpected argument "${rest[0]}"`)
-    return { subcommand: sub, id }
-  }
-  if (id !== undefined) throw new ConfigError(`unexpected argument "${id}"`)
-  if (sub === 'register' && file === undefined)
-    throw new ConfigError('mm register needs --file <registration json>')
-  return { subcommand: sub, id: undefined }
 }
 
 /** Parses `argv` (without the node/script entries). Throws ConfigError on unknown options. */
@@ -269,6 +250,12 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
     throw new ConfigError('--seed only applies to discover and run')
   if (values.seed === true && values['from-block'] !== undefined)
     throw new ConfigError('--from-block only applies to the log scan, not to --seed')
+  const seeds = command === 'start' || (values.seed === true && command !== undefined)
+  if (values['seed-token'] !== undefined && command !== undefined && !seeds)
+    throw new ConfigError('--seed-token only applies to discover --seed, run --seed and start')
+  const keepDays = values['keep-days']
+  if (keepDays !== undefined && command !== undefined && !PRUNING_COMMANDS.includes(command))
+    throw new ConfigError('--keep-days only applies to prune, run and start')
   const scheduleFlag = SCHEDULE_FLAGS.find((flag) => values[flag] !== undefined)
   if (scheduleFlag !== undefined && command !== undefined && command !== 'start')
     throw new ConfigError(`--${scheduleFlag} only applies to start`)
@@ -291,9 +278,11 @@ export function parseCliArgs(argv: readonly string[]): CliArgs {
       pool: values.pool,
       hours: values.hours,
       interval: values.interval,
+      keepDays: values['keep-days'],
       once: values.once,
       withPositions: values['with-positions'],
       seed: values.seed,
+      seedToken: values['seed-token'],
       port: values.port,
       host: values.host,
       db: values.db,
@@ -327,6 +316,7 @@ export function loadConfig(env: Env, flags: CliFlags = {}): Config {
     pick(flags.logsRpcUrl, env.DEPTHWATCH_LOGS_RPC_URL),
   )
   const envDb = pick(undefined, env.DEPTHWATCH_DB)
+  const keepDays = pick(flags.keepDays, env.DEPTHWATCH_KEEP_DAYS)
   return {
     rpcUrl,
     logsRpcUrl: logsRpcUrl ?? rpcUrl,
@@ -343,9 +333,14 @@ export function loadConfig(env: Env, flags: CliFlags = {}): Config {
       flags.interval === undefined
         ? DEFAULTS.intervalSeconds
         : parseDuration('interval', flags.interval, { min: 1, max: 86_400 * 7 }),
+    keepDays:
+      keepDays === undefined
+        ? DEFAULTS.keepDays
+        : parseInteger('keep days', keepDays, { min: 2, max: 3650 }),
     runOnce: flags.once === true,
     withPositions: flags.withPositions === true,
     seed: flags.seed === true,
+    seedTokens: parseSeedTokens(flags.seedToken ?? pick(undefined, env.DEPTHWATCH_SEED_TOKENS)),
     hours:
       flags.hours === undefined
         ? DEFAULTS.hours

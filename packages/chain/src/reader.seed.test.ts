@@ -183,6 +183,7 @@ describe('seedPools', () => {
       { dex: 'aerodrome-v2', candidates: 6, found: 1, searched: 1 },
       { dex: 'aerodrome-slipstream', candidates: 45, found: 1, searched: 1 },
     ])
+    expect(seeded.failed).toEqual([])
     const discovered = (
       await Promise.all(
         (['uniswap-v3', 'uniswap-v4', 'aerodrome-v2', 'aerodrome-slipstream'] as const).map((dex) =>
@@ -277,7 +278,11 @@ describe('seedPools', () => {
       history: [{ fromBlock: 25_400_000n, result: `0x${'0'.repeat(64)}` }],
     })
     const { r } = reader(fixture)
-    await expect(r.seedPools({ dexes: ['uniswap-v4'] })).rejects.toThrow(/PoolManager slot0 of/)
+    const seeded = await r.seedPools({ dexes: ['uniswap-v4'] })
+    expect(seeded).toMatchObject({ pools: [], dexes: [], searchRequests: 0 })
+    expect(seeded.failed).toEqual([
+      { dex: 'uniswap-v4', error: expect.stringMatching(/PoolManager slot0 of/) },
+    ])
   })
 })
 

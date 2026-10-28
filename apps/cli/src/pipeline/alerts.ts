@@ -1,12 +1,18 @@
 /**
  * Webhook alerts (docs/design/scorecards.md §5): after the samples of a pass are stored, for each
- * mandate with a webhook URL, the current streak over its last `alertAfterSamples + 1` samples
- * decides whether to post a `breach` (the streak is breached, at least `alertAfterSamples` long
- * and not already alerted) or a `recovered` event (the latest recorded alert is a `breach` and
- * the mandate is now within KPI). Every attempt is recorded in `mm_alerts`, delivered or not; a
- * failed attempt is not retried, and nothing here ever throws into the pipeline.
+ * mandate with a webhook URL, the current streak over its last `alertAfterSamples + 1` samples and
+ * the mandate's alert history (`alertHistory`) decide whether to post a `breach` (the streak is
+ * breached, at least `alertAfterSamples` long, no breach of it was delivered and fewer than
+ * MAX_ALERT_ATTEMPTS were recorded for it) or a `recovered` event (the latest delivered alert is
+ * a `breach`, the mandate is now within KPI and fewer than MAX_ALERT_ATTEMPTS recovery attempts
+ * followed that breach). A breached streak starts after the mandate's newest within-KPI sample,
+ * so an alert belongs to it when it was recorded after that sample. Every attempt is recorded in
+ * `mm_alerts`, delivered or not; an undelivered one is tried again at the next sample that calls
+ * for the same event, within the cap, and nothing here ever throws into the pipeline.
  *
- * The POST uses the global `fetch` (injectable for tests) with a 5 s timeout.
+ * The POST uses the global `fetch` (injectable for tests) with a 5 s timeout. Redirects are not
+ * followed: the registered host is where the alert goes, a 3xx answer is a failed delivery, and
+ * the response body is cancelled unread.
  */
 import {
   type BreachStreak,
@@ -17,18 +23,27 @@ import {
   type MmAlertKind,
   type MmSample,
 } from '@depthwatch/core'
+import type { Database } from '@depthwatch/db'
 import { scorecardUrl } from '../config.js'
 import { errorMessage } from '../log.js'
 import type { PipelineContext } from './context.js'
 
 export const ALERT_TIMEOUT_MS = 5_000
 export const ALERT_USER_AGENT = 'depthwatch-alerts'
+/** Attempts per event at most: a breach per streak, a recovery per delivered breach. */
+export const MAX_ALERT_ATTEMPTS = 5
 
 /** The subset of `fetch` the delivery needs, so tests can inject a stub. */
 export type WebhookFetch = (
   url: string,
-  init: { method: 'POST'; headers: Record<string, string>; body: string; signal: AbortSignal },
-) => Promise<{ ok: boolean; status: number }>
+  init: {
+    method: 'POST'
+    headers: Record<string, string>
+    body: string
+    signal: AbortSignal
+    redirect: 'manual'
+  },
+) => Promise<{ ok: boolean; status: number; body?: { cancel(): Promise<void> } | null }>
 
 export interface AlertOptions {
   /** Defaults to the global `fetch`. */
@@ -44,36 +59,46 @@ export interface AlertDecision {
   streak: BreachStreak
 }
 
-/**
- * Whether `lastAlert` (a `breach`) was sent for the breached streak at hand, walked over `window`
- * (the mandate's newest samples, ascending, at most `alertAfterSamples + 1`). A breach alert is
- * for the current streak when it was recorded at or after the streak's first sample. When the
- * window is full (`window.length > alertAfterSamples`) and holds no within-KPI sample, the streak
- * reaches back to the window's oldest sample and its true start lies at or before it; the alert is
- * then taken as this streak's: a streak only ends with a within-KPI sample, which always records a
- * `recovered` alert, so a `breach` as the latest alert belongs to the streak in progress.
- * Unevaluable samples take window slots without extending or ending a streak, so the streak's
- * length alone (`streak.samples > alertAfterSamples`) cannot tell that it fills the window.
- */
-export function alertedForStreak(
-  lastAlert: MmAlert | undefined,
-  streak: BreachStreak,
-  window: readonly MmSample[],
-  alertAfterSamples: number,
-): boolean {
-  if (lastAlert === undefined || lastAlert.kind !== 'breach') return false
-  if (window.length > alertAfterSamples && window.every((s) => s.withinKpi !== true)) return true
-  return streak.since !== null && lastAlert.timestamp >= streak.since
+/** What the mandate's alert log says, read before deciding (`alertHistory`). */
+export interface AlertHistory {
+  /** The newest delivered alert, whatever its kind. */
+  lastDelivered: MmAlert | undefined
+  /** Timestamp of the newest within-KPI sample: a breached streak starts after it (none: undefined). */
+  withinKpiAt: number | undefined
+  /** Breach attempts recorded for the current streak, delivered or not. */
+  breachAttempts: number
+  /** Recovery attempts recorded since the last delivered breach. */
+  recoveredAttempts: number
+}
+
+export function alertHistory(db: Database, mandateId: string): AlertHistory {
+  const lastDelivered = db.mmAlerts.latestDeliveredFor(mandateId)
+  const withinKpiAt = db.mmSamples.lastWithinKpiAt(mandateId)
+  return {
+    lastDelivered,
+    withinKpiAt,
+    breachAttempts: db.mmAlerts.countAttempts(mandateId, 'breach', withinKpiAt),
+    recoveredAttempts:
+      lastDelivered?.kind === 'breach'
+        ? db.mmAlerts.countAttempts(mandateId, 'recovered', lastDelivered.timestamp)
+        : 0,
+  }
+}
+
+/** Whether a `breach` of the current streak (the samples after `withinKpiAt`) was delivered. */
+function breachDelivered({ lastDelivered, withinKpiAt }: AlertHistory): boolean {
+  if (lastDelivered?.kind !== 'breach') return false
+  return withinKpiAt === undefined || lastDelivered.timestamp > withinKpiAt
 }
 
 /**
  * The event to send, if any, given the mandate's newest samples (ascending, the last
- * `alertAfterSamples + 1`) and its latest recorded alert.
+ * `alertAfterSamples + 1`) and its alert history.
  */
 export function decideAlert(
   mandate: Mandate,
   samples: readonly MmSample[],
-  lastAlert: MmAlert | undefined,
+  history: AlertHistory,
 ): AlertDecision | null {
   const latest = samples[samples.length - 1]
   if (latest === undefined) return null
@@ -81,10 +106,15 @@ export function decideAlert(
   if (
     streak.breached &&
     streak.samples >= mandate.alertAfterSamples &&
-    !alertedForStreak(lastAlert, streak, samples, mandate.alertAfterSamples)
+    !breachDelivered(history) &&
+    history.breachAttempts < MAX_ALERT_ATTEMPTS
   )
     return { kind: 'breach', latest, streak }
-  if (latest.withinKpi === true && lastAlert?.kind === 'breach')
+  if (
+    latest.withinKpi === true &&
+    history.lastDelivered?.kind === 'breach' &&
+    history.recoveredAttempts < MAX_ALERT_ATTEMPTS
+  )
     return { kind: 'recovered', latest, streak }
   return null
 }
@@ -116,7 +146,10 @@ export interface DeliveryOutcome {
   error: string | null
 }
 
-/** POSTs the payload; a non-2xx answer or a thrown request (timeout included) is an outcome, never an exception. */
+/**
+ * POSTs the payload; a non-2xx answer (a redirect included: it is not followed) or a thrown request
+ * (timeout included) is an outcome, never an exception.
+ */
 export async function deliverWebhook(
   url: string,
   payload: Record<string, unknown>,
@@ -130,11 +163,20 @@ export async function deliverWebhook(
       headers: { 'content-type': 'application/json', 'user-agent': ALERT_USER_AGENT },
       body: jsonStringify(payload),
       signal: AbortSignal.timeout(timeoutMs),
+      redirect: 'manual',
     })
+    await response.body?.cancel().catch(() => undefined)
+    const { status } = response
+    if (status >= 300 && status < 400)
+      return {
+        delivered: false,
+        responseStatus: status,
+        error: `webhook redirected (HTTP ${status}); redirects are not followed`,
+      }
     return {
       delivered: response.ok,
-      responseStatus: response.status,
-      error: response.ok ? null : `webhook answered HTTP ${response.status}`,
+      responseStatus: status,
+      error: response.ok ? null : `webhook answered HTTP ${status}`,
     }
   } catch (error) {
     return { delivered: false, responseStatus: null, error: errorMessage(error) }
@@ -167,7 +209,7 @@ export async function deliverAlerts(
     result.mandates++
     try {
       const samples = db.mmSamples.recentFor(mandate.id, mandate.alertAfterSamples + 1)
-      const decision = decideAlert(mandate, samples, db.mmAlerts.latestFor(mandate.id))
+      const decision = decideAlert(mandate, samples, alertHistory(db, mandate.id))
       if (decision === null) continue
       const payload = buildAlertPayload(mandate, decision, scorecardUrl(config, mandate.id))
       const outcome = await deliverWebhook(mandate.alertWebhookUrl, payload, opts)

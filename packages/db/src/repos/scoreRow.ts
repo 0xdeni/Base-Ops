@@ -15,6 +15,7 @@ import {
 } from '../sql.js'
 import type { SnapshotSummary } from '../summary.js'
 import { POOL_SELECT, rowToPoolMeta } from './poolRow.js'
+import { LATEST_JOIN } from './scoreStats.js'
 import { depth2SideSql, spread10kSql } from './snapshots.js'
 
 export interface PoolScore {
@@ -54,13 +55,8 @@ const LATEST_SELECT = `sn.id AS sn_id, sn.block_number AS sn_block_number,
   sn.depth2_usd AS sn_depth2_usd, ${spread10kSql('sn.spreads_json', 'sn.price')} AS sn_spread10k_bps,
   sn.owner_top1_share AS sn_owner_top1_share,
   ${depth2SideSql('sn.depth_usd_json', 'upUsd')} AS sn_depth2_up_usd,
-  ${depth2SideSql('sn.depth_usd_json', 'downUsd')} AS sn_depth2_down_usd`
-
-/**
- * Whether the stored score is rated: the flag lives in `health_json`. A row scored before ratings
- * existed has none and counts as unrated until `score` runs again.
- */
-export const RATED_SQL = `COALESCE(json_extract(s.health_json, '$.rated'), 0) = 1`
+  ${depth2SideSql('sn.depth_usd_json', 'downUsd')} AS sn_depth2_down_usd,
+  sn.price_deviation_bps AS sn_price_deviation_bps`
 
 /**
  * `CROSS JOIN` pins the scored set as the outer loop. Without planner statistics SQLite would
@@ -71,10 +67,6 @@ export const SCORE_FROM = `scores s
   CROSS JOIN pools p ON p.id = s.pool_id
   JOIN tokens t0 ON t0.address = p.token0
   JOIN tokens t1 ON t1.address = p.token1`
-
-export const LATEST_JOIN = `LEFT JOIN snapshots sn ON sn.id = (
-    SELECT x.id FROM snapshots x WHERE x.pool_id = s.pool_id ORDER BY x.timestamp DESC, x.id DESC LIMIT 1
-  )`
 
 export const JOINED_SELECT = `SELECT ${POOL_SELECT}, ${SCORE_SELECT}, ${LATEST_SELECT} FROM ${SCORE_FROM} ${LATEST_JOIN}`
 
@@ -134,6 +126,7 @@ function rowToLatest(row: Row, poolId: string): SnapshotSummary | null {
     ownerTop1Share: colNumberOrNull(row, 'sn_owner_top1_share'),
     depth2UpUsd: colNumberOrNull(row, 'sn_depth2_up_usd'),
     depth2DownUsd: colNumberOrNull(row, 'sn_depth2_down_usd'),
+    priceDeviationBps: colNumberOrNull(row, 'sn_price_deviation_bps'),
   }
 }
 

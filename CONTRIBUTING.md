@@ -22,16 +22,19 @@ dashboard is built (`pnpm build`), and only so that `depthwatch serve` can serve
 
 ## Checks
 
-CI runs exactly these, in this order, and a pull request must pass all of them:
+CI runs exactly these, in this order, on Node 22.13 and 24; a pull request must pass all of them:
 
 ```sh
-pnpm lint        # biome check .   (format + lint; `pnpm lint:fix` applies fixes)
-pnpm typecheck   # tsc --noEmit in every package
-pnpm test        # vitest run (node project for packages/api/cli, jsdom project for web)
-pnpm build       # vite build of apps/web
+pnpm lint          # biome check .   (format + lint, warnings fail; `pnpm lint:fix` applies fixes)
+pnpm typecheck     # tsc --noEmit in every package
+pnpm test          # vitest run (node project for packages/api/cli, jsdom project for web)
+pnpm build         # vite build of apps/web
+pnpm build:static  # export the demo bundle, then the static site build
 ```
 
-`pnpm check` runs the first three. To work on one package without waiting for the rest:
+`pnpm check` runs the first three and `pnpm check:all` all five. CI also runs `pnpm audit --prod`,
+which reports advisories in production dependencies without failing. To work on one package
+without waiting for the rest:
 
 ```sh
 npx biome check --write packages/core
@@ -45,8 +48,8 @@ shapes the demo lacks (Uniswap v4 pools without a TVL, mostly unrated pools, poo
 DEX and fee, prices from 1e-39 to 1e38). To refresh it, work on a copy of a live database: leave
 about 60 pools of those shapes tracked (`UPDATE pools SET tracked = 0 WHERE id NOT IN (…)`), run
 `depthwatch score`, then `depthwatch export --out apps/web/src/testing/liveShape.json --note …`
-with `DEPTHWATCH_DB` set to the copy. `apps/web/src/liveShape.test.tsx` checks that the shapes are
-still there.
+with `DEPTHWATCH_DB` set to the copy, and format the file (`pnpm lint:fix`): Biome checks JSON
+too. `apps/web/src/liveShape.test.tsx` checks that the shapes are still there.
 
 Code style is enforced by Biome (`biome.json`): single quotes, no semicolons, two-space indent,
 100 columns, trailing commas. Do not argue with the formatter; run `pnpm lint:fix`.
@@ -68,10 +71,11 @@ These come from DESIGN.md and are checked in review.
    use `toJsonSafe` / `jsonStringify` and revive with `reviveBigints(value, BIGINT_KEYS)`. If you
    add a bigint-valued property to a stored or served type, add its name to `BIGINT_KEYS`.
 4. **Addresses are lowercase.** Normalise on the way in; never compare case-sensitively.
-5. **Hermetic tests.** `pnpm test` never opens a socket. Chain code is tested through
-   `createFixtureTransport` with hand-built or recorded responses; db and API tests use
-   `openDatabase(':memory:')` and `app.request()`; the web uses the mock client. A test that needs
-   the network is a bug.
+5. **Hermetic tests.** `pnpm test` never reaches the network: the only sockets are loopback
+   servers on `127.0.0.1` that a test starts itself (the API, `serve` and `start` servers, a webhook
+   receiver, a fixture JSON-RPC endpoint). Chain code is tested through `createFixtureTransport`
+   with hand-built or recorded responses; db and API tests use `openDatabase(':memory:')` and
+   `app.request()`; the web uses the mock client. A test that needs the network is a bug.
 6. **Every metric is defined once, in `docs/METRICS.md`, and implemented once, in core.** The CLI,
    API and dashboard only call core; they never re-derive a number.
 7. **Never extrapolate pool state.** A `ConcentratedState` says which ticks it knows; simulations

@@ -97,8 +97,9 @@ describe('parseMandate', () => {
         .maxSpreadBps,
     ).toBeNull()
     expect(
-      parseMandate({ ...minimal, alertWebhookUrl: 'http://127.0.0.1:8080/x' }, now).alertWebhookUrl,
-    ).toBe('http://127.0.0.1:8080/x')
+      parseMandate({ ...minimal, alertWebhookUrl: 'http://hooks.example.com:8080/x' }, now)
+        .alertWebhookUrl,
+    ).toBe('http://hooks.example.com:8080/x')
   })
 
   it('rejects anything but an object', () => {
@@ -255,6 +256,13 @@ describe('parseMandate', () => {
         'alertWebhookUrl must be null or an http(s) URL',
       ])
     }
+    // Delivery is a request from the indexer's network: no local or private host, no user info.
+    expect(problemsOf({ ...minimal, alertWebhookUrl: 'http://127.0.0.1:8080/x' })).toEqual([
+      'alertWebhookUrl must name a public host, not localhost or a loopback, private, link-local, carrier-grade NAT or unique-local address',
+    ])
+    expect(problemsOf({ ...minimal, alertWebhookUrl: 'https://u:p@hooks.example.com/x' })).toEqual([
+      'alertWebhookUrl must not carry a username or password',
+    ])
     for (const alertAfterSamples of [0, -1, 1.5, '3', null]) {
       expect(problemsOf({ ...minimal, alertAfterSamples })).toEqual([
         'alertAfterSamples must be an integer ≥ 1',

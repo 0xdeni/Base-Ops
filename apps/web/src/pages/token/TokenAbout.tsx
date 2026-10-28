@@ -3,7 +3,7 @@
  * pools sheet, the "About this token" disclosure on phones. The address (mono, Basescan, copy),
  * decimals, when the price was derived, and the full price route with each pool step linking to
  * its pool. The native ETH ↔ WETH edge reads "ETH to WETH"; a pool the observatory does not know
- * keeps its id.
+ * keeps its id. An anchor says it is taken at $1 by convention (docs/METRICS.md, USD prices).
  */
 import { NATIVE_ETH } from '@depthwatch/core'
 import { Fragment, type ReactNode } from 'react'
@@ -81,7 +81,7 @@ export function TokenAbout({
             {detail.usd === null
               ? 'No route from a stable anchor reaches this token yet.'
               : steps.length === 0
-                ? 'Anchor: a stable reference, priced directly.'
+                ? 'Anchor: a stablecoin taken at $1 by convention, not read from its pools. Other tokens are priced through the pools from the anchors.'
                 : steps.map((s, i) => (
                     <Fragment key={s.source}>
                       {i > 0 ? <span className="faint">then</span> : null}

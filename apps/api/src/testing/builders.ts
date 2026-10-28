@@ -13,6 +13,7 @@ import {
   type PersistenceMetrics,
   type PoolMeta,
   type PoolSnapshot,
+  priceDeviationBps,
   SPREAD_NOTIONALS_USD,
   type SpreadPoint,
   type VolumeBucket,
@@ -160,6 +161,7 @@ export function buildSnapshot(spec: SnapshotSpec): PoolSnapshot {
     depthUsd: buildDepthUsd(spec),
     spreads: buildSpreads(spec.price, spec.spread10kBps, spec.maxFeasibleUsd),
     concentration: buildConcentration(spec.pool.kind, spec.ownerTop1Share),
+    priceDeviationBps: priceDeviationBps(spec.price, spec.token0Usd, spec.token1Usd),
   }
 }
 

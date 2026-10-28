@@ -32,10 +32,12 @@ names packages, functions and routes that implementation agents must match.
   `poolId` = `<dex>:0x<40 hex>` with `dex` in `DEXES` or `uniswap-v4:0x<64 hex>`, any case,
   returned lowercase, 1..50 valid lowercase addresses, `minDepthUsd > 0`, `0 < bandPct < 100`,
   `maxSpreadBps` null or > 0, `spreadNotionalUsd > 0`, `0 < targetUptime ≤ 1`, `alertWebhookUrl`
-  null or http(s) URL, `alertAfterSamples` integer ≥ 1, name/marketMaker ≤ 120 and notes ≤ 2,000
-  characters). The bounds are `MANDATE_LIMITS = { addresses: 50, name: 120, marketMaker: 120,
-  notes: 2000 }`. Defaults are applied for omitted optional fields; `active` defaults to true,
-  `createdAt` to `now`.
+  null or an http(s) URL without user info at a public host (`localhost` and loopback, private,
+  link-local, carrier-grade NAT and unique-local literals are refused: `webhookUrlProblem`),
+  `alertAfterSamples` integer ≥ 1, name/marketMaker ≤ 120 and notes ≤ 2,000 characters). The
+  bounds are `MANDATE_LIMITS = { addresses: 50, name: 120, marketMaker: 120, notes: 2000 }`.
+  Defaults are applied for omitted optional fields; `active` defaults to true, `createdAt` to
+  `now`.
 - Re-registration: `mergeRegistration(parsed: Mandate, existing: Mandate | undefined, input:
   unknown): Mandate` is what the CLI and `POST /api/mm` store: an existing mandate keeps its
   `active` flag and `createdAt` unless `input` sets them, so a deactivated mandate stays
@@ -137,15 +139,17 @@ stake the Slipstream pool's `[-300, 300]` position (owner index 1) in a CLGauge 
 
 New migration (append; bump `SCHEMA_VERSION`):
 - `mandates(id TEXT PK, name, pool_id, market_maker, addresses_json, kpis_json, alert_webhook_url NULL, alert_after_samples INTEGER, active INTEGER, created_at INTEGER, notes NULL)` + index `(pool_id)`.
-- `mm_samples(id INTEGER PK AUTOINCREMENT, mandate_id, pool_id, block_number TEXT, timestamp INTEGER, attribution_json, within_kpi INTEGER NULL, breaches_json)` + index `(mandate_id, timestamp)`; unique `(mandate_id, block_number)` since schema version 3 (one sample per mandate and block).
-- `mm_alerts(id INTEGER PK AUTOINCREMENT, mandate_id, timestamp INTEGER, kind TEXT, streak_samples INTEGER, payload_json, delivered INTEGER, response_status INTEGER NULL, error TEXT NULL)` + index `(mandate_id, timestamp)`.
+- `mm_samples(id INTEGER PK AUTOINCREMENT, mandate_id, pool_id, block_number TEXT, timestamp INTEGER, attribution_json, within_kpi INTEGER NULL, breaches_json)` + indexes `(mandate_id, timestamp)` and `timestamp` (since schema version 4, for retention); unique `(mandate_id, block_number)` since schema version 3 (one sample per mandate and block).
+- `mm_alerts(id INTEGER PK AUTOINCREMENT, mandate_id, timestamp INTEGER, kind TEXT, streak_samples INTEGER, payload_json, delivered INTEGER, response_status INTEGER NULL, error TEXT NULL)` + indexes `(mandate_id, timestamp)` and `timestamp` (since schema version 4).
 
 Repositories on `Database`: `mandates` (`upsert(m)`, `get(id)`, `list({ active?, poolId? })`,
 `forPools(poolIds) → Map<poolId, Mandate[]>`, `setActive(id, active)`, `delete(id)`,
 `count()`), `mmSamples` (`insertMany`: skips a sample already stored for its mandate and block and
 returns the number stored, `seriesFor(mandateId, fromTs, toTs?)` ascending,
-`latestFor(mandateId)`, `latestForMany(ids)`, `pruneBefore(ts)`, `countFor(mandateId)`),
-`mmAlerts` (`insert`, `latestFor(mandateId)`, `listFor(mandateId, limit)`). bigints as TEXT,
+`latestFor(mandateId)`, `latestForMany(ids)`, `lastWithinKpiAt(mandateId)`, `pruneBefore(ts)`,
+`countFor(mandateId)`), `mmAlerts` (`insert`, `latestFor(mandateId)`,
+`latestDeliveredFor(mandateId)`, `countAttempts(mandateId, kind, afterTs?)`,
+`listFor(mandateId, limit)`). bigints as TEXT,
 JSON via core helpers (`attribution_json` holds `MmAttribution`, no bigints).
 
 ## 5. Pipeline (`apps/cli`)
@@ -169,12 +173,18 @@ JSON via core helpers (`attribution_json` holds `MmAttribution`, no bigints).
   are inserted in the same transaction as the snapshots. Attribution failures are logged per
   mandate and do not fail the snapshot.
 - Alerts (`apps/cli/src/pipeline/alerts.ts`): after inserting samples, for each mandate with a
-  webhook: compute `currentStreak` over the last `alertAfterSamples + 1` samples; when breached
-  and `streak.samples ≥ alertAfterSamples` and the latest alert is not a `breach` for a streak
-  starting at the same `since` → POST JSON `{ event: 'breach'|'recovered', mandateId, name, poolId,
-  timestamp, blockNumber, streakSamples, breaches, attribution, scorecardUrl }` with a 5 s timeout
-  (global fetch, injectable for tests); on recovery (latest alert is `breach`, now within KPI) →
-  `recovered`. Record every attempt in `mm_alerts`; never throw.
+  webhook: compute `currentStreak` over the last `alertAfterSamples + 1` samples and read the
+  alert history (`AlertHistory`: the newest delivered alert, the timestamp of the newest within-KPI
+  sample, which the current streak follows, the breach attempts recorded after it and the recovery
+  attempts recorded after the last delivered breach); when breached, `streak.samples ≥
+  alertAfterSamples`, no `breach` recorded after that within-KPI sample was delivered and fewer than
+  `MAX_ALERT_ATTEMPTS` (5) breach attempts were recorded for the streak → POST JSON `{ event:
+  'breach'|'recovered', mandateId, name, poolId, timestamp, blockNumber, streakSamples, breaches,
+  attribution, scorecardUrl }` with a 5 s timeout (global fetch, injectable for tests; `redirect:
+  'manual'`, a 3xx answer is a failed delivery, the response body is cancelled); on recovery (the
+  latest delivered alert is a `breach`, now within KPI, fewer than `MAX_ALERT_ATTEMPTS` recovery
+  attempts since that breach) → `recovered`. Record every attempt in `mm_alerts`; an undelivered
+  attempt is tried again at the next sample, within the cap; never throw.
 - CLI commands (`depthwatch mm …`): `register --file <json>` (parseMandate → upsert; prints the
   scorecard URL), `list`, `show <id>` (summary as JSON, webhook URL masked), `deactivate <id>`, `sample` (re-run
   sampling for mandated pools against the latest block: readState + positions from db). Usage

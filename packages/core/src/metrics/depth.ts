@@ -69,3 +69,30 @@ export function depthToUsd(
     return { pct: level.pct, upUsd, downUsd, totalUsd }
   })
 }
+
+/**
+ * A pool's quote is stale from this deviation (bps) between its price and the price its tokens'
+ * USD prices imply (docs/METRICS.md, "Stale quotes").
+ */
+export const STALE_QUOTE_MIN_DEVIATION_BPS = 500
+
+/**
+ * `|price / (token0Usd / token1Usd) − 1| × 10 000`: how far the pool's price (token1 per token0)
+ * is from the one its tokens' USD prices imply. Null when either USD price (or the price) is
+ * missing, zero or not finite.
+ */
+export function priceDeviationBps(
+  price: number,
+  token0Usd: number | null,
+  token1Usd: number | null,
+): number | null {
+  const usable = (x: number | null): x is number => x !== null && Number.isFinite(x) && x > 0
+  if (!usable(price) || !usable(token0Usd) || !usable(token1Usd)) return null
+  const deviation = Math.abs((price * token1Usd) / token0Usd - 1) * 10_000
+  return Number.isFinite(deviation) ? deviation : null
+}
+
+/** True when a known deviation reaches `STALE_QUOTE_MIN_DEVIATION_BPS`; unknown is not stale. */
+export function isStaleQuote(deviationBps: number | null): boolean {
+  return deviationBps !== null && deviationBps >= STALE_QUOTE_MIN_DEVIATION_BPS
+}

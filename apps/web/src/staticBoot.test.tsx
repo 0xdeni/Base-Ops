@@ -98,7 +98,7 @@ describe('static build startup', () => {
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: /^\$[\d.]+[KMB] sits within 2 % of the price on Base\.$/,
+        name: /^\$[\d.]+[KMB] sits within 2 % of the price across [\d,]+ pools on Base\.$/,
       }),
     ).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Browse pools' }).getAttribute('href')).toBe('#/pools')
