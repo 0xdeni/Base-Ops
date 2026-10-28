@@ -42,13 +42,15 @@ export interface SnapshotSummary extends SnapshotSummaryFields, SnapshotDepthSid
 }
 
 /**
- * A snapshot's summary plus the concentration field the health score reads: everything core's
+ * A snapshot's summary plus the concentration fields the health score reads: everything core's
  * `computeHealthScore` takes from one snapshot, so a history series (`GET /api/pools/:id/history`)
  * is scored from these columns without parsing any snapshot JSON.
  */
 export interface SnapshotHealthSummary extends SnapshotSummary {
   /** `concentration.rangeHhi` */
   rangeHhi: number | null
+  /** `concentration.owners.coverage`; null without owners or for a snapshot stored before it. */
+  ownerCoverage: number | null
 }
 
 export const SUMMARY_DEPTH_PCT = 2
@@ -127,5 +129,9 @@ export function snapshotSummary(snapshot: PoolSnapshot): SnapshotSummary {
 }
 
 export function snapshotHealthSummary(snapshot: PoolSnapshot): SnapshotHealthSummary {
-  return { ...snapshotSummary(snapshot), rangeHhi: snapshot.concentration?.rangeHhi ?? null }
+  return {
+    ...snapshotSummary(snapshot),
+    rangeHhi: snapshot.concentration?.rangeHhi ?? null,
+    ownerCoverage: snapshot.concentration?.owners?.coverage ?? null,
+  }
 }

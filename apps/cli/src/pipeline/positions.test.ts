@@ -170,6 +170,7 @@ describe('positionsStep on a logs endpoint that cannot serve the chunk', () => {
       let reads = 0
       const chain = {
         getLatestBlock: async () => ({ number: 1_000_000n, timestamp: 1_800_000_000 }),
+        readCustodians: async () => [],
         readPositions: async () => {
           reads++
           await new Promise((resolve) => setTimeout(resolve, 1))
@@ -208,6 +209,7 @@ describe('positionsStep storing a published pool', () => {
       db.syncState.setBigInt(syncKeys.positions(pool.id), 100n)
       const chain = {
         getLatestBlock: async () => ({ number: 200n, timestamp: 1_800_000_000 }),
+        readCustodians: async () => [],
         readPositions: async () => {
           // Another writer stores the pool's set while this read is in flight.
           db.positions.replaceForPool(

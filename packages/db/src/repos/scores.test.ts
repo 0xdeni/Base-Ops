@@ -371,6 +371,15 @@ describe('ScoresRepo', () => {
     expect(ids(db.scores.topBy('health', { rated: true }).items)).toEqual([D.id, B.id, C.id])
   })
 
+  it('reads a score stored before the concentration basis existed with a null basis', () => {
+    expect(db.scores.get(A.id)?.health.concentrationBasis).toBe('owners')
+    db.raw.exec(
+      `UPDATE scores SET health_json = json_remove(health_json, '$.concentrationBasis') WHERE pool_id = '${A.id}'`,
+    )
+    expect(db.scores.get(A.id)?.health).toMatchObject({ grade: 'A', concentrationBasis: null })
+    expect(db.scores.getRow(A.id)?.score.health.concentrationBasis).toBeNull()
+  })
+
   it('serves the $10k spread of a snapshot stored before the cap as null, not 1e24 bps', () => {
     // Pool A's newest snapshot as the first live run wrote it: the uncapped spread in the column
     // and in the point, and a different value for B's, within the cap, to show reads follow the point.

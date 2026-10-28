@@ -203,4 +203,52 @@ describe('scoreStep', () => {
       expect(db.scores.get(A.id)?.volume24hUsd).toBeNull()
     })
   })
+
+  describe('concentration basis', () => {
+    it('trusts owners covering the pool, falls back below 90 % and keeps a reserve pool neutral', async () => {
+      const partial = fixturePool({ address: fixtureAddress(3) })
+      const v2 = fixturePool({
+        dex: 'aerodrome-v2',
+        kind: 'constant-product',
+        address: fixtureAddress(4),
+        tickSpacing: null,
+      })
+      db.pools.upsertMany([partial, v2])
+      db.pools.setTracked([partial.id, v2.id], true)
+      const covered = fixtureSnapshot({ poolId: partial.id, timestamp: NOW, blockNumber: 1n })
+      const concentration = covered.concentration
+      if (!concentration?.owners) throw new Error('the fixture snapshot has owners')
+      const halfOwners = { ...concentration.owners, coverage: 0.5 }
+      db.snapshots.insertMany([
+        { ...covered, concentration: { ...concentration, owners: halfOwners } },
+        fixtureSnapshot({
+          poolId: v2.id,
+          timestamp: NOW,
+          blockNumber: 1n,
+          ownerTop1Share: null,
+          concentration: { bandPct: 5, rangeHhi: 1, activeRangeShare: 1, owners: null },
+        }),
+      ])
+      await scoreStep(ctx)
+      // A: owners cover 95 % of the band → 20 × (1 − 0.4)
+      expect(db.scores.get(A.id)?.health).toMatchObject({
+        concentrationBasis: 'owners',
+        components: { concentration: 12 },
+      })
+      // the same owners covering half the band: 20 × (1 − rangeHhi 0.25), with the reason
+      const half = db.scores.get(partial.id)?.health
+      expect(half).toMatchObject({
+        concentrationBasis: 'ranges',
+        components: { concentration: 15 },
+      })
+      expect(half?.notes).toContain('owner data covers 50 % of in-band liquidity')
+      // an Aerodrome v2 pool: neutral 10, not 20 × (1 − 1) = 0
+      const reserve = db.scores.get(v2.id)?.health
+      expect(reserve).toMatchObject({
+        concentrationBasis: 'neutral',
+        components: { concentration: 10 },
+      })
+      expect(reserve?.notes).toContain('concentration neutral: LP owners not indexed')
+    })
+  })
 })

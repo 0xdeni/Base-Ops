@@ -23,6 +23,7 @@ function withHealth(item: GapItem, total: number, rated: boolean, volume24hUsd: 
         grade: rated ? 'C' : null,
         rated,
         unratedReason: rated ? null : 'thin',
+        concentrationBasis: 'owners',
       },
     },
     gap: { ...item.gap, volume24hUsd },

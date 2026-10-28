@@ -7,7 +7,12 @@
  * no snapshot JSON parsed), with the persistence component taken over the trailing 24 h of
  * snapshots (the same window the stored score uses).
  */
-import { computeHealthScore, computePersistence, type PersistenceSample } from '@depthwatch/core'
+import {
+  computeHealthScore,
+  computePersistence,
+  type PersistenceSample,
+  type PoolKind,
+} from '@depthwatch/core'
 import type { SnapshotHealthSummary } from '@depthwatch/db'
 import type { HistoryPoint } from './dto.js'
 
@@ -19,14 +24,15 @@ export const HEALTH_PERSISTENCE_HOURS = 24
 export const HEALTH_PERSISTENCE_SECONDS = HEALTH_PERSISTENCE_HOURS * 3600
 
 /**
- * Turns a snapshot summary series (ascending by timestamp) into history points, emitting the
- * snapshots with `timestamp >= from`. Pass snapshots from `from − HEALTH_PERSISTENCE_SECONDS`
- * onwards so the first emitted points see their trailing persistence samples; the lead-in is
- * never emitted.
+ * Turns a snapshot summary series (ascending by timestamp) of a pool of kind `poolKind` into
+ * history points, emitting the snapshots with `timestamp >= from`. Pass snapshots from
+ * `from − HEALTH_PERSISTENCE_SECONDS` onwards so the first emitted points see their trailing
+ * persistence samples; the lead-in is never emitted.
  */
 export function buildHistoryPoints(
   snapshots: readonly HistoryInput[],
   from: number,
+  poolKind: PoolKind,
 ): HistoryPoint[] {
   const samples: PersistenceSample[] = snapshots.map((snapshot) => ({
     timestamp: snapshot.updatedAt,
@@ -52,7 +58,9 @@ export function buildHistoryPoints(
       depth2DownUsd: snapshot.depth2DownUsd,
       spread10kBps: snapshot.spread10kBps,
       ownerTop1Share: snapshot.ownerTop1Share,
+      ownerCoverage: snapshot.ownerCoverage,
       rangeHhi: snapshot.rangeHhi,
+      poolKind,
       persistence,
     })
     points.push({

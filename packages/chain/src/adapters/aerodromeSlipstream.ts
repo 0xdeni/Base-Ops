@@ -169,6 +169,31 @@ async function positions(
   return perNfpm.flat()
 }
 
+/** The pool's CLGauge (`CLPool.gauge()`, lowercase); null when it has none (address zero). */
+async function poolGauge(
+  ctx: ReaderContext,
+  pool: PoolMeta,
+  blockNumber?: bigint,
+): Promise<Address | null> {
+  const [result] = await multicallBatched(
+    ctx,
+    [{ address: requireAddress(pool), abi: aerodromeCLPoolAbi, functionName: 'gauge' }],
+    blockNumber,
+  )
+  const gauge = lowercase(String(expectResult(result, `${pool.id} gauge`)))
+  return gauge === ZERO_ADDRESS ? null : gauge
+}
+
+/** The pool's custodians: its CLGauge, which owns every staked NFT ([] without a gauge). */
+export async function slipstreamCustodians(
+  ctx: ReaderContext,
+  pool: PoolMeta,
+  blockNumber?: bigint,
+): Promise<Address[]> {
+  const gauge = await poolGauge(ctx, pool, blockNumber)
+  return gauge === null ? [] : [gauge]
+}
+
 /**
  * Staked positions belong to the pool's CLGauge (`CLPool.gauge()`), which the NFPM reports as
  * `ownerOf`. For every position owned by the gauge (with a tokenId), `CLGauge.stakedContains(
@@ -186,14 +211,8 @@ export async function resolveStakedOwners(
 ): Promise<Position[]> {
   const depositors = unique(candidates.map(lowercase))
   if (positions.length === 0 || depositors.length === 0) return [...positions]
-  const address = requireAddress(pool)
-  const [gaugeResult] = await multicallBatched(
-    ctx,
-    [{ address, abi: aerodromeCLPoolAbi, functionName: 'gauge' }],
-    blockNumber,
-  )
-  const gauge = lowercase(String(expectResult(gaugeResult, `${pool.id} gauge`)))
-  if (gauge === ZERO_ADDRESS) return [...positions]
+  const gauge = await poolGauge(ctx, pool, blockNumber)
+  if (gauge === null) return [...positions]
   const staked = positions.filter((p) => p.tokenId !== null && lowercase(p.owner) === gauge)
   if (staked.length === 0) return [...positions]
   const results = await multicallBatched(
@@ -231,4 +250,5 @@ export const aerodromeSlipstreamAdapter: DexAdapter = {
   positions,
   swaps: readV3StyleSwaps,
   stakedOwners: resolveStakedOwners,
+  custodians: slipstreamCustodians,
 }

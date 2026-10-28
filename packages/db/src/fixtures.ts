@@ -6,6 +6,7 @@
 import {
   type Address,
   CONCENTRATION_BAND_PCT,
+  type ConcentrationBasis,
   type ConcentrationMetrics,
   DEFAULT_ALERT_AFTER_SAMPLES,
   DEFAULT_MANDATE_KPIS,
@@ -131,6 +132,7 @@ export function fixtureConcentration(ownerTop1Share: number | null): Concentrati
             top1Share: ownerTop1Share,
             top3Share: Math.min(1, ownerTop1Share * 2),
             hhi: 0.2,
+            coverage: 0.95,
           },
   }
 }
@@ -173,12 +175,14 @@ export function fixtureHealth(
   total = 72,
   notes: string[] = [],
   unratedReason: UnratedReason | null = null,
+  concentrationBasis: ConcentrationBasis = 'owners',
 ): HealthScore {
   return {
     total,
     grade: unratedReason === null ? healthGrade(total) : null,
     rated: unratedReason === null,
     unratedReason,
+    concentrationBasis,
     components: {
       depth: total * 0.35,
       spread: total * 0.25,

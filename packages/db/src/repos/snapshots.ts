@@ -74,9 +74,10 @@ const SUMMARY_OUTER = `${SUMMARY_COLUMNS},
   ${depth2SideSql('depth_usd_json', 'downUsd')} AS depth2_down_usd,
   ${spread10kPointSql('spreads_json')} AS spread10k_point`
 
-/** The summary columns plus the range HHI: what a history series is scored from. */
+/** The summary columns plus the range HHI and owner coverage: what a history series is scored from. */
 const HEALTH_SUMMARY = `${SUMMARY_OUTER},
-  json_extract(concentration_json, '$.rangeHhi') AS range_hhi`
+  json_extract(concentration_json, '$.rangeHhi') AS range_hhi,
+  json_extract(concentration_json, '$.owners.coverage') AS owner_coverage`
 
 /** One snapshot per pool and block (unique index, schema version 3): a stored one is kept. */
 const INSERT = `INSERT OR IGNORE INTO snapshots (
@@ -132,7 +133,11 @@ export function rowToSnapshotSummary(row: Row): SnapshotSummary {
 }
 
 export function rowToSnapshotHealthSummary(row: Row): SnapshotHealthSummary {
-  return { ...rowToSnapshotSummary(row), rangeHhi: colNumberOrNull(row, 'range_hhi') }
+  return {
+    ...rowToSnapshotSummary(row),
+    rangeHhi: colNumberOrNull(row, 'range_hhi'),
+    ownerCoverage: colNumberOrNull(row, 'owner_coverage'),
+  }
 }
 
 export class SnapshotsRepo {

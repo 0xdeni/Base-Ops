@@ -5,7 +5,9 @@
  * `L_range × (√Pupper − √Plower)` clipped to the band (≈ token1 value), `rangeHhi = Σ share²`,
  * `activeRangeShare` = share of the range holding the current tick.
  * Owner concentration: each position overlapping the band weighs `liquidity × clipped (√Pupper − √Plower)`,
- * aggregated by owner → top1 / top3 share, HHI, count of owners with positive weight.
+ * aggregated by owner → top1 / top3 share, HHI, count of owners with positive weight, and the
+ * coverage Σ owner weights / pool in-band weight. Positions of an excluded owner (a custodian such
+ * as a Slipstream gauge, which holds staked NFTs for their depositors) are left out: uncovered.
  *
  * Both weightings use the band clipped to the pool's known ticks (`clipBandToKnownTicks`), so
  * nothing is extrapolated beyond the state. They are exported (`poolBandWeight`,
@@ -147,24 +149,38 @@ export function poolBandWeight(state: ConcentratedState, band: SqrtBand): bigint
   return sumBigints(rangeWeights(state, band).weights)
 }
 
-/** In-band weight per owner (lowercased); owners without positive weight are left out. */
-function weightsByOwner(positions: readonly Position[], band: SqrtBand): Map<string, bigint> {
+/**
+ * In-band weight per owner (lowercased); owners without positive weight and the `excluded` ones
+ * are left out.
+ */
+function weightsByOwner(
+  positions: readonly Position[],
+  band: SqrtBand,
+  excluded: ReadonlySet<string>,
+): Map<string, bigint> {
   const byOwner = new Map<string, bigint>()
   for (const p of positions) {
+    const owner = p.owner.toLowerCase()
+    if (excluded.has(owner)) continue
     const weight = positionBandWeight(p, band)
     if (weight <= 0n) continue
-    const owner = p.owner.toLowerCase()
     byOwner.set(owner, (byOwner.get(owner) ?? 0n) + weight)
   }
   return byOwner
 }
 
-function ownerConcentration(positions: readonly Position[], band: SqrtBand): OwnerConcentration {
-  const weights = [...weightsByOwner(positions, band).values()].sort((x, y) =>
+/** Owner shares over the indexed owners; `coverage` against the pool's in-band weight. */
+function ownerConcentration(
+  positions: readonly Position[],
+  band: SqrtBand,
+  poolWeight: bigint,
+  excluded: ReadonlySet<string>,
+): OwnerConcentration {
+  const weights = [...weightsByOwner(positions, band, excluded).values()].sort((x, y) =>
     x > y ? -1 : x < y ? 1 : 0,
   )
   const total = sumBigints(weights)
-  if (total === 0n) return { count: 0, top1Share: 0, top3Share: 0, hhi: 0 }
+  if (total === 0n) return { count: 0, top1Share: 0, top3Share: 0, hhi: 0, coverage: 0 }
   const shares = weights.map((w) => shareOf(w, total))
   const top1Share = shares[0] ?? 0
   const top3Share = shares.slice(0, 3).reduce((acc, s) => acc + s, 0)
@@ -173,18 +189,22 @@ function ownerConcentration(positions: readonly Position[], band: SqrtBand): Own
     top1Share,
     top3Share: Math.min(top3Share, 1),
     hhi: sumSquares(shares),
+    // Positions read at another block than the state can exceed the pool's weight: clamped.
+    coverage: poolWeight > 0n ? Math.min(shareOf(total, poolWeight), 1) : 0,
   }
 }
 
 /**
  * Structural and ownership concentration for a concentrated pool. `positions === null` means
  * positions were not indexed (owners → null). With no in-band liquidity, `rangeHhi` is 1 and
- * `activeRangeShare` is 0.
+ * `activeRangeShare` is 0. Positions owned by an address in `excludedOwners` (a custodian, e.g.
+ * the pool's Slipstream gauge) are attributed to no owner and lower `owners.coverage`.
  */
 export function computeConcentration(
   state: ConcentratedState,
   positions: Position[] | null,
   bandPct: number = CONCENTRATION_BAND_PCT,
+  excludedOwners: readonly string[] = [],
 ): ConcentrationMetrics {
   const band = bandSqrtBounds(state.sqrtPriceX96, bandPct)
   const { weights, activeIndex } = rangeWeights(state, band)
@@ -201,7 +221,14 @@ export function computeConcentration(
     rangeHhi,
     activeRangeShare,
     owners:
-      positions === null ? null : ownerConcentration(positions, clipBandToKnownTicks(state, band)),
+      positions === null
+        ? null
+        : ownerConcentration(
+            positions,
+            clipBandToKnownTicks(state, band),
+            total,
+            new Set(excludedOwners.map((owner) => owner.toLowerCase())),
+          ),
   }
 }
 

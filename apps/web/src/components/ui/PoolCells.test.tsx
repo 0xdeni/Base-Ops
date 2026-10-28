@@ -3,14 +3,21 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PoolSummary } from '../../api/types.js'
 import { NB } from '../../lib/format.js'
+import { BASIS_MARK, BASIS_MARK_LABEL } from '../../lib/rating.js'
 import { DEMO_POOLS } from '../charts/chartFixtures.js'
 import { HealthCell, metricCell } from './PoolCells.js'
 
 afterEach(cleanup)
 
-const rated = { total: 71.4, grade: 'B', rated: true, unratedReason: null } as const
+const rated = {
+  total: 71.4,
+  grade: 'B',
+  rated: true,
+  unratedReason: null,
+  concentrationBasis: 'owners',
+} as const
 const unrated = (unratedReason: 'thin' | 'one-sided' | 'unpriced') =>
-  ({ total: 38.2, grade: null, rated: false, unratedReason }) as const
+  ({ total: 38.2, grade: null, rated: false, unratedReason, concentrationBasis: 'owners' }) as const
 
 describe('HealthCell', () => {
   it('shows the glyph and the truncated score of a rated pool', () => {
@@ -39,6 +46,33 @@ describe('HealthCell', () => {
       expect((await screen.findByRole('tooltip')).textContent).toContain(words)
       unmount()
     }
+  })
+})
+
+describe('HealthCell: the concentration mark', () => {
+  it('marks a grade whose concentration does not rest on LP owners, with the reason', async () => {
+    render(<HealthCell health={rated} />)
+    expect(screen.queryByRole('button', { name: BASIS_MARK_LABEL })).toBeNull()
+    cleanup()
+    const reasons = {
+      ranges: 'spreads over price ranges',
+      neutral: 'scored neutral, 10 of 20',
+    } as const
+    for (const [basis, words] of Object.entries(reasons)) {
+      const { container, unmount } = render(
+        <MemoryRouter>
+          <HealthCell health={{ ...rated, concentrationBasis: basis as keyof typeof reasons }} />
+        </MemoryRouter>,
+      )
+      expect(within(container).getByRole('img', { name: 'Grade B' })).toBeTruthy()
+      expect(container.textContent).toBe(`B${BASIS_MARK}${BASIS_MARK_LABEL}71`)
+      fireEvent.focus(within(container).getByRole('button', { name: BASIS_MARK_LABEL }))
+      expect((await screen.findByRole('tooltip')).textContent).toContain(words)
+      unmount()
+    }
+    // a score stored before the basis was recorded says nothing it does not know
+    render(<HealthCell health={{ ...rated, concentrationBasis: null }} />)
+    expect(screen.queryByRole('button', { name: BASIS_MARK_LABEL })).toBeNull()
   })
 })
 

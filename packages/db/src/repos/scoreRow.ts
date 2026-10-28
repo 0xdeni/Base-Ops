@@ -98,10 +98,12 @@ export const DIRECTIONS: Readonly<Record<SortDir, string>> = Object.freeze({
 
 /**
  * A health score as stored. One written before ratings existed has no `rated` flag: it reads as
- * unrated with no reason, and no grade, until the next `score` run replaces it.
+ * unrated with no reason, and no grade, until the next `score` run replaces it. One written before
+ * the concentration basis was recorded reads `concentrationBasis: null` until then.
  */
 function readHealth(row: Row): HealthScore {
-  const health = colJson<HealthScore>(row, 's_health_json')
+  const stored = colJson<HealthScore>(row, 's_health_json')
+  const health = { ...stored, concentrationBasis: stored.concentrationBasis ?? null }
   if (typeof health.rated === 'boolean') return health
   return { ...health, grade: null, rated: false, unratedReason: null }
 }

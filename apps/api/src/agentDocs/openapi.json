@@ -447,6 +447,11 @@
         "enum": ["thin", "one-sided", "unpriced", null],
         "description": "Why a pool has no grade, null when it is rated: thin (neither ±2 % side holds $5,000), one-sided (the deeper side does, the thinner does not) or unpriced (a side has no USD price)."
       },
+      "ConcentrationBasis": {
+        "type": ["string", "null"],
+        "enum": ["owners", "ranges", "neutral", null],
+        "description": "What the 20 concentration points stand on: owners (the largest owner's share, from indexed owners covering at least 90 % of the in-band liquidity), ranges (the range HHI of a concentrated pool: owners not indexed or covering less) or neutral (10 points: a reserve pool without owner data, or no data). null only for a score stored before the basis was recorded."
+      },
       "HealthResponse": {
         "type": "object",
         "required": [
@@ -551,17 +556,18 @@
           "spread10kBps": { "$ref": "#/components/schemas/NullableNumber", "description": "Round-trip effective spread at $10,000, bps, fees included." },
           "health": {
             "type": "object",
-            "required": ["total", "grade", "rated", "unratedReason"],
+            "required": ["total", "grade", "rated", "unratedReason", "concentrationBasis"],
             "properties": {
               "total": { "type": "number", "minimum": 0, "maximum": 100 },
               "grade": { "$ref": "#/components/schemas/NullableGrade" },
               "rated": { "type": "boolean" },
-              "unratedReason": { "$ref": "#/components/schemas/UnratedReason" }
+              "unratedReason": { "$ref": "#/components/schemas/UnratedReason" },
+              "concentrationBasis": { "$ref": "#/components/schemas/ConcentrationBasis" }
             }
           },
           "gapScore": { "$ref": "#/components/schemas/NullableNumber" },
           "volume24hUsd": { "$ref": "#/components/schemas/NullableNumber" },
-          "ownerTop1Share": { "$ref": "#/components/schemas/NullableNumber", "description": "Share of in-band liquidity held by the largest owner, 0..1." },
+          "ownerTop1Share": { "$ref": "#/components/schemas/NullableNumber", "description": "Share of the indexed owners' in-band liquidity held by the largest owner, 0..1; how much of the pool those owners cover is the newest snapshot's concentration.owners.coverage." },
           "updatedAt": { "type": ["integer", "null"], "description": "Unix seconds of the newest snapshot." }
         }
       },
@@ -614,12 +620,13 @@
       },
       "OwnerConcentration": {
         "type": "object",
-        "required": ["count", "top1Share", "top3Share", "hhi"],
+        "required": ["count", "top1Share", "top3Share", "hhi", "coverage"],
         "properties": {
           "count": { "type": "integer" },
-          "top1Share": { "type": "number" },
+          "top1Share": { "type": "number", "description": "Out of the indexed owners' total in-band weight." },
           "top3Share": { "type": "number" },
-          "hhi": { "type": "number" }
+          "hhi": { "type": "number" },
+          "coverage": { "type": "number", "minimum": 0, "maximum": 1, "description": "Σ owner weights / the pool's whole in-band weight: how much of the pool the indexed owners account for. A Slipstream gauge's staked positions count as uncovered." }
         }
       },
       "ConcentrationMetrics": {
@@ -652,12 +659,13 @@
       },
       "HealthScore": {
         "type": "object",
-        "required": ["total", "grade", "rated", "unratedReason", "components", "notes"],
+        "required": ["total", "grade", "rated", "unratedReason", "concentrationBasis", "components", "notes"],
         "properties": {
           "total": { "type": "number", "minimum": 0, "maximum": 100, "description": "Present for unrated pools too." },
           "grade": { "$ref": "#/components/schemas/NullableGrade" },
           "rated": { "type": "boolean", "description": "Both ±2 % sides are known and the thinner holds at least $5,000." },
           "unratedReason": { "$ref": "#/components/schemas/UnratedReason" },
+          "concentrationBasis": { "$ref": "#/components/schemas/ConcentrationBasis" },
           "components": {
             "type": "object",
             "required": ["depth", "spread", "concentration", "persistence"],

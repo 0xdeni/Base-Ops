@@ -133,6 +133,12 @@ export interface ChainReader {
     candidates: readonly Address[],
     blockNumber?: bigint,
   ): Promise<Position[]>
+  /**
+   * Addresses that hold the pool's positions on behalf of depositors (lowercase), at `blockNumber`
+   * (default: latest): a Slipstream pool's CLGauge (`CLPool.gauge()`), which owns every staked
+   * NFT. [] for a pool without a gauge and for the other DEXes (nothing is read).
+   */
+  readCustodians(pool: PoolMeta, blockNumber?: bigint): Promise<Address[]>
 }
 
 export interface CreateChainReaderOptions {
@@ -340,6 +346,11 @@ export function createChainReader(opts: CreateChainReaderOptions = {}): ChainRea
       const resolve = ADAPTERS[pool.dex].stakedOwners
       if (!resolve) return Promise.resolve([...positions])
       return resolve(ctx, pool, positions, candidates, blockNumber)
+    },
+    readCustodians(pool, blockNumber) {
+      const read = ADAPTERS[pool.dex].custodians
+      if (!read) return Promise.resolve([])
+      return read(ctx, pool, blockNumber)
     },
   }
 }

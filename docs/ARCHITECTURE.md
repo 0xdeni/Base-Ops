@@ -128,8 +128,11 @@ Each step reads what the previous one stored, so any step can be rerun on its ow
 `depthwatch positions` is a separate, less frequent step (`run --with-positions` folds it into
 every pass): it indexes LP positions (owner, range, liquidity) for tracked concentrated pools, and
 for concentrated pools with an active mandate whether or not they are tracked yet, so that the next
-`snapshot` can compute owner concentration and attribute the mandates. Without it
-`concentration.owners` is null and the health score falls back to the structural range HHI.
+`snapshot` can compute owner concentration and attribute the mandates; it also records each
+Slipstream pool's gauge, whose staked positions count as uncovered rather than as one owner.
+Without it `concentration.owners` is null and the health score falls back to the structural range
+HHI, as it does when the indexed owners cover under 90 % of the in-band liquidity (an Aerodrome
+v2 pool scores the neutral 10).
 
 ## Market-maker scorecards
 

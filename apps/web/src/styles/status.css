@@ -77,6 +77,34 @@
   color: inherit;
 }
 
+/* The concentration mark: a star on the top right corner of a grade whose concentration points
+   do not rest on LP owners, so the glyph keeps its width and the column its alignment; a button
+   for its reason above any row link, in the muted text colour. */
+.grade-basis {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.basis-mark {
+  position: absolute;
+  z-index: 2;
+  top: -7px;
+  right: -8px;
+  color: var(--text-2);
+  font-size: var(--t-small);
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+}
+.ink .basis-mark {
+  color: var(--on-ink-2);
+}
+.grade-basis.is-fact .basis-mark {
+  top: -8px;
+  right: -10px;
+  font-size: var(--t-data);
+}
+
 /* Status chip (the scorecard's own page): 32 px, radius 9, 15 px / 800, the shape and the word in
    ink on the status fill. */
 .status-chip {

@@ -89,7 +89,8 @@ export function healthTakeaway(
   const why = neutralReason(health.notes, weakest)
   if (why) return `${PART_NAME[weakest]} is the weak part: ${why}.`
   if (weakest === 'concentration' && concentration) {
-    if (concentration.owners)
+    // Owners the score did not use (they cover too little of the pool) are not the reason.
+    if (concentration.owners && health.concentrationBasis !== 'ranges')
       return `Concentration is the weak part: one LP holds ${shareOf(concentration.owners.top1Share)}.`
     if (kind !== 'concentrated')
       return 'Concentration is the weak part: all liquidity is one full range.'

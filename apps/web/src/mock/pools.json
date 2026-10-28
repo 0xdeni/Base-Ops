@@ -7,7 +7,7 @@
     "createdAtBlock": "1371680", "price": 3842.15, "tvlUsd": 41500000, "activeLiquidity": "48213377120934812",
     "depthUsd": { "1": [1850000, 1720000], "2": [3400000, 3150000], "5": [7900000, 7400000] },
     "spreadBps": [1.9, 2.4, 6.8],
-    "concentration": { "rangeHhi": 0.21, "activeRangeShare": 0.34, "owners": { "count": 212, "top1Share": 0.18, "top3Share": 0.37, "hhi": 0.06 } },
+    "concentration": { "rangeHhi": 0.21, "activeRangeShare": 0.34, "owners": { "count": 212, "top1Share": 0.18, "top3Share": 0.37, "hhi": 0.06, "coverage": 0.97 } },
     "persistence": { "24h": [0.91, 0.98], "7d": [0.84, 0.96] },
     "volume24hUsd": 118000000
   },
@@ -19,7 +19,7 @@
     "createdAtBlock": "18893200", "price": 0.000010150, "tvlUsd": 18200000, "activeLiquidity": "9120034412",
     "depthUsd": { "1": [860000, 810000], "2": [1600000, 1500000], "5": [3700000, 3400000] },
     "spreadBps": [3.1, 4.6, 14.2],
-    "concentration": { "rangeHhi": 0.27, "activeRangeShare": 0.41, "owners": { "count": 88, "top1Share": 0.24, "top3Share": 0.49, "hhi": 0.11 } },
+    "concentration": { "rangeHhi": 0.27, "activeRangeShare": 0.41, "owners": { "count": 88, "top1Share": 0.24, "top3Share": 0.49, "hhi": 0.11, "coverage": 0.97 } },
     "persistence": { "24h": [0.88, 0.97], "7d": [0.79, 0.94] },
     "volume24hUsd": 32000000
   },
@@ -31,7 +31,7 @@
     "createdAtBlock": "2113850", "price": 1.0845, "tvlUsd": 6200000, "activeLiquidity": "812993011237712011",
     "depthUsd": { "1": [1150000, 1080000], "2": [2100000, 1900000], "5": [3100000, 2950000] },
     "spreadBps": [0.9, 1.4, 5.2],
-    "concentration": { "rangeHhi": 0.44, "activeRangeShare": 0.63, "owners": { "count": 23, "top1Share": 0.62, "top3Share": 0.88, "hhi": 0.42 } },
+    "concentration": { "rangeHhi": 0.44, "activeRangeShare": 0.63, "owners": { "count": 23, "top1Share": 0.62, "top3Share": 0.88, "hhi": 0.42, "coverage": 0.97 } },
     "persistence": { "24h": [0.96, 1.0], "7d": [0.92, 0.99] },
     "volume24hUsd": 3100000
   },
@@ -44,7 +44,7 @@
     "depthUsd": { "1": [52000, 47000], "2": [95000, 88000], "5": [210000, 190000] },
     "spreadBps": [95, 160, null],
     "unreached": ["5:down"],
-    "concentration": { "rangeHhi": 0.38, "activeRangeShare": 0.52, "owners": { "count": 41, "top1Share": 0.44, "top3Share": 0.71, "hhi": 0.25 } },
+    "concentration": { "rangeHhi": 0.38, "activeRangeShare": 0.52, "owners": { "count": 41, "top1Share": 0.44, "top3Share": 0.71, "hhi": 0.25, "coverage": 0.97 } },
     "persistence": { "24h": [0.55, 0.72], "7d": [0.41, 0.66] },
     "volume24hUsd": 1400000
   },
@@ -56,7 +56,7 @@
     "createdAtBlock": "3821677", "price": 0.82645, "tvlUsd": 5400000, "activeLiquidity": "1512221890045812009311",
     "depthUsd": { "1": [1400000, 1300000], "2": [1900000, 1800000], "5": [2400000, 2300000] },
     "spreadBps": [0.6, 0.9, 3.1],
-    "concentration": { "rangeHhi": 0.71, "activeRangeShare": 0.84, "owners": { "count": 9, "top1Share": 0.83, "top3Share": 0.97, "hhi": 0.70 } },
+    "concentration": { "rangeHhi": 0.71, "activeRangeShare": 0.84, "owners": { "count": 9, "top1Share": 0.83, "top3Share": 0.97, "hhi": 0.70, "coverage": 0.97 } },
     "persistence": { "24h": [0.97, 1.0], "7d": [0.95, 1.0] },
     "volume24hUsd": 2200000
   },
@@ -142,7 +142,7 @@
     "createdAtBlock": "13900120", "price": 3842.4, "tvlUsd": 38000000, "activeLiquidity": "40011223344556677",
     "depthUsd": { "1": [1600000, 1500000], "2": [2900000, 2700000], "5": [6800000, 6300000] },
     "spreadBps": [1.5, 2.0, 5.9],
-    "concentration": { "rangeHhi": 0.18, "activeRangeShare": 0.29, "owners": { "count": 96, "top1Share": 0.31, "top3Share": 0.58, "hhi": 0.17 } },
+    "concentration": { "rangeHhi": 0.18, "activeRangeShare": 0.29, "owners": { "count": 96, "top1Share": 0.31, "top3Share": 0.58, "hhi": 0.17, "coverage": 0.97 } },
     "persistence": { "24h": [0.93, 0.99], "7d": [0.87, 0.97] },
     "volume24hUsd": 142000000
   },
@@ -154,7 +154,7 @@
     "createdAtBlock": "19011230", "price": 0.000010149, "tvlUsd": 9600000, "activeLiquidity": "5012034412",
     "depthUsd": { "1": [430000, 410000], "2": [820000, 790000], "5": [1900000, 1800000] },
     "spreadBps": [3.4, 5.1, 17.0],
-    "concentration": { "rangeHhi": 0.24, "activeRangeShare": 0.38, "owners": { "count": 61, "top1Share": 0.29, "top3Share": 0.55, "hhi": 0.15 } },
+    "concentration": { "rangeHhi": 0.24, "activeRangeShare": 0.38, "owners": { "count": 61, "top1Share": 0.29, "top3Share": 0.55, "hhi": 0.15, "coverage": 0.97 } },
     "persistence": { "24h": [0.9, 0.98], "7d": [0.83, 0.96] },
     "volume24hUsd": 19000000
   },
@@ -166,7 +166,7 @@
     "createdAtBlock": "17200456", "price": 1.0842, "tvlUsd": 4100000, "activeLiquidity": "812003344556",
     "depthUsd": { "1": [2100000, 1950000], "2": [2600000, 2400000], "5": [2800000, 2650000] },
     "spreadBps": [2.1, 2.3, 4.0],
-    "concentration": { "rangeHhi": 0.62, "activeRangeShare": 0.77, "owners": { "count": 14, "top1Share": 0.71, "top3Share": 0.93, "hhi": 0.53 } },
+    "concentration": { "rangeHhi": 0.62, "activeRangeShare": 0.77, "owners": { "count": 14, "top1Share": 0.71, "top3Share": 0.93, "hhi": 0.53, "coverage": 0.97 } },
     "persistence": { "24h": [0.98, 1.0], "7d": [0.96, 1.0] },
     "volume24hUsd": 1200000
   },
@@ -178,7 +178,7 @@
     "createdAtBlock": "14102300", "price": 2910.72, "tvlUsd": 7800000, "activeLiquidity": "311223344556677889900",
     "depthUsd": { "1": [165000, 150000], "2": [310000, 290000], "5": [720000, 680000] },
     "spreadBps": [22, 35, 95],
-    "concentration": { "rangeHhi": 0.29, "activeRangeShare": 0.43, "owners": { "count": 58, "top1Share": 0.26, "top3Share": 0.51, "hhi": 0.13 } },
+    "concentration": { "rangeHhi": 0.29, "activeRangeShare": 0.43, "owners": { "count": 58, "top1Share": 0.26, "top3Share": 0.51, "hhi": 0.13, "coverage": 0.97 } },
     "persistence": { "24h": [0.86, 0.96], "7d": [0.74, 0.9] },
     "volume24hUsd": 4300000
   },
@@ -203,7 +203,7 @@
     "depthUsd": { "1": [90000, 0], "2": [180000, 0], "5": [360000, 0] },
     "spreadBps": [null, null, null],
     "unreached": ["1:down", "2:down", "5:down"],
-    "concentration": { "rangeHhi": 0.71, "activeRangeShare": 0.88, "owners": { "count": 6, "top1Share": 0.82, "top3Share": 0.97, "hhi": 0.68 } },
+    "concentration": { "rangeHhi": 0.71, "activeRangeShare": 0.88, "owners": { "count": 6, "top1Share": 0.82, "top3Share": 0.97, "hhi": 0.68, "coverage": 0.97 } },
     "persistence": { "24h": null, "7d": null },
     "volume24hUsd": 8400
   },

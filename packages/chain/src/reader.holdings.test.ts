@@ -286,4 +286,22 @@ describe('resolveStakedOwners', () => {
     }
     expect(counts.size).toBe(0)
   })
+
+  it('readCustodians: the Slipstream gauge (lowercase), [] without one or on another DEX', async () => {
+    const fixture = newFixture()
+    registerGauge(fixture, getAddress(GAUGE) as `0x${string}`, [900n])
+    registerGauge(fixture, ZERO, [901n])
+    const { r, counts } = reader(fixture)
+    expect(await r.readCustodians(slip, 900n)).toEqual([GAUGE])
+    expect(await r.readCustodians(slip, 901n)).toEqual([])
+    expect(counts.get('eth_call')).toBe(2)
+    const v3 = poolMeta({
+      dex: 'uniswap-v3',
+      address: addr(0x711),
+      token0: TOKEN_A,
+      token1: TOKEN_D,
+    })
+    expect(await r.readCustodians(v3)).toEqual([])
+    expect(counts.get('eth_call')).toBe(2)
+  })
 })
