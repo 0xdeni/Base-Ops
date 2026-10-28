@@ -42,7 +42,10 @@ describe('createSyntheticFixture', () => {
     })
 
     const discovered: PoolMeta[] = []
-    for (const dex of DEXES)
+    // The world's DEXes: the Aero adapters reject discovery until the world holds Aero pools.
+    const worldDexes = DEXES.filter((dex) => world.pools.some((p) => p.meta.dex === dex))
+    expect(worldDexes).toHaveLength(4)
+    for (const dex of worldDexes)
       discovered.push(...(await reader.discoverPools(dex, 1n, latest.number)))
     expect(discovered).toHaveLength(6)
     expect(new Set(discovered.map((p) => p.id))).toEqual(new Set(byId.keys()))

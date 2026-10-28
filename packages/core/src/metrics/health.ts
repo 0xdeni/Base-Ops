@@ -98,8 +98,10 @@ export interface DepthRating {
 }
 
 /**
- * A Uniswap v4 pool with a hook (a non-zero `hooks` address). Its swaps run the hook's code, which
- * the pool's state does not describe, so it is not modelled (docs/METRICS.md, `hooked`).
+ * A pool with a hook (a non-zero `hooks` address): a Uniswap v4 pool with a hook, or an Aero
+ * Slipstream pool whose swap hook is not the reviewed one or charges each block's first swap an
+ * initial fee. Its swaps run code the pool's state does not describe, so it is not modelled
+ * (docs/METRICS.md, `hooked`).
  */
 export function isHookedPool(pool: Pick<PoolMeta, 'hooks'>): boolean {
   return typeof pool.hooks === 'string' && !/^0x0{40}$/i.test(pool.hooks)

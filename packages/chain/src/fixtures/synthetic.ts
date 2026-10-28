@@ -17,6 +17,7 @@ import { v4PoolManagerAbi } from '../abi/v4PoolManager.js'
 import { slipstreamPoolId } from '../adapters/aerodromeSlipstream.js'
 import { aerodromeV2PoolId } from '../adapters/aerodromeV2.js'
 import { uniswapV3PoolId } from '../adapters/uniswapV3.js'
+import { DexNotSupportedError } from '../adapters/unsupported.js'
 import { BASE_ADDRESSES, type ChainAddresses } from '../addresses.js'
 import { createFixture, type Fixture, type FixtureLog } from '../transport/fixture.js'
 import { addLogs, type BlockRef, makeLog, registerCall, setClock } from './builders.js'
@@ -183,6 +184,9 @@ function creationLog(pool: SyntheticPool, addresses: ChainAddresses): FixtureLog
         logIndex: 0,
       })
     }
+    case 'aero-v2':
+    case 'aero-slipstream':
+      throw new DexNotSupportedError(meta.dex, 'a synthetic pool')
   }
 }
 

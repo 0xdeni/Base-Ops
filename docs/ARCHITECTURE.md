@@ -253,12 +253,12 @@ Multicall3 (at most 500 calls per request):
   tickSpacing, no hooks) over (100, 1), (500, 10), (3000, 60) and (10000, 200), native ETH as
   `address(0)`; a pool counts once its sqrtPriceX96 is not zero.
 
-With the 14 reference tokens (13 ERC-20s and native ETH) that is 78 ERC-20 pairs and 91
-currency pairs: 546 v3, 156 Aerodrome v2, 364 v4 and one Slipstream call per pair and enabled
-spacing of each factory (1,716 with the 22 spacings the three factories enable today), about ten
-multicalls in all, plus token metadata and fees for the pools found. Every non-zero answer goes
-through the same PoolMeta builder as the creation log would. The four DEXes are asked
-independently: one whose factory reads fail is reported (`SeedResult.failed`) and gets no
+With the 15 reference tokens (14 ERC-20s and native ETH) that is 91 ERC-20 pairs and 105
+currency pairs: 637 v3, 182 Aerodrome v2, 182 Aero v2, 420 v4 and one Slipstream call per pair
+and enabled spacing of each factory (2,002 with the 22 spacings the three Aerodrome factories
+enable today, 637 with the 7 of the Aero factory), about ten multicalls in all, plus token
+metadata and fees for the pools found. Every non-zero answer goes through the same PoolMeta
+builder as the creation log would. The six DEXes are asked independently: one whose factory reads fail is reported (`SeedResult.failed`) and gets no
 `seed:<dex>:lastBlock`, while the others' pools are dated and stored; the command then exits 1
 and the next seed asks that DEX again.
 
@@ -311,7 +311,8 @@ pools, around 500 multicalls per snapshot. Reserve pools need nothing beyond the
 `Swap` events for the tracked pools of one event source are requested together (one address
 array, one topic) per block chunk, so a chunk costs one `getLogs` per source with tracked pools.
 Slipstream's CLPool emits Uniswap v3's `Swap` event unchanged (same signature, same topic0, pinned
-by a test), so Uniswap v3 and Slipstream pools share one filter: three sources for four DEXes.
+by a test), so Uniswap v3 and Slipstream pools share one filter, and Aero v2 pools emit Aerodrome
+v2's `Swap`: three sources for six DEXes.
 Uniswap v4 swaps are read from the PoolManager filtered by the `id` topic.
 The step logs its progress at info level every 30 s (blocks scanned of the total, chunks served of
 the total, percent, elapsed time, ETA, rate-limit and transient backoffs), since a 24 h scan at 10
@@ -366,8 +367,9 @@ positions in the pass that finds it.
 
 ### Per cycle
 
-A 5-minute `run` with 10,000 known pools and 200 tracked pools is roughly: 6 `getLogs` for
-discovery (one per factory; 150 new blocks fit in one chunk at any chunk size), ~70 multicalls for
+A 5-minute `run` with 10,000 known pools and 200 tracked pools is roughly: 8 `getLogs` for
+discovery (one per filter: one per factory, and one for the two Aero v2 factories; 150 new blocks
+fit in one chunk at any chunk size), ~70 multicalls for
 the overview, ~500 multicalls for state, 1 to 2 `getLogs` per event source with tracked pools for volume (a
 pass rereads the hour that held the previous head, the new blocks and the margin: at most about
 2,250 blocks) plus a handful of block headers. The first pass, and a DEX with a newly tracked pool,
@@ -404,7 +406,7 @@ a provider that accepts wider spans.
   `discover`, and `positions` starts no further pool once one has failed this way.
 - **A 10-block plan.** `snapshot` and `score` need no logs. `volume` for 24 h is 45,300 blocks:
   4,531 `eth_getLogs` per event source with tracked pools plus at most seven headers, about 13,600
-  requests with all four DEXes (three sources) tracked (on a plan that meters about 75 compute
+  requests with all six DEXes (three sources) tracked (on a plan that meters about 75 compute
   units per `eth_getLogs`, about 1 M units) on a first pass. The pass measured on 2026-10-25
   ([README](../README.md#measured-on-base-2026-10-25)) predates the shared filter: four scans,
   18,131 answered requests and about 1.36 M units, 4,192 more answered HTTP 429. Later passes

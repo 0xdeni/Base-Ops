@@ -5,7 +5,9 @@ Each address lists its sources and an independent-verification verdict. Items ma
 checked on first live run (`depthwatch discover` reads factory logs, which is the ground truth).
 Every address in `packages/chain/src/addresses.ts` was verified on chain on 2026-10-25 at block
 53,061,932 (code present plus one contract-specific view each; see §2.8 of the open items
-below), with no mismatch; §2.8 also flags the Aerodrome Voter's current state.
+below), with no mismatch; §2.8 also flags the Aerodrome Voter's current state. The Aero entries
+(`## aero`, added on 2026-10-28 after Aerodrome became Aero) were read on chain at blocks
+53,211,601–53,213,030 (§2.9).
 
 Base-native addresses (here the `weth` WETH9 predeploy) can also be re-checked on the first live run against Base's contract-address reference, <https://docs.base.org/specifications/reference/base-contracts.md>, which Base's AGENTS.md describes as "canonical contract addresses for Base Mainnet and Base Sepolia" (see [../base/base-agents-reference.md](../base/base-agents-reference.md)). Whether that page lists any DEX or Multicall3 address is unverified: those stay tied to the per-address sources and verdicts below and to the factory logs read on the first live run.
 
@@ -408,7 +410,7 @@ function quoteExactOutput(QuoteExactParams memory params) external returns (uint
 | `aerodrome_v2_pool_factory`                          | Aerodrome PoolFactory (v2-style volatile/stable pools)                                         | `0x420DD381b31aEf6683db6B902084cB0FFECe40Da` | high              | confirmed         |
 | `aerodrome_v2_router`                                | Aerodrome Router (v2 pools)                                                                    | `0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43` | medium            | confirmed         |
 | `aerodrome_voter`                                    | Aerodrome Voter                                                                                | `0x16613524e02ad97eDfeF371bC883F2F5d6C480A5` | high              | confirmed         |
-| `aero_token`                                         | AERO token                                                                                     | `0x940181a94A35A4569E4529A3CDfB74e38FD98631` | high              | confirmed         |
+| `aerodrome_aero_token`                               | AERO token (Aerodrome's; `aero_token` until 2026-10-28, now Aero's AERO under `## aero`)       | `0x940181a94A35A4569E4529A3CDfB74e38FD98631` | high              | confirmed         |
 | `aerodrome_factory_registry`                         | Aerodrome FactoryRegistry                                                                      | `0x5C3F18F06CC09CA1910767A34a20F771039E37C0` | medium            | confirmed         |
 | `aerodrome_v2_gauge_factory`                         | Aerodrome v2 GaugeFactory (non-CL)                                                             | `0x35f35cA5B132CaDf2916BaB57639128eAC5bbcb5` | high              | confirmed         |
 | `slipstream_cl_factory`                              | Slipstream CLFactory (initial deployment; main factory, most pools)                            | `0x5e7BB104d84c7CB9B682AaC2F3d509f5F406809A` | high              | confirmed         |
@@ -424,6 +426,16 @@ function quoteExactOutput(QuoteExactParams memory params) external returns (uint
 | `slipstream_swap_router`                             | Slipstream SwapRouter (initial deployment)                                                     | `0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5` | medium            | confirmed         |
 | `slipstream_quoter_v2`                               | Slipstream QuoterV2 (initial deployment)                                                       | `0x254cF9E1E6e233aa1AC962CB9B05b2cfeAaE15b0` | medium            | confirmed         |
 
+**Note (2026-10-28): Aerodrome became Aero.** On 2026-10-21 Aerodrome and Velodrome merged into
+Aero, whose Base contracts are listed under `## aero`. The contracts in this section stay as they
+are: the PoolFactory and the three CLFactories are not paused and their pools still trade, but
+every Aerodrome gauge was killed (`isAlive` false; the WETH/USDC v2 gauge at block 52,918,274,
+§2.8), the Voter's `emergencyCouncil()` is now the AerodromeMigration contract
+0x22a2f734…, and the Voter still answers `gauges(pool)` with the killed gauges. The fee notes
+below and in §2.3 stand: `fee()` of a Slipstream pool on all three Aerodrome deployments asks a
+DynamicSwapFeeModule and can change from one block to the next. Aerodrome's AERO keeps its
+address and is now `TOKENS.AERO_AERODROME` (key `aerodrome_aero_token`).
+
 Sources and notes per item:
 - `aerodrome_v2_pool_factory`: <https://github.com/aerodrome-finance/contracts (README 'Deployment' table; raw: https://raw.githubusercontent.com/aerodrome-finance/contracts/main/README.md)>, <https://raw.githubusercontent.com/DefiLlama/dimension-adapters/master/dexs/aerodrome/index.ts (CONFIG.PoolFactory)>
   - Official repo README + independent DefiLlama adapter agree. Emits PoolCreated(token0,token1,stable,pool,uint256). Contract name and verification status on Basescan/Blockscout were not checked (unverified).
@@ -434,8 +446,9 @@ Sources and notes per item:
 - `aerodrome_voter`: <https://github.com/aerodrome-finance/contracts (README 'Deployment' table)>, <https://raw.githubusercontent.com/DefiLlama/dimension-adapters/master/dexs/aerodrome-slipstream/index.ts (CONFIG.voter)>, <https://raw.githubusercontent.com/DefiLlama/dimension-adapters/master/dexs/aerodrome/index.ts (CONFIG.voter)>
   - Shared by v2 and Slipstream. Voter.gauges(pool) -> gauge; Voter.poolForGauge(gauge); Voter.isAlive(gauge); emits GaugeCreated(...). Used by CLFactory.getUnstakedFee to decide whether a pool has a live gauge.
   - verifier: confirmed via <https://raw.githubusercontent.com/rotki/rotki/develop/rotkehlchen/chain/evm/decoding/velodrome/constants.py (VOTER_ADDRESSES[ChainID.BASE]); https://raw.githubusercontent.com/velodrome-finance/sugar/main/deployments/base.env (VOTER_8453); https://raw.githubusercontent.com/beefyfinance/beefy-api/master/packages/address-book/src/address-book/base/platforms/aerodrome.ts (voter); https://raw.githubusercontent.com/velodrome-finance/indexer/main/config.yaml (Base Voter)> — Four independent sources agree; rotki explicitly keys it to ChainID.BASE (Optimism Velodrome voter is 0x41C914ee0c7E1A5edCD0295623e6dC557B5aBf3C, so no cross-chain confusion).
-- `aero_token`: <https://github.com/aerodrome-finance/contracts (README 'Deployment' table)>, <https://governance.aave.com/t/temp-check-add-aero-to-base-v3/17440>
+- `aerodrome_aero_token` (`aero_token` until 2026-10-28): <https://github.com/aerodrome-finance/contracts (README 'Deployment' table)>, <https://governance.aave.com/t/temp-check-add-aero-to-base-v3/17440>
   - Official README and Aave governance forum agree.
+  - 2026-10-28, block 53,211,601: `name()` 'Aerodrome', `symbol()` 'AERO', the same symbol as Aero's AERO (`aero_token` under `## aero`), so the two are told apart by address. Aero's AerodromeMigration converts it one way into Aero's AERO (`## aero`).
   - verifier: confirmed via <https://raw.githubusercontent.com/rotki/rotki/develop/rotkehlchen/chain/base/modules/aerodrome/constants.py (A_AERO = eip155:8453/erc20:0x9401...); https://raw.githubusercontent.com/velodrome-finance/sugar-sdk/main/sugar/config.py (Base 8453 token_addr); https://raw.githubusercontent.com/DefiLlama/yield-server/master/src/adaptors/aerodrome-slipstream/index.js (AERO)> — rotki pins it to chain 8453 explicitly. Sugar SDK and DefiLlama yield-server agree.
 - `aerodrome_factory_registry`: <https://github.com/aerodrome-finance/contracts (README 'Deployment' table)>
   - Single source. factoriesToPoolFactory(poolFactory) -> (votingRewardsFactory, gaugeFactory); CLPool stores factoryRegistry and uses it for the onlyGaugeFactory check.
@@ -773,24 +786,208 @@ Staked positions: the NFT is transferred to the CLGauge (ERC721 Transfer to gaug
 `createGauge(address _forwarder, address _pool, address _feesVotingReward, address _rewardToken, bool _isPool)` (called by Voter); getters `voter()`, `minter()`, `implementation()`, `nft()`, `notifyAdmin()`, `isGauge(address)`; V3 adds emission caps / minStakeTime / penaltyRate events (`SetEmissionCap`, `SetPoolMinStakeTime`, `SetPenaltyRate`, …). On gauge creation it sets `pool.gauge` and `pool.nft`.
 
 
+## aero
+
+Aerodrome and Velodrome merged into Aero on 2026-10-21: "In 2026, Aerodrome will merge with
+Velodrome […] to become Aero […] operating on MetaDEX03" (aerodrome-finance/docs@99680a7,
+`content/about.mdx` line 11). On Base the new system has its own AERO token, one v2 pool factory
+per pool type, one Slipstream CLFactory with its own NonfungiblePositionManager and swap hook, a
+FactoryRegistry, and new voters and gauges. The Aerodrome contracts of the section above are not
+paused and their pools still trade, but their gauges were killed at blocks 52,918,274–52,918,331
+(§2.8).
+Depthwatch indexes both platforms: Aero's pools under the DEX ids `aero-v2` and
+`aero-slipstream`.
+
+Sources: the deployment files of two public repositories, read at their remote HEADs
+(`git ls-remote`; the raw.githubusercontent.com files are byte-identical to the clones):
+dromos-labs/metadex-public@8b506b4 (`deployment-addresses/{root,leaf,pools,gaugestack,migration}-base.json`,
+sources under `V3/src`) and dromos-labs/metadex-slipstream-public@f99f209
+(`deployment-addresses/cl-base.json`, sources under `contracts`). Both READMEs link the protocol to
+<https://aero.xyz>, and each repository's `VERSIONS` file lists these Base files under version
+1.1.0, first distribution 2026-10-21. aero.xyz, basescan, docs.base.org and base.org could not be
+read, and nothing here is attributed to them. Every entry was read on Base mainnet through
+Alchemy's endpoint on 2026-10-28 (§2.9); a value read again then replaces the earlier reading.
+
+| key                           | name                                                                   | address                                      | source confidence | independent check |
+| ----------------------------- | ---------------------------------------------------------------------- | -------------------------------------------- | ----------------- | ----------------- |
+| `aero_token`                  | AERO token (Aero's; `name()` 'Aero')                                   | `0x3f5bF3EdAc59d650D8fDf9657a71F2f904A3a4Ee` | high              | confirmed         |
+| `aero_v2_volatile_factory`    | Aero VolatilePoolFactory (v2 constant-product pools)                   | `0x8E6a9FCd1d638CC760Ffba397605Fe3355dE76D2` | high              | confirmed         |
+| `aero_v2_stable_factory`      | Aero StablePoolFactory (v2 x³y + xy³ pools)                            | `0x78589E876edcEbdce72ee3436ab3c9AD3a7cEF2D` | high              | confirmed         |
+| `aero_v2_volatile_fee_module` | Aero CustomFeeModule of the volatile factory                           | `0x7949DE8d67E4F6b8509Bdbb43FF0503aF1247a7A` | high              | confirmed         |
+| `aero_v2_stable_fee_module`   | Aero CustomFeeModule of the stable factory                             | `0x0195fC76Da986D66B2A468133a1be41E90893Da6` | high              | confirmed         |
+| `aero_factory_registry`       | Aero FactoryRegistry (pool → gauge for every Aero factory)             | `0x7b2A2c12dC5Ea2a31455952a05031C3E4BB28F3E` | high              | confirmed         |
+| `aero_cl_factory`             | Aero Slipstream CLFactory ("Slipstream V3")                            | `0x9CB220581b91b0C83223012FE69688b92aD07a76` | high              | confirmed         |
+| `aero_cl_position_manager`    | Aero Slipstream NonfungiblePositionManager ('Slipstream V3 Deposit')   | `0x4857DB576eE0e45F10525eC59527BfD10beeC60b` | high              | confirmed         |
+| `aero_cl_swap_hook`           | Aero Slipstream DynamicSwapFeeHook (the CLFactory's default swap hook) | `0xC0ed888AfE87ed1AcF01D9f19bB850159e3ce434` | high              | confirmed         |
+
+Sources and notes per item (`addresses.ts`: `TOKENS.AERO`, `aeroV2`, `aeroSlipstream`):
+- `aero_token`: metadex-public@8b506b4 `root-base.json`, key `token`.
+  - Confirmed at blocks 53,211,601–53,211,732: `name()` 'Aero', `symbol()` 'AERO', 18 decimals,
+    `totalSupply()` 2,129,922,247.87e18; `MINTER()` 0x59268a34…, `VOTING_ESCROW()` 0xbf7977e1…,
+    `MIGRATION()` 0x22a2f734…; the root Voter's `TOKEN()` returns it. It is token0 of the first
+    volatile pool, 0xf634058d… (AERO/USDC, `PoolCreated` at block 52,884,700), and of CL pool
+    0xd0acf293… (AERO/USDC, tick spacing 200).
+  - Aerodrome's AERO (`aerodrome_aero_token` above) also answers `symbol()` 'AERO' (its
+    `name()` is 'Aerodrome'), so the two are told apart by address only. The `MIGRATION()`
+    contract (`migration-base.json` `aerodromeMigration`) converts Aerodrome's AERO one way:
+    `Migration.depositLiquid` locks the old tokens in Aerodrome's escrow and pays the same amount
+    of the new token, while its budget lasts. That is a conversion, not a price peg: each AERO is
+    priced from its own pools.
+- `aero_v2_volatile_factory`: metadex-public@8b506b4 `pools-base.json`, key `volatilePoolFactory`.
+  - Confirmed at blocks 53,211,601–53,211,635: `allPoolsLength()` 279, and every one of the 279
+    pools returns `POOL_TYPE()` 'V2_VOLATILE' and `factory()` pointing back; `implementation()`
+    0x0526cf03… (`volatilePoolImplementation`; pool 0x800eb395…'s code is its EIP-1167 clone);
+    `factoryRegistry()` 0x7b2a2c12…; `defaultFee()` 30 (bps); `isPaused()` false; `feeModule()`
+    0x7949de8d…; `getPool(WETH, USDC)` 0x800eb395… in either order, while the Aerodrome
+    3-argument `getPool(a, b, bool)` reverts. First block with code 52,880,042; first `PoolCreated`
+    at 52,884,700.
+- `aero_v2_stable_factory`: metadex-public@8b506b4 `pools-base.json`, key `stablePoolFactory`.
+  - Confirmed at the same blocks: `allPoolsLength()` 21, every pool 'V2_STABLE' with `factory()`
+    pointing back; `implementation()` 0xf525988f…; `defaultFee()` 5; `feeModule()` 0x0195fc76…;
+    `getPool(WETH, USDC)` 0x4b0fa525… (empty reserves). First block with code 52,880,046; 13
+    `PoolCreated` at 52,886,973. Six `getAmountOut` answers of three stable pools at block
+    53,085,844 equal the x³y + xy³ solver with the pool's fee to the wei.
+- `aero_v2_volatile_fee_module`: metadex-public@8b506b4 `pools-base.json`, key
+  `volatileCustomFeeModule` (constructor argument: the volatile factory).
+  - Confirmed: the volatile factory's `feeModule()` at 53,211,601 and 53,213,030; source
+    `V3/src/fees/CustomFeeModule.sol`: `getFee` reads only `customFee[pool]` (an override, 0 for the
+    420 sentinel) and reverts `NoCustomFee` without one, after which the factory's `getBaseFee`
+    returns `defaultFee`. Per-pool fees at 53,211,635 in §2.9.
+- `aero_v2_stable_fee_module`: metadex-public@8b506b4 `pools-base.json`, key
+  `stableCustomFeeModule` (constructor argument: the stable factory).
+  - Confirmed: the stable factory's `feeModule()` at the same blocks; the same source as the
+    volatile module. Per-pool fees in §2.9.
+- `aero_factory_registry`: metadex-public@8b506b4 `leaf-base.json`, key `factoryRegistry` (also
+  in metadex-slipstream-public's `leaf-base.json`).
+  - Confirmed at 53,211,601: `leafVoter()` 0x382409fa…; `targetFactories()` = [volatile factory,
+    stable factory, CLFactory], each `isTargetFactoryApproved`; `factoryToTargetsLength` 279 / 21 /
+    489, equal to the three factories' `allPoolsLength()`; `targetToGauge`: 0x800eb395… →
+    0x1d12ef78…, CL 0x4a7af46b… → 0x46a9dca7…, 0x45adce4b… → 0xe932a095…, 0x4b0fa525… → 0 (no
+    gauge). Every factory's `factoryRegistry()` and the LeafVoter's `FACTORY_REGISTRY()` return it.
+  - `targetFactories()` lists only the factories approved now: an earlier set was unregistered at
+    block 52,884,126, and its pools are still recorded but no longer listed. It is not a
+    discovery root.
+- `aero_cl_factory`: metadex-slipstream-public@f99f209 `cl-base.json`, key `clFactory`.
+  - Confirmed at 53,211,601: `voter()` 0x382409fa… (the LeafVoter), `poolImplementation()`
+    0x1642634c…, `positionManager()` 0x4857db57…, `factoryRegistry()` 0x7b2a2c12…,
+    `defaultSwapHook()` 0xc0ed888a…, `owner()` the Safe 0x42255e3c…, `allPoolsLength()` 489,
+    `tickSpacings()` [1, 10, 50, 100, 150, 200, 250], `defaultUnstakedFee()` 50,000;
+    `getPool(WETH, USDC, 50)` 0x4a7af46b… in either order and with both the int24 and the uint24
+    overload, `getPool(WETH, USDC, 100)` 0x2a430beb…; `allPools(0)` 0xbb5507da… and `allPools(488)`
+    0x3055c021… point back. `getSwapFee` and `swapFeeModule` revert: the fee comes from the swap
+    hook. First block with code 52,881,649; first `PoolCreated` at 52,885,483.
+- `aero_cl_position_manager`: metadex-slipstream-public@f99f209 `cl-base.json`, key
+  `nftPositionManager`.
+  - Confirmed at 53,211,601–53,211,794: `name()` 'Slipstream V3 Deposit', `symbol()` 'AERO-CL',
+    `factory()` the CLFactory, `WETH9()` 0x4200…0006; `CLFactory.positionManager()`,
+    `CLPool.nft()` (0x4a7af46b…), `CLGauge.nft()` (0x46a9dca7…) and `CLGaugeFactory.nft()` return
+    it; `positions()` decodes as the 12-output Slipstream struct (tickSpacing fifth). Its runtime
+    code holds the topic of the 6-field `IncreaseLiquidity` (0x0f8712c4…, §2.9) and not the
+    4-field 0x3067048b… of the Aerodrome NFPMs.
+- `aero_cl_swap_hook`: metadex-slipstream-public@f99f209 `cl-base.json`, key `dynamicSwapFeeHook`
+  (constructor argument: the CLFactory).
+  - Confirmed by its views at 53,211,907–53,213,030: `CLFactory.defaultSwapHook()` returns it and
+    `getPoolSwapHook(pool)` returns it for all 489 pools; `FACTORY()` the CLFactory;
+    `getAfterSwapFee` 0; `dynamicFeeConfig(pool)` decodes for all 489 with `initialFeeEnabled`
+    false; `defaultFeeCap()` 50,000 pips. Source: metadex-public@8b506b4
+    `V3/src/hooks/dynamic/DynamicSwapFeeHook.sol`.
+
+Recorded for context only (not in `addresses.ts`; each is a full address from the deployment
+files, confirmed by the reads named):
+- LeafVoter `0x382409fad8503FbCdbB27A4211551fa03e884078` (`leaf-base.json` `leafVoter`): the
+  CLFactory's `voter()` and every Aero gauge's `voter()`; the old Voter's pool views
+  (`gauges(pool)`, `isAlive`, `poolForGauge`, `isRegistered`) all revert on it (53,211,746), so
+  gauges are read from the FactoryRegistry or `CLPool.gauge()`.
+- Root Voter `0x49d7d4f17Ec56Ef8fA04E464AF5D1A4942CC31e6` (`root-base.json` `voter`): `TOKEN()`
+  the new AERO, `MINTER()` 0x59268a34…, `VOTING_ESCROW()` 0xbf7977e1… (53,211,732).
+- sAERO escrow `0xBF7977E1521e9a3032bf7243Ee4712f311f13915` (`root-base.json` `votingEscrow`) and
+  Minter `0x59268A34ba897e82368feE39839FFC661D4f9C97` (`root-base.json` `minter`): the new AERO's
+  `VOTING_ESCROW()` and `MINTER()`.
+- AerodromeMigration `0x22a2F7340a3fB4C7C389D91eE954766B12476721` (`migration-base.json`
+  `aerodromeMigration`): the new AERO's `MIGRATION()`; the Aerodrome Voter's `emergencyCouncil()`.
+- CL pool implementation `0x1642634C8CB1C9f1B84c9a1a08534F8c3F4E89f8` (`cl-base.json`
+  `clPoolImplementation`): `CLFactory.poolImplementation()`; 24,315 bytes of code, `POOL_TYPE()`
+  'CL', `factory()` 0 (an uninitialised template); pool 0x4a7af46b…'s runtime code is its 45-byte
+  EIP-1167 clone.
+- v2 pool implementations `0x0526cF035C1156b5C598b0d3c2445e38af2e8bDE` (volatile) and
+  `0xf525988f88B7D8b64631D86070FEC5BFDc50C174` (stable) (`pools-base.json`): the factories'
+  `implementation()`.
+- Gauge factories `0x9FBCf2Df0DC553ce40Ef63963Bff465b76792B7E` (volatile, `GAUGE_TYPE` 'v2'),
+  `0x1e0f776E88649285f99e65Fa599aD6e0f9D97800` (stable, 'v2') (`gaugestack-base.json`) and
+  `0xf437f62053ACB121665b8fDBfeA8F214FB8E589d` (CL, 'cl'; `cl-base.json` `clGaugeFactory`): the
+  FactoryRegistry's `gaugeFactories()`, paired with the three pool factories in that order.
+- MEV tax modules `0x830D07BDe136752BCefe0B59a14c2C7af07814AF` (volatile),
+  `0x78ee48646a7e1507B79443a1d5494095D16AF3B8` (stable) (`pools-base.json`) and
+  `0x29F12cE5Be3D88b56D245B7f4E969C518F799a4a` (CL, `cl-base.json` `clMevTaxModule`): the v2
+  factories' `mevTaxModule()` (53,213,030). The tax is 0 at or below a priority fee of 1 gwei
+  (volatile) or 2 gwei (stable), and 0 in an `eth_call`.
+- DiscountRegistry `0xaA48AAef655FB7CD7Acc04717f66022a4771a345` (`pools-base.json`
+  `discountRegistry`): per-caller swap-fee discounts. The swap hook applies them to CL swaps; the
+  v2 factories store the pointer but never ask it.
+
+Unresolved:
+- The swap hook's bytecode was not compared with its source; only its views and the
+  `dynamicFeeConfig` decode were checked.
+- Three factories registered in the FactoryRegistry and unregistered at block 52,884,126 have
+  pools (for example an AERO (Aero)/USDC pool 0x02afd0e8…); only shortened addresses are known
+  (0x9bc8b3f6…, 0xaed253f1…, 0xc6bde6e9…), so they are not indexed, and whether their pools hold
+  liquidity is unverified.
+- Factories the FactoryRegistry approves later are not indexed until they are added here and to
+  `addresses.ts`.
+- The stable-pool solver of these pools differs from Aerodrome's in one convergence check
+  (`_f(x0, y + 1)` where Aerodrome has `_k(x0, y + 1)`); the six answers above match to the wei,
+  but a rare 1-wei difference of mixed-decimal pools is not ruled out.
+
+### Technical notes
+
+#### ABI deltas against Aerodrome (sources at the commits above)
+
+- **v2 pools** (`V3/src/pools/{Pool,VolatilePool,StablePool}.sol`): `getReserves()` and the
+  `Swap(address,address,uint256,uint256,uint256,uint256)` event are Aerodrome's (topic0
+  0xb3e27736…). `metadata()` returns 6 values (dec0, dec1, r0, r1, t0, t1: no `stable` flag),
+  `stable()` reverts, and `POOL_TYPE()` returns bytes32 'V2_VOLATILE' or 'V2_STABLE'.
+- **v2 factories** (`V3/src/interfaces/factories/IPoolFactory.sol`): `PoolCreated(address indexed
+  token0, address indexed token1, address pool, uint256)` (topic0 0xebbbe9dc…; Aerodrome's has a
+  `bool indexed stable`, 0x2128d88d…); `getPool(tokenA, tokenB)` (selector 0x531aa03e);
+  `getBaseFee(pool, caller, amount0In, amount1In, reserve0, reserve1)` in bps asks `feeModule()`
+  and falls back to `defaultFee()`; `getFee(…)` adds the MEV tax.
+- **CL pools** (`contracts/core/CLPool.sol`): `slot0()`, `ticks()`, `liquidity()`, `fee()`,
+  `tickSpacing()`, `gauge()`, `nft()` and the `Swap` event as Slipstream (Uniswap v3's topic0
+  0xc42079f9…). `fee()` returns the swap hook's fee for an empty caller context: the hook
+  computes `min(baseFee + dynamic part, feeCap)` for the first swap of a block and keeps it for the
+  block; with `initialFeeEnabled` the first transaction of a block pays `initialFee` instead.
+- **CLFactory** (`contracts/core/interfaces/ICLFactory.sol`): Slipstream's `PoolCreated(address
+  indexed token0, address indexed token1, int24 indexed tickSpacing, address pool)` (topic0
+  0xab0d57f0…), `getPool` with an int24 and a uint24 overload, `tickSpacings()`,
+  `tickSpacingToFee`, plus `defaultSwapHook()` and `getPoolSwapHook(pool)`.
+- **NonfungiblePositionManager** (`contracts/periphery/interfaces/INonfungiblePositionManager.sol`):
+  `IncreaseLiquidity(uint256 indexed tokenId, uint128 liquidity, uint256 amount0, uint256 amount1,
+  int24 tickLower, int24 tickUpper)` (topic0 0x0f8712c47eb813e705bf827a60bdd551e6f2e055b4a1c2004304d52208a5a513);
+  `DecreaseLiquidity`, `Collect`, `Transfer` and the 12-output `positions()` are unchanged.
+- **Gauges**: a CLGauge takes custody of staked NFTs (`CLGauge._deposit` transfers the token to
+  itself) and answers `stakedContains(depositor, tokenId)`; a v2 gauge's `balanceOf(account)` is
+  the LP an account staked and `stakingToken()` is the pool.
+
+---
+
 ## tokens-and-chain
 
-| key            | name                                                       | address                                      | source confidence | independent check |
-| -------------- | ---------------------------------------------------------- | -------------------------------------------- | ----------------- | ----------------- |
-| `usdc`         | USDC (native, Circle-issued)                               | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | high              | confirmed         |
-| `usdbc`        | USDbC (bridged USDC, legacy)                               | `0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA` | high              | confirmed         |
-| `weth`         | WETH (WETH9 predeploy)                                     | `0x4200000000000000000000000000000000000006` | high              | confirmed         |
-| `cbbtc`        | cbBTC (Coinbase Wrapped BTC)                               | `0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf` | high              | confirmed         |
-| `cbeth`        | cbETH (Coinbase Wrapped Staked ETH)                        | `0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22` | high              | confirmed         |
-| `wsteth`       | wstETH (Lido, canonical bridged)                           | `0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452` | high              | confirmed         |
-| `dai`          | DAI (bridged via Base standard bridge)                     | `0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb` | high              | confirmed         |
-| `usdt_bridged` | USDT (Bridged Tether USD - NOT a Tether-issued deployment) | `0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2` | medium            | confirmed         |
-| `eurc`         | EURC (Circle euro stablecoin)                              | `0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42` | high              | confirmed         |
-| `aero`         | AERO (Aerodrome Finance)                                   | `0x940181a94A35A4569E4529A3CDfB74e38FD98631` | high              | confirmed         |
-| `degen`        | DEGEN                                                      | `0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed` | high              | confirmed         |
-| `virtual`      | VIRTUAL (Virtuals Protocol)                                | `0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b` | high              | confirmed         |
-| `brett`        | BRETT (Brett on Base)                                      | `0x532f27101965dd16442E59d40670FaF5eBB142E4` | high              | confirmed         |
-| `multicall3`   | Multicall3                                                 | `0xcA11bde05977b3631167028862bE2a173976CA11` | high              | confirmed         |
+| key              | name                                                            | address                                      | source confidence | independent check |
+| ---------------- | --------------------------------------------------------------- | -------------------------------------------- | ----------------- | ----------------- |
+| `usdc`           | USDC (native, Circle-issued)                                    | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | high              | confirmed         |
+| `usdbc`          | USDbC (bridged USDC, legacy)                                    | `0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA` | high              | confirmed         |
+| `weth`           | WETH (WETH9 predeploy)                                          | `0x4200000000000000000000000000000000000006` | high              | confirmed         |
+| `cbbtc`          | cbBTC (Coinbase Wrapped BTC)                                    | `0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf` | high              | confirmed         |
+| `cbeth`          | cbETH (Coinbase Wrapped Staked ETH)                             | `0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22` | high              | confirmed         |
+| `wsteth`         | wstETH (Lido, canonical bridged)                                | `0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452` | high              | confirmed         |
+| `dai`            | DAI (bridged via Base standard bridge)                          | `0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb` | high              | confirmed         |
+| `usdt_bridged`   | USDT (Bridged Tether USD - NOT a Tether-issued deployment)      | `0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2` | medium            | confirmed         |
+| `eurc`           | EURC (Circle euro stablecoin)                                   | `0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42` | high              | confirmed         |
+| `aerodrome_aero` | AERO (Aerodrome's; Aero's AERO is `aero_token` under `## aero`) | `0x940181a94A35A4569E4529A3CDfB74e38FD98631` | high              | confirmed         |
+| `degen`          | DEGEN                                                           | `0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed` | high              | confirmed         |
+| `virtual`        | VIRTUAL (Virtuals Protocol)                                     | `0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b` | high              | confirmed         |
+| `brett`          | BRETT (Brett on Base)                                           | `0x532f27101965dd16442E59d40670FaF5eBB142E4` | high              | confirmed         |
+| `multicall3`     | Multicall3                                                      | `0xcA11bde05977b3631167028862bE2a173976CA11` | high              | confirmed         |
 
 Sources and notes per item:
 - `usdc`: <https://developers.circle.com/stablecoins/usdc-contract-addresses>, <https://www.circle.com/blog/usdc-now-available-natively-on-base>, <https://basescan.org/address/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913>
@@ -820,7 +1017,7 @@ Sources and notes per item:
 - `eurc`: <https://developers.circle.com/stablecoins/eurc-contract-addresses>, <https://www.circle.com/blog/eurc-now-available-on-base>, <https://basescan.org/token/0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42>
   - 6 decimals. FiatTokenProxy. Basescan label 'Circle: EURC Token'.
   - verifier: confirmed via <https://raw.githubusercontent.com/bgd-labs/aave-address-book/main/src/AaveV3Base.sol> — Aave address book EURC_UNDERLYING = this address, DECIMALS 6. Also Uniswap default token list base.json 'EURC' at same address, 6 decimals. Matches claim.
-- `aero`: <https://aerodrome.finance/security>, <https://github.com/aerodrome-finance/contracts>, <https://basescan.org/token/0x940181a94a35a4569e4529a3cdfb74e38fd98631>
+- `aerodrome_aero` (`aero` until 2026-10-28): <https://aerodrome.finance/security>, <https://github.com/aerodrome-finance/contracts>, <https://basescan.org/token/0x940181a94a35a4569e4529a3cdfb74e38fd98631>
   - 18 decimals. Listed in the AERO row of Aerodrome's security/contracts table and in the aerodrome-finance/contracts README (Aero.sol). Basescan label 'Aerodrome: AERO Token'.
   - verifier: confirmed via <https://raw.githubusercontent.com/Uniswap/default-token-list/main/src/tokens/base.json> — Uniswap default token list (chainId 8453) lists 'Aerodrome Finance' AERO at this address with 18 decimals, independent of Aerodrome's own site/repo. Matches claim. (Not present in Aave address book, as expected.)
 - `degen`: <https://basescan.org/token/0x4ed4e862860bed51a9570b96d89af5e1b0efefed>, <https://basescan.org/address/0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed>, <https://www.mexc.com/support/articles/17827791514537>
@@ -1076,7 +1273,8 @@ themselves are the source.
 ### 2.8 On-chain verification of every `addresses.ts` entry (2026-10-25)
 
 Every address in `packages/chain/src/addresses.ts` (including the non-default
-`SLIPSTREAM_DEPRECATED_EARLY_DEPLOYMENT`) was read on Base mainnet through Alchemy's endpoint at
+`SLIPSTREAM_DEPRECATED_EARLY_DEPLOYMENT`; the Aero entries added on 2026-10-28 are in §2.9) was
+read on Base mainnet through Alchemy's endpoint at
 block **53,061,932** (read-only `eth_getCode` and `eth_call`, about 560 requests). Each contract has
 code (`eth_getCode` ≠ `0x`) and answers one view that only that contract answers that way. No
 address was changed. "Verified on-chain" below means: code present and the check holds at that
@@ -1094,7 +1292,7 @@ block.
 | `TOKENS.DAI`                                             | `0x50c5…b0cb` | DAI, 18                                                                                                                                                        | verified on-chain                   |
 | `TOKENS.USDT`                                            | `0xfde4…9bb2` | USDT, 6 (`name()` "Tether USD", now the `addresses.ts` name; the bridged status is recorded only in the `addresses.ts` comment)                                | verified on-chain                   |
 | `TOKENS.EURC`                                            | `0x60a3…db42` | EURC, 6                                                                                                                                                        | verified on-chain                   |
-| `TOKENS.AERO`                                            | `0x9401…8631` | AERO, 18 (`name()` "Aerodrome", now the `addresses.ts` name; it was "Aerodrome Finance")                                                                       | verified on-chain                   |
+| `TOKENS.AERO` (now `TOKENS.AERO_AERODROME`)              | `0x9401…8631` | AERO, 18 (`name()` "Aerodrome", now the `addresses.ts` name; it was "Aerodrome Finance")                                                                       | verified on-chain                   |
 | `TOKENS.DEGEN`                                           | `0x4ed4…efed` | DEGEN, 18                                                                                                                                                      | verified on-chain                   |
 | `TOKENS.VIRTUAL`                                         | `0x0b3e…7e1b` | VIRTUAL, 18 (`name()` "Virtual Protocol", now the `addresses.ts` name; it was "Virtuals Protocol")                                                             | verified on-chain                   |
 | `TOKENS.BRETT`                                           | `0x532f…42e4` | BRETT, 18                                                                                                                                                      | verified on-chain                   |
@@ -1151,6 +1349,10 @@ de-whitelisted at 52,918,349 (2026-10-21T23:40:45Z). The killed gauge still hold
 gauges or voting to another contract was not looked up. Depthwatch only
 reads `gauges(pool)` to attribute gauge-staked LP, which still answers; gauges created by any
 successor contract would not be seen. To be resolved against Aerodrome's sources.
+Resolved on 2026-10-28: Aerodrome became Aero on 2026-10-21, and the gauges moved to Aero's
+contracts (`## aero`, §2.9). The Voter's emergency council killed 950 gauges in four batches at
+blocks 52,918,274–52,918,331, and at 52,918,920 `emergencyCouncil()` became Aero's
+AerodromeMigration contract; all 2,013 Aerodrome gauges now read `isAlive` false.
 
 Quoter cross-checks at block 53,063,332 (the live run's second snapshot), $10k and $100k each way:
 Uniswap QuoterV2 on WETH/USDC 500, the `slipstream_quoter_v2` above (0x254c…15b0, not in
@@ -1165,6 +1367,66 @@ LP fee (`calculateSwapFee`, Uniswap v4 section above). Follow-up: the v4 adapter
 slot0's `protocolFee` per direction into the pool state and the swap walk charges
 `protocolFee + lpFee − ⌊protocolFee · lpFee / 1e6⌋` (625 pips for 500 + 125, 3,499 for 3,000 +
 500; core `swap/protocolFee.ts`, docs/METRICS.md Conventions); the cross-check above predates it.
+
+### 2.9 On-chain verification of the Aero entries (2026-10-28)
+
+The Aero entries of `addresses.ts` (`## aero` above) were read on Base mainnet through Alchemy's
+endpoint at blocks 53,211,601–53,213,030 (read-only `eth_call`, `eth_getCode` and 10-block
+`eth_getLogs`, about 2,500 compute units). Each has code and answers views that only that
+contract answers that way; every link below was read in both directions where both ends have a
+view.
+
+| `addresses.ts` entry                   | address       | on-chain check                                                                                                                                                          | verdict           |
+| -------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `TOKENS.AERO`                          | `0x3f5b…a4ee` | `name()` 'Aero', `symbol()` 'AERO', 18 decimals (53,211,732); `MINTER()`, `VOTING_ESCROW()`, `MIGRATION()` as in `## aero`; root Voter `TOKEN()` returns it             | verified on-chain |
+| `TOKENS.AERO_AERODROME`                | `0x9401…8631` | `name()` 'Aerodrome', `symbol()` 'AERO' (53,211,601); the entry `TOKENS.AERO` had until 2026-10-28 (§2.8)                                                               | verified on-chain |
+| `aeroV2.volatileFactory`               | `0x8e6a…76d2` | `allPoolsLength()` 279, all 279 pools 'V2_VOLATILE' with `factory()` pointing back (53,211,635); `getPool(WETH, USDC)` 0x800eb395…, whose `factory()` points back       | verified on-chain |
+| `aeroV2.stableFactory`                 | `0x7858…ef2d` | `allPoolsLength()` 21, all 21 pools 'V2_STABLE' with `factory()` pointing back; `getPool(WETH, USDC)` 0x4b0fa525…                                                       | verified on-chain |
+| `aeroV2.volatileFeeModule`             | `0x7949…7a7a` | the volatile factory's `feeModule()` at 53,211,601 and 53,213,030                                                                                                       | verified on-chain |
+| `aeroV2.stableFeeModule`               | `0x0195…3da6` | the stable factory's `feeModule()` at the same blocks                                                                                                                   | verified on-chain |
+| `aeroV2.factoryRegistry`               | `0x7b2a…8f3e` | `targetFactories()` = the three factories; `factoryRegistry()` of each factory returns it; `targetToGauge(0x800eb395…)` 0x1d12ef78…, whose `stakingToken()` is the pool | verified on-chain |
+| `aeroSlipstream[aero].factory`         | `0x9cb2…7a76` | `allPoolsLength()` 489; `getPool(WETH, USDC, 50)` 0x4a7af46b…, whose `factory()` points back; `allPools(488)` 0x3055c021… points back                                   | verified on-chain |
+| `aeroSlipstream[aero].positionManager` | `0x4857…c60b` | `name()` 'Slipstream V3 Deposit', `symbol()` 'AERO-CL', `factory()` = the CLFactory; `CLFactory.positionManager()` returns it                                           | verified on-chain |
+| `aeroSlipstream[aero].swapHook`        | `0xc0ed…e434` | `CLFactory.defaultSwapHook()` and `getPoolSwapHook` of all 489 pools return it; `FACTORY()` = the CLFactory                                                             | verified on-chain |
+
+Start blocks (first block with code, binary search over archive `eth_getCode`) and the first
+pools:
+
+| contract                 | first code | first `PoolCreated`                                                   | `startBlock` in `addresses.ts`    |
+| ------------------------ | ---------- | --------------------------------------------------------------------- | --------------------------------- |
+| Aero VolatilePoolFactory | 52,880,042 | 52,884,700 (tx 0x8ef28798…: AERO (Aero)/USDC → 0xf634058d…, length 1) | `aeroV2.startBlock` 52,880,042    |
+| Aero StablePoolFactory   | 52,880,046 | 52,886,973 (13 pools; the first WETH/msETH 0x45adce4b…)               | (covered by `aeroV2.startBlock`)  |
+| Aero CLFactory           | 52,881,649 | 52,885,483                                                            | `aeroSlipstream[aero].startBlock` |
+
+Event topics, computed with keccak256 and seen on chain: v2 `PoolCreated(address,address,address,uint256)`
+0xebbbe9dc3a19d2f959ac76ac0372b4983cdfb945f5d6aef4873c36fabb2ba8aa (the factories' creation
+logs; Aerodrome's is 0x2128d88d…); CL `PoolCreated` 0xab0d57f0… (unchanged from Slipstream); NFPM
+`IncreaseLiquidity(uint256,uint128,uint256,uint256,int24,int24)`
+0x0f8712c47eb813e705bf827a60bdd551e6f2e055b4a1c2004304d52208a5a513 (in the NFPM's runtime code,
+which does not hold the 4-field 0x3067048b…); `DecreaseLiquidity` 0x26f6a048… unchanged. Swaps
+of Aero v2 pools decode as Aerodrome v2's `Swap` (0xb3e27736…) and swaps of Aero CL pools as
+Uniswap v3's (0xc42079f9…): 279 and 9,187 decoded swaps in sampled windows after the launch.
+
+ABI facts read on chain: an Aero v2 pool's `metadata()` has 6 outputs and `stable()` reverts
+(0x800eb395…, 53,211,635–53,211,794); the factories' `stableFee()`, `volatileFee()` and
+3-argument `getPool` revert; the CLFactory's `getSwapFee` and `swapFeeModule` revert; the LeafVoter's
+`gauges(pool)`, `isAlive`, `poolForGauge` and `isRegistered` revert (53,211,746). A volatile pool's
+`getAmountOut(1e18, WETH)` on 0x800eb395… at 53,211,732 is 2,351,367,683, exactly x·y = k with
+30 bps taken from the input.
+
+v2 fees at 53,211,635 (`customFee(pool)` of the module and the factory's fee for each pool):
+volatile, 223 pools at the default 30 bps and 56 overrides (44 × 100, 3 × 80, 2 × 70, 3 × 1, and
+one each of 5, 25, 28 and 60); stable, 14 at the default 5 bps and 7 overrides (5 × 30, 1 × 1,
+1 × 4). The factory's fee equals the override, or the default where the module has none.
+
+Swap hook census at 53,213,030 (every pool of the CLFactory): `getPoolSwapHook` 0xc0ed888a… for
+489 of 489; `dynamicFeeConfig` decodes for all 489, `initialFeeEnabled` false for all; the
+hook's `defaultFeeCap()` 50,000 pips, `defaultScalingFactor()` 0, `secondsAgo()` 600. `fee()`
+over the 489 pools: minimum 5, median 1,965, 90th percentile 10,000, maximum 25,000 pips; one
+pool at its own cap. WETH/USDC tick spacing 50 (0x4a7af46b…, config baseFee 225, feeCap 5,000,
+scalingFactor 30,000,000) read `fee()` 2,055 at 53,211,635, 645 at 53,211,732, 765 at 53,211,794
+and 465 at 53,213,030: the fee is a reading of the block, not a tier. Its gauge 0x46a9dca7… held
+511 of the NFPM's tokens at 53,211,659.
 
 ## 3. Still unresolved (do not guess; resolve at first run)
 

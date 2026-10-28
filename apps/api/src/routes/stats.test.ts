@@ -64,6 +64,18 @@ describe('GET /api/stats', () => {
         volume24hUsd: 19_500,
         medianHealth: 70, // the unrated 48 is left out
       },
+      // A DEX without pools still has its row, in DEXES order.
+      ...(['aero-v2', 'aero-slipstream'] as const).map((dex) => ({
+        dex,
+        pools: 0,
+        tracked: 0,
+        scored: 0,
+        rated: 0,
+        depth2Usd: 0,
+        depthKnownPools: 0,
+        volume24hUsd: null,
+        medianHealth: null,
+      })),
     ])
   })
 

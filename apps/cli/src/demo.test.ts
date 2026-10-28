@@ -149,7 +149,7 @@ describe('demo pipeline (end to end, offline, short history)', () => {
     const cbbtc = world.pools[1]?.token1Usd ?? 0
     expect(within(db.prices.usd(TOKENS.CBBTC.address), cbbtc, 0.5)).toBe(true)
     const aero = world.pools[3]?.token1Usd ?? 0
-    expect(within(db.prices.usd(TOKENS.AERO.address), aero, 0.5)).toBe(true)
+    expect(within(db.prices.usd(TOKENS.AERO_AERODROME.address), aero, 0.5)).toBe(true)
     // Native ETH (Uniswap v4 currency0) is tied to WETH.
     expect(within(db.prices.usd('0x0000000000000000000000000000000000000000'), eth, 0.5)).toBe(true)
     expect(db.prices.usd(TOKENS.USDC.address)).toBe(1)

@@ -124,7 +124,7 @@ export const SYNTHETIC_POOL_SPECS: readonly SyntheticPoolSpec[] = Object.freeze(
     spec: {
       label: L.usdcAeroV2,
       token0: TOKENS.USDC,
-      token1: TOKENS.AERO,
+      token1: TOKENS.AERO_AERODROME,
       stable: false,
       feeBps: 30n,
       reserve0: 1_500_000n * 10n ** 6n,

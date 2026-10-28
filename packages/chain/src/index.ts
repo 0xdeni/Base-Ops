@@ -10,6 +10,7 @@ export {
   type PoolKey,
   uniswapV4PoolId,
 } from './adapters/uniswapV4.js'
+export { DexNotSupportedError } from './adapters/unsupported.js'
 export * from './addresses.js'
 export * from './fixtures/builders.js'
 export * from './fixtures/fakeRpc.js'

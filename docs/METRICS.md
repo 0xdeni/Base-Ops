@@ -20,9 +20,9 @@ page ever disagree, this page and the core tests are what gets fixed first.
 - **Mid price** (`mid`) is the pool's current marginal price: from `sqrtPriceX96` for concentrated
   pools; `reserve1 / reserve0` (decimal adjusted) for constant-product pools; the analytic
   `dy/dx` of `x³y + xy³` on 1e18-normalised reserves for stable pools.
-- **Fees** are in pips (1e-6): 500 = 0.05 %, 3000 = 0.30 %. Aerodrome v2 reports basis points;
-  they are multiplied by 100 at discovery. Every simulation takes the fee from the input amount
-  before the price moves, as the contracts do.
+- **Fees** are in pips (1e-6): 500 = 0.05 %, 3000 = 0.30 %. Aerodrome v2 and Aero v2 report basis
+  points; they are multiplied by 100 when read. Every simulation takes the fee from the input
+  amount before the price moves, as the contracts do.
 - **Swap fee.** The fee a simulated swap pays is the pool's LP fee (`feePips`, the fee shown for
   the pool), except on Uniswap v4, where the PoolManager adds the protocol fee of the swap's
   direction: slot0's `protocolFee` packs 12 bits per direction (zeroForOne in the low bits,
@@ -33,6 +33,28 @@ page ever disagree, this page and the core tests are what gets fixed first.
   stays the LP fee. Uniswap v3's and Slipstream's protocol shares are cut from the LP fee and do
   not change what a trader pays. A Uniswap v4 pool with a hook is not modelled at all (`hooked`,
   see [Rated and unrated pools](#rated-and-unrated-pools)).
+- **The fee is read at the snapshot's block.** Each state read carries the pool's LP fee as the
+  pool answers it at that block; depth and spread use that fee, the snapshot stores it
+  (`PoolSnapshot.feePips`; `null` in snapshots stored before schema version 7), and the pool's
+  `feePips` is the latest snapshot's. For most pools it is a fixed tier. A Slipstream pool's
+  `fee()`, Aerodrome or Aero, is a reading that can change from one block to the next
+  (`hasDynamicFee`): on Aerodrome it asks the deployment's DynamicSwapFeeModule, on Aero the
+  pool's swap hook, which fixes one fee per block at its first swap, `min(baseFee + dynamic part,
+  feeCap)`, the dynamic part computed from the pool's time-weighted average tick over the last
+  `secondsAgo` (600 s), with `feeCap` at most 50,000 pips (5 %). A volatile
+  block's capped reading can therefore drive the latest spread and the grade. Over all 489 Aero
+  Slipstream pools at block 53,213,030 the fee was 5 to 25,000 pips, median 1,965, 90th
+  percentile 10,000. Not modelled: a different fee in a later block; the MEV tax that a
+  transaction with a high priority fee pays on Aero (0 in an `eth_call`, and at or below a priority
+  fee of 1 gwei on Aero v2 volatile pools, 2 gwei on stable ones); the per-caller discounts Aero's
+  swap hook applies. The Slipstream unstaked fee is cut from unstaked LPs' income and does not
+  change what a trader pays.
+- **Aero v2 fee.** `getBaseFee(pool, 0x0, 0, 0, 0, 0)` on the pool's factory, × 100. The factory
+  asks its fee module; the reviewed CustomFeeModule (docs/research/base-contracts.md, `## aero`)
+  answers from the pool alone: its override, 0 for the 420 sentinel, or the factory's default (30
+  bps volatile, 5 bps stable). A read that finds the factory's `feeModule()` changed fails that
+  pool's snapshot ("fee module changed") rather than model a fee that may depend on the zeroed
+  arguments.
 - **Sides.** The **up** side is buy pressure on token0: the input is token1 and the price rises.
   The **down** side is sell pressure on token0: the input is token0 and the price falls. Depth
   and spread are reported for both sides; USD depth sums them, but the health score and the rating
@@ -289,10 +311,10 @@ pool directly rather than through the NonfungiblePositionManager (vault managers
 pool whose position history was not read to the head.
 
 **Custodians.** A contract that holds positions on behalf of depositors is not an owner. A
-Slipstream pool's CLGauge (`CLPool.gauge()`) holds every staked NFT, so all staked liquidity would
-read as one LP. `depthwatch positions` records the gauge of each Slipstream pool it indexes, and
-the gauge's positions count as uncovered: they are left out of the owners, their shares and
-`coverage`.
+Slipstream pool's CLGauge (`CLPool.gauge()`, Aerodrome or Aero) holds every staked NFT, so all
+staked liquidity would read as one LP. `depthwatch positions` records the gauge of each Slipstream
+pool it indexes, and the gauge's positions count as uncovered: they are left out of the owners,
+their shares and `coverage`.
 
 `owners` is `null` when positions were not indexed for the pool (`depthwatch positions` has not
 run for it, or the DEX has no observable positions). When positions were indexed but none overlap
@@ -310,7 +332,7 @@ liquidity near the price, the largest 100 % of that.
 
 ### Reserve pools
 
-Aerodrome v2 pools are one full-range position by construction: `rangeHhi = 1`,
+Aerodrome v2 and Aero v2 pools are one full-range position by construction: `rangeHhi = 1`,
 `activeRangeShare = 1`, `owners = null` (LP tokens are fungible; holder distribution is not
 indexed in the MVP).
 
@@ -384,13 +406,19 @@ within 2 %), and a letter
 for such a pool compares nothing. A pool is **rated** only when both sides of its ±2 % depth are
 known and the thinner side holds at least `HEALTH_RATING_MIN_SIDE_USD = $5,000`. Otherwise it is
 unrated, `grade` is `null` and `unratedReason` says why, tested in this order:
-- `hooked`: a Uniswap v4 pool with a hook (a non-zero `hooks` address). A hook runs its own code
-  around every swap (a fee of its own, a custom curve, amounts taken or added) that the pool's
-  state does not describe, so the swap walk would guess. Depth, spread and concentration are not
-  computed: the snapshot holds no depth levels, spread points or concentration, every number
-  derived from them is `null`, and the pool is no price route (see [USD prices](#usd-prices)).
-  Its price is still the pool's own. An allow-list of hooks that leave swaps unchanged may be
-  added later.
+- `hooked`: a pool with a hook (a non-zero `hooks` address): a Uniswap v4 pool with a hook, or
+  an Aero Slipstream pool whose swap hook is not the reviewed one (docs/research/base-contracts.md,
+  `## aero`) or charges each block's first transaction a fixed initial fee (`initialFeeEnabled`:
+  `fee()` read at a block without a swap is then not what every swap of that block pays; no Aero
+  pool did at block 53,213,030). A hook runs its own code around every swap (a fee of its own, a
+  custom curve, amounts taken or added) that the pool's state does not describe, so the swap walk
+  would guess. Depth, spread and concentration are not computed: the snapshot holds no depth
+  levels, spread points or concentration, every number derived from them is `null`, and the pool
+  is no price route (see [USD prices](#usd-prices)). Its price is still the pool's own. An
+  allow-list of hooks that leave swaps unchanged may be added later. Aero Slipstream pools are
+  checked at discovery and at every state read: a pool whose hook changed after discovery fails
+  its snapshot ("swap hook changed", "initial fee enabled") until `depthwatch discover --seed`
+  reads it again.
 - `unpriced`: a side's USD depth is `null` (its token has no USD price, or the snapshot has no
   ±2 % level).
 - `one-sided`: both sides are known, the deeper one holds at least the floor and the thinner one
@@ -643,7 +671,11 @@ and `down = human(down.amountIn)`, the token0 that moves it 2 % down:
 - `weight = min(up × token1Usd, down × token0Usd)`: the thinner side, in USD.
 - A pool with no liquidity within 2 % on one side of its price has weight 0 and is no route,
   however deep its other side.
-- A Uniswap v4 pool with a hook (`hooked`) is no route.
+- A hooked pool (`hooked`) is no route.
+
+**Two AEROs.** Aerodrome's AERO (0x9401…8631) and Aero's AERO (0x3f5b…a4ee) are two tokens with
+the same symbol. Aero's migration contract converts the old one into the new one, one way, but
+that is no price peg, so there is no edge between them: each is priced from its own pools.
 
 USD prices are what is being derived, so the search weighs each edge when it reaches it from a
 settled token, in one pass: the settled token's side at that token's USD price, the other side at
@@ -715,4 +747,6 @@ reproduced by anyone with an RPC endpoint and this page.
 | USD prices               | `packages/core/src/pricing.ts`                      | `derivePrices` (edge weights in USD at relaxation); edges in `apps/cli/src/pipeline/prices.ts` (`buildPriceEdges`)                                                          |
 | Stale quotes             | `packages/core/src/metrics/depth.ts`                | `priceDeviationBps`, `isStaleQuote`, `STALE_QUOTE_MIN_DEVIATION_BPS`                                                                                                        |
 | Swap simulation          | `packages/core/src/swap/`                           | `simulateSwapExactIn`, `simulateSwapToPrice`, `midPrice`, `swapFeePips`, `v4SwapFeePips`                                                                                    |
+| Dynamic fees             | `packages/core/src/dex.ts`                          | `hasDynamicFee`, `DYNAMIC_FEE_DEXES`                                                                                                                                        |
+| Token labels             | `packages/core/src/tokenLabel.ts`                   | `tokenLabel`, `buildSharedSymbols` (DESIGN.md, "Shared types")                                                                                                              |
 | Tick and sqrt-price math | `packages/core/src/tickMath.ts`, `sqrtPriceMath.ts` | `getSqrtRatioAtTick`, `getTickAtSqrtRatio`, `sqrtPriceX96ToPrice`, `priceToSqrtPriceX96`                                                                                    |

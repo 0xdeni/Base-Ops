@@ -70,6 +70,9 @@ describe('seedPools: one DEX failing', () => {
     ])
     expect(seeded.failed).toEqual([
       { dex: 'aerodrome-v2', error: expect.stringMatching(/aerodrome-v2 getPool\(.*\) failed/) },
+      // The Aero seeders reject until the chain package reads those DEXes.
+      { dex: 'aero-v2', error: 'aero-v2: seeding is not supported yet' },
+      { dex: 'aero-slipstream', error: 'aero-slipstream: seeding is not supported yet' },
     ])
     // Only the Uniswap v3 pool was dated by eth_getCode: the Aerodrome v2 pool was never searched.
     expect(counts.get('eth_getCode')).toBe(probesFor(A.uniswapV3.startBlock, HEAD))

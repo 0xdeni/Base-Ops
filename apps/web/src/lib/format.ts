@@ -311,6 +311,8 @@ export const DEX_LABEL: Readonly<Record<Dex, string>> = {
   'uniswap-v4': 'Uniswap v4',
   'aerodrome-v2': 'Aerodrome v2',
   'aerodrome-slipstream': 'Aerodrome Slipstream',
+  'aero-v2': 'Aero v2',
+  'aero-slipstream': 'Aero Slipstream',
 }
 
 export function dexLabel(dex: string): string {
