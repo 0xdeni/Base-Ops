@@ -61,7 +61,7 @@ function openSheet() {
   return trigger
 }
 
-describe('Sheet (PH4, §5.10)', () => {
+describe('Sheet (§5.10)', () => {
   it('is a labelled modal dialog that focuses the selected option and locks the body', () => {
     render(<Harness />)
     openSheet()
@@ -72,17 +72,20 @@ describe('Sheet (PH4, §5.10)', () => {
     expect(screen.getByRole('radiogroup', { name: 'Order' })).toBeTruthy()
   })
 
-  it('traps focus: Tab from the last control wraps to the first, Shift+Tab back', () => {
+  it('ends on a full-width primary Done, and traps focus between it and the first option', () => {
     render(<Harness />)
     openSheet()
     const dialog = screen.getByRole('dialog')
     const done = screen.getByRole('button', { name: 'Done' })
-    const last = screen.getByRole('radio', { name: 'Highest first' })
-    last.focus()
+    expect(done.className).toBe('btn primary')
+    expect(done.parentElement?.className).toBe('sheet-done')
+    expect(dialog.lastElementChild).toBe(done.parentElement)
+    const first = screen.getByRole('radio', { name: 'Depth ±2 %' })
+    done.focus()
     fireEvent.keyDown(dialog, { key: 'Tab' })
-    expect(document.activeElement).toBe(done)
+    expect(document.activeElement).toBe(first)
     fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true })
-    expect(document.activeElement).toBe(last)
+    expect(document.activeElement).toBe(done)
   })
 
   it('closes on Escape and on Done, returning focus and unlocking the body', () => {

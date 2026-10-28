@@ -1,11 +1,11 @@
 /**
- * Data and geometry of the mirrored depth curve (CH3 and C9, docs/design/visual-v3.md §5.9):
- * the measured ±1/2/5 % levels of one snapshot, read as stored (never extrapolated past ±5 %), on a
+ * Data and geometry of the mirrored depth curve (CH3, docs/design/visual-v4.md §5.9.3): the
+ * measured ±1/2/5 % levels of one snapshot, read as stored (never extrapolated past ±5 %), on a
  * log-spaced x and a linear y from 0. Pure, so the geometry is testable without layout.
  */
 import type { PoolSnapshotDto } from '../../api/types.js'
 import { amount, DASH, NB, pct, usd } from '../../lib/format.js'
-import { linear, logPctX, niceTop, ticks } from '../../lib/scale.js'
+import { linear, logPctX, niceStepUp } from '../../lib/scale.js'
 
 interface Token {
   symbol: string
@@ -35,6 +35,13 @@ function tokenText(raw: string, token: Token): string {
 /** The ticks along x (CH3). */
 export const CURVE_X_TICKS: readonly number[] = [-5, -2, -1, 0, 1, 2, 5]
 
+/** Heights and plot insets: 340 px tall with 72 px above the plot for the labels; 240 on phones. */
+export const CURVE_SIZE = {
+  desktop: { H: 340, top: 72 },
+  phone: { H: 240, top: 16 },
+  bottom: 28,
+} as const
+
 /**
  * The measured points of a snapshot, left to right. A level whose side has no USD price is left
  * out (a missing level shows a sentence instead of a shape).
@@ -42,6 +49,7 @@ export const CURVE_X_TICKS: readonly number[] = [-5, -2, -1, 0, 1, 2, 5]
 export function curvePoints(snapshot: PoolSnapshotDto, token0: Token, token1: Token): CurvePoint[] {
   const out: CurvePoint[] = []
   for (const row of snapshot.depthUsd) {
+    if (row.pct > 5) continue
     const raw = snapshot.depth.find((d) => d.pct === row.pct)
     if (row.downUsd !== null)
       out.push({
@@ -66,15 +74,23 @@ export function curvePoints(snapshot: PoolSnapshotDto, token0: Token, token1: To
 export interface CurveGeometry {
   W: number
   H: number
+  /** The plot's top and baseline (y of 0). */
   top: number
   base: number
   cx: number
   fx: (pct: number) => number
   fy: (usd: number) => number
-  /** The y axis top: the nice tick at or above the deepest point. */
-  ytop: number
+  /**
+   * True when every measured level holds $0: there is no range to scale, so the figure draws its
+   * empty state (no ticks, no labels, no points) instead of a plot.
+   */
+  empty: boolean
+  /** The y step and the axis top: `ceil(1.06 × max / step) × step`; 0 when `empty`. */
+  step: number
+  yMax: number
+  /** Tick values every two steps, labelled 8 px right of the spine; none when `empty`. */
   yTicks: number[]
-  /** Spine first, then outward, per side. */
+  /** Spine first, then outward, per side: [x, y] of each measured point. */
   sell: [number, number][]
   buy: [number, number][]
   /** Index into each side's path where liquidity first runs out (-1 when it never does). */
@@ -86,14 +102,22 @@ export function curveGeometry(
   W: number,
   phone: boolean,
 ): CurveGeometry {
-  const H = phone ? 240 : 340
-  const top = 36
-  const base = H - 30
+  const size = phone ? CURVE_SIZE.phone : CURVE_SIZE.desktop
+  const { H, top } = size
+  const base = H - CURVE_SIZE.bottom
   const cx = W / 2
-  const half = W / 2 - 4
+  const half = W / 2 - 10
   const fx = (p: number) => logPctX(p, cx, half)
-  const ytop = niceTop(Math.max(0, ...points.map((p) => p.usd)), 3)
-  const fy = linear(0, ytop, base, top)
+  const max = Math.max(0, ...points.map((p) => p.usd))
+  const empty = !(max > 0)
+  const step = empty ? 0 : niceStepUp(max * 1.06, 5)
+  const yMax = empty ? 0 : Math.ceil((max * 1.06) / step) * step
+  // An empty figure has no range: every value sits on the baseline.
+  const fy = empty ? () => base : linear(0, yMax, base, top)
+  const yTicks: number[] = []
+  if (!empty)
+    for (let v = step * 2; v <= yMax * (1 + 1e-9); v += step * 2)
+      yTicks.push(Number(v.toPrecision(12)))
   const sideOf = (side: 'sell' | 'buy') =>
     points.filter((p) => p.side === side).sort((a, b) => Math.abs(a.pct) - Math.abs(b.pct))
   const path = (side: 'sell' | 'buy'): [number, number][] => [
@@ -113,17 +137,56 @@ export function curveGeometry(
     cx,
     fx,
     fy,
-    ytop,
-    yTicks: ticks(0, ytop, 3).filter((v) => v > 0),
+    empty,
+    step,
+    yMax,
+    yTicks,
     sell: path('sell'),
     buy: path('buy'),
     exhausted: { sell: firstOut('sell'), buy: firstOut('buy') },
   }
 }
 
-/** The x of a tick label, clamped 14 px inside the edges. */
+/**
+ * A side's flat area: from the spine through the reached points, closed down to the baseline.
+ * Past the point where liquidity runs out the side is a dashed segment instead (`outPath`).
+ */
+export function areaPath(
+  path: readonly [number, number][],
+  exhausted: number,
+  base: number,
+): string {
+  const pts = exhausted < 0 ? path : path.slice(0, exhausted)
+  if (pts.length < 2) return ''
+  const last = pts[pts.length - 1] ?? [0, base]
+  return `${pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join('')}L${last[0].toFixed(2)} ${base.toFixed(2)}Z`
+}
+
+/** The dashed segment from the last reached point through the points that ran out; '' if none. */
+export function outPath(path: readonly [number, number][], exhausted: number): string {
+  if (exhausted < 1) return ''
+  return path
+    .slice(exhausted - 1)
+    .map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(2)} ${p[1].toFixed(2)}`)
+    .join('')
+}
+
+/**
+ * The sentence that stands in for the plot when every measured level holds $0 (§5.9.3, as for a
+ * missing level): "No liquidity sits within 5 % of the price at this snapshot." A side with no USD
+ * price is named as such, since its depth is unknown rather than zero.
+ */
+export function emptyNote(points: readonly CurvePoint[], token0: Token, token1: Token): string {
+  const sell = points.some((p) => p.side === 'sell')
+  const buy = points.some((p) => p.side === 'buy')
+  if (sell === buy) return `No liquidity sits within 5${NB}% of the price at this snapshot.`
+  const unpriced = sell ? token1 : token0
+  return `No liquidity sits within 5${NB}% of the price on the ${sell ? 'sell' : 'buy'} side at this snapshot; ${unpriced.symbol} has no USD price.`
+}
+
+/** The x of a tick label, clamped 16 px inside the edges. */
 export function clampTickX(x: number, W: number): number {
-  return Math.min(W - 14, Math.max(14, x))
+  return Math.min(W - 16, Math.max(16, x))
 }
 
 /** The point whose x is nearest to `x` (the pointer snaps to measured points). */
@@ -140,6 +203,14 @@ export function nearestPoint(points: readonly CurvePoint[], fx: (p: number) => n
   return best
 }
 
+/** The ±2 % point of a side, for the direct labels and the phone readout row. */
+export function twoPct(
+  points: readonly CurvePoint[],
+  side: 'sell' | 'buy',
+): CurvePoint | undefined {
+  return points.find((p) => p.side === side && Math.abs(p.pct) === 2)
+}
+
 /** The figure's accessible summary, level by level. */
 export function curveLabel(points: readonly CurvePoint[]): string {
   const side = (s: 'sell' | 'buy') =>
@@ -148,7 +219,7 @@ export function curveLabel(points: readonly CurvePoint[]): string {
       .sort((a, b) => Math.abs(a.pct) - Math.abs(b.pct))
       .map((p) => `${usd(p.usd)} to move ${pct(p.pct)}${p.reached ? '' : ' (liquidity runs out)'}`)
       .join(', ')
-  return `Depth curve. Sell side: ${side('sell') || 'no USD price'}. Buy side: ${side('buy') || 'no USD price'}. Use the arrow keys to inspect each level.`
+  return `Depth curve. Sell side: ${side('sell') || 'no USD price'}. Buy side: ${side('buy') || 'no USD price'}. Use the arrow keys to step through the measured points.`
 }
 
 /** One point in words, for the live region while stepping with the keyboard. */
@@ -159,8 +230,8 @@ export function pointText(p: CurvePoint): string {
 }
 
 /**
- * The Show data takeaway (visual-v3.md §5.9): "Buying meets 19 % more depth than selling at ±2 %." Null
- * when a side is unpriced at ±2 %.
+ * The Show data takeaway: "Buying meets 10 % more depth than selling at ±2 %." Null when a side is
+ * unpriced at ±2 %.
  */
 export function asymmetryNote(snapshot: PoolSnapshotDto): string | null {
   const two = snapshot.depthUsd.find((d) => d.pct === 2)

@@ -1,107 +1,59 @@
 /**
- * Guards for the v3 stylesheets (docs/design/visual-v3.md §3, principles §17). jsdom computes no
- * layout, so these check the rules themselves: the token blocks, contrast of the token pairs, the
- * self-hosted fonts, the greps of the definition of done and no-motion-first CSS. Every rule holds
- * for every stylesheet under src (styles/, and the chart and page sheets their components import)
- * and every UI string of the app code.
+ * Guards for the stylesheets (docs/design/visual-v4.md §2, §3, §8), part one: the token blocks and
+ * the locked kit palette, the contrast pairs of §2.4, the retired v3 names, the type rules and the
+ * self-hosted fonts. Part two (styles/rules.test.ts) holds the greps, motion, touch and layout
+ * guards. Every rule holds for every stylesheet under src (styles/, and the chart and page sheets
+ * their components import).
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import {
+  allCss,
+  block,
+  decls,
+  read,
+  STYLES,
+  sharedCss,
+  sources,
+  stripComments,
+  tokensCss,
+  WEB,
+} from './styles/cssRules.js'
 
-const SRC = dirname(fileURLToPath(import.meta.url))
-const WEB = join(SRC, '..')
-const STYLES = join(SRC, 'styles')
-const read = (p: string) => readFileSync(p, 'utf8')
-
-/** Every stylesheet under src: styles/, and any a component imports itself. */
-const allCss = readdirSync(SRC, { recursive: true, encoding: 'utf8' })
-  .filter((f) => f.endsWith('.css'))
-  .map((f) => read(join(SRC, f)))
-  .join('\n')
-const tokensCss = read(join(STYLES, 'tokens.css'))
-
-function files(dir: string, test: (name: string) => boolean): string[] {
-  return readdirSync(dir, { recursive: true, encoding: 'utf8' })
-    .filter(test)
-    .map((f) => join(dir, f))
+/** Base brand kit v1.0 (§2.2): the only colours, alpha allowed. */
+const KIT: Readonly<Record<string, string>> = {
+  '--blue': '#0000ff',
+  '--cerulean': '#3c8aff',
+  '--yellow': '#ffd12f',
+  '--green': '#66c800',
+  '--red': '#fc401f',
+  '--tan': '#b8a581',
+  '--g0': '#ffffff',
+  '--g10': '#eef0f3',
+  '--g15': '#dee1e7',
+  '--g30': '#b1b7c3',
+  '--g50': '#717886',
+  '--g60': '#5b616e',
+  '--g80': '#32353d',
+  '--g100': '#0a0b0d',
 }
-/** The app code (tests and test harnesses excluded). */
-const sources = files(
-  SRC,
-  (f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f) && !f.startsWith('testing'),
-).map(read)
-/**
- * The UI strings' source: the app code minus data that only mirrors the server, which are the
- * mock world (mandate names are data) and the badge, which copies the API's SVG text.
- */
-const uiSources = files(
-  SRC,
-  (f) =>
-    /\.tsx?$/.test(f) &&
-    !/\.test\.tsx?$/.test(f) &&
-    !f.startsWith('testing') &&
-    !/^api\/mock/.test(f) &&
-    f !== join('lib', 'badge.ts'),
-).map(read)
+/** The API badge's own colours, which its preview copies (§5.11). */
+const BADGE = ['#2a3140', '#b8232f', '#1c7a4c', '#5c6573']
 
-/** The declarations block of the first rule whose selector is exactly `selector`. */
-function block(css: string, selector: string): string {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const match = css.match(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`))
-  if (!match?.[1]) throw new Error(`rule ${selector} not found`)
-  return match[1]
+const rgbOf = (hex: string): [number, number, number] => {
+  const h = hex.replace('#', '')
+  const full = h.length === 3 ? [...h].map((c) => c + c).join('') : h
+  return [0, 2, 4].map((i) => Number.parseInt(full.slice(i, i + 2), 16)) as [number, number, number]
 }
-
-/** `--name: value` pairs of a block, comments dropped and whitespace normalised. */
-function decls(body: string): Map<string, string> {
-  const out = new Map<string, string>()
-  for (const d of body.replace(/\/\*[\s\S]*?\*\//g, '').split(';')) {
-    const [name, ...rest] = d.split(':')
-    if (name?.trim().startsWith('--'))
-      out.set(name.trim(), rest.join(':').replace(/\s+/g, ' ').trim())
+function luminance([r, g, b]: [number, number, number]): number {
+  const lin = (c: number) => {
+    const v = c / 255
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
   }
-  return out
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
 }
-
-/** Removes every `@media <query> { … }` block whose query contains `query`. */
-function stripMedia(css: string, query: string): string {
-  let out = css
-  for (;;) {
-    const at = out.indexOf(`@media ${query}`)
-    if (at < 0) return out
-    let depth = 0
-    let i = out.indexOf('{', at)
-    for (; i < out.length; i++) {
-      if (out[i] === '{') depth++
-      else if (out[i] === '}' && --depth === 0) break
-    }
-    out = out.slice(0, at) + out.slice(i + 1)
-  }
-}
-
-// OKLCH → sRGB (Ottosson) and the WCAG 2 contrast ratio.
-function oklchToLinear(l: number, c: number, h: number): [number, number, number] {
-  const a = c * Math.cos((h * Math.PI) / 180)
-  const b = c * Math.sin((h * Math.PI) / 180)
-  const l_ = (l + 0.3963377774 * a + 0.2158037573 * b) ** 3
-  const m_ = (l - 0.1055613458 * a - 0.0638541728 * b) ** 3
-  const s_ = (l - 0.0894841775 * a - 1.291485548 * b) ** 3
-  const clamp = (v: number) => Math.min(1, Math.max(0, v))
-  return [
-    clamp(4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_),
-    clamp(-1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_),
-    clamp(-0.0041960863 * l_ - 0.7034186147 * m_ + 1.707614701 * s_),
-  ]
-}
-function luminance(value: string): number {
-  const m = value.match(/oklch\(([\d.]+) ([\d.]+) ([\d.]+)/)
-  if (!m) throw new Error(`not an oklch colour: ${value}`)
-  const [r, g, b] = oklchToLinear(Number(m[1]), Number(m[2]), Number(m[3]))
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b
-}
-function ratio(a: string, b: string): number {
+function ratio(a: [number, number, number], b: [number, number, number]): number {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number]
   return (hi + 0.05) / (lo + 0.05)
 }
@@ -109,54 +61,206 @@ function ratio(a: string, b: string): number {
 const light = decls(block(tokensCss, ':root'))
 const darkMedia = decls(block(tokensCss, ':root:not([data-theme="light"])'))
 const darkForced = decls(block(tokensCss, ':root[data-theme="dark"]'))
+const dark = new Map([...light, ...darkMedia])
 
-describe('colour tokens (§3.1)', () => {
+/** A token's colour in a theme: var() chains resolved to a kit hex, or an rgb() over a surface. */
+function colour(theme: Map<string, string>, name: string, over?: [number, number, number]) {
+  let v = theme.get(name) ?? ''
+  for (let i = 0; i < 8 && v.startsWith('var('); i++) v = theme.get(v.slice(4, -1)) ?? ''
+  if (v.startsWith('#')) return rgbOf(v)
+  const m = v.match(/rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)\)/)
+  if (!m || !over) throw new Error(`${name} is not a solid colour: ${v}`)
+  const a = Number(m[4])
+  return [1, 2, 3].map((k, i) => Math.round(a * Number(m[k]) + (1 - a) * (over[i] ?? 0))) as [
+    number,
+    number,
+    number,
+  ]
+}
+
+describe('colour tokens (§2.2, §3.1)', () => {
+  it('locks the kit palette to its published values', () => {
+    for (const [name, hex] of Object.entries(KIT)) expect(light.get(name), name).toBe(hex)
+  })
+
   it('repeats the dark block verbatim under :root[data-theme="dark"]', () => {
     expect([...darkForced.entries()]).toEqual([...darkMedia.entries()])
     expect(tokensCss).toMatch(/:root\[data-theme="dark"\] \{\s*color-scheme: dark;/)
-  })
-
-  it('gives every dark token a light value and carries the breach-mark and field tokens', () => {
     for (const name of darkMedia.keys()) expect(light.has(name), name).toBe(true)
-    for (const name of ['--bad-mark', '--band-op', '--field-top', '--field-low', '--field-under'])
-      expect(darkMedia.has(name) && light.has(name), name).toBe(true)
-    expect(light.get('--ht-pitch')).toBe('3px')
   })
 
-  it('meets the contrast tiers against the canvas in both themes (C6)', () => {
-    for (const theme of [light, darkMedia]) {
-      const canvas = theme.get('--canvas') ?? ''
-      const tier = (name: string) => ratio(theme.get(name) ?? '', canvas)
-      expect(tier('--text-1')).toBeGreaterThanOrEqual(15)
-      expect(tier('--text-2')).toBeGreaterThanOrEqual(7)
-      expect(tier('--text-3')).toBeGreaterThanOrEqual(4.5)
-      for (const mark of ['--control', '--sell', '--buy', '--bad-mark', '--focus'])
-        expect(tier(mark), mark).toBeGreaterThanOrEqual(3)
+  it('defines the roles that are new in v4 and none of the retired v3 ones', () => {
+    const roles = [
+      '--band',
+      '--on-band',
+      '--on-band-2',
+      '--ink',
+      '--on-ink',
+      '--on-ink-2',
+      '--ink-edge',
+      '--sell-band',
+      '--buy-band',
+      '--buy-edge',
+      '--on-status',
+      '--breach-op',
+      '--focus-band',
+      '--nav-ind',
+      '--edge',
+      '--hl',
+      '--hl-ink',
+      '--sh-1',
+      '--sh-2',
+      '--sh-band',
+      '--sh-3',
+    ]
+    const all = decls(tokensCss.replace(/[{}]/g, ';'))
+    for (const name of roles) expect(all.has(name), name).toBe(true)
+    for (const name of ['--well', '--raised', '--hover', '--border', '--text-3', '--ok-bg'])
+      expect(all.has(name), name).toBe(false)
+  })
+
+  it('keeps the ink block and the footer Gray 100 in both themes; text off the band never white in dark', () => {
+    for (const theme of [light, dark]) expect(colour(theme, '--ink')).toEqual(rgbOf('#0a0b0d'))
+    expect(colour(dark, '--text-1')).toEqual(rgbOf('#eef0f3'))
+    expect(colour(dark, '--surface')).toEqual(rgbOf('#0a0b0d'))
+    expect(colour(dark, '--panel')).toEqual(rgbOf('#0a0b0d'))
+  })
+
+  it('meets the contrast pairs of §2.4 in both themes', () => {
+    const blue = rgbOf(KIT['--blue'] ?? '')
+    const pair = (t: Map<string, string>, fg: string, bg: string) =>
+      ratio(colour(t, fg, colour(t, bg)), colour(t, bg))
+    for (const t of [light, dark]) {
+      expect(pair(t, '--text-1', '--canvas')).toBeGreaterThanOrEqual(15)
+      expect(pair(t, '--text-2', '--canvas')).toBeGreaterThanOrEqual(6)
+      expect(pair(t, '--text-2', '--surface-2')).toBeGreaterThanOrEqual(5.4)
+      expect(pair(t, '--on-ink-2', '--ink')).toBeGreaterThanOrEqual(9.7)
+      expect(pair(t, '--sell', '--canvas')).toBeGreaterThanOrEqual(3.3)
+      expect(pair(t, '--focus', '--canvas')).toBeGreaterThanOrEqual(3)
+      expect(pair(t, '--nav-ind', '--canvas')).toBeGreaterThanOrEqual(3)
+      expect(ratio(colour(t, '--on-band'), blue)).toBeGreaterThanOrEqual(8.5)
+      expect(ratio(colour(t, '--on-band-2', blue), blue)).toBeGreaterThanOrEqual(5.5)
+      expect(ratio(colour(t, '--buy-band'), blue)).toBeGreaterThanOrEqual(5.8)
+      expect(ratio(colour(t, '--focus-band'), blue)).toBeGreaterThanOrEqual(3)
+      for (const s of ['--ok', '--warn', '--bad'])
+        expect(pair(t, '--on-status', s), s).toBeGreaterThanOrEqual(5.5)
+      // Marks: Red on the canvas (breach triangle, shortfall); both sides and the Yellow ring on
+      // the ink block.
+      expect(pair(t, '--bad', '--canvas')).toBeGreaterThanOrEqual(3.5)
+      expect(pair(t, '--sell', '--ink')).toBeGreaterThanOrEqual(5.8)
+      expect(pair(t, '--buy', '--ink')).toBeGreaterThanOrEqual(13)
+      expect(pair(t, '--focus-band', '--ink')).toBeGreaterThanOrEqual(3)
     }
+    expect(pair(light, '--focus', '--canvas')).toBeGreaterThanOrEqual(8.5)
+    expect(pair(dark, '--text-2', '--surface-2')).toBeGreaterThanOrEqual(6)
+    // Blue is never text on dark; Cerulean never sits on the band (§2.4).
+    expect(ratio(rgbOf('#0000ff'), rgbOf('#0a0b0d'))).toBeLessThan(3)
+    expect(colour(dark, '--focus')).toEqual(rgbOf('#3c8aff'))
+    expect(colour(light, '--sell-band')).toEqual(rgbOf('#ffffff'))
   })
 
-  it('maps text-3 to text-2 and borders to control under prefers-contrast: more (C8)', () => {
-    expect(tokensCss).toMatch(
-      /@media \(prefers-contrast: more\) \{\s*:root \{\s*--text-3: var\(--text-2\);\s*--border: var\(--control\);\s*--border-subtle: var\(--control\);/,
-    )
+  it('writes every colour as a kit value (alpha allowed) or one of the badge colours', () => {
+    const kit = new Set(Object.values(KIT).map((h) => rgbOf(h).join(' ')))
+    const css = stripComments(allCss).replace(/mask-image:[^;]*;/g, '')
+    for (const m of css.matchAll(/#[0-9a-fA-F]{3,8}\b/g)) {
+      const hex = m[0].toLowerCase()
+      if (BADGE.includes(hex)) continue
+      expect(kit.has(rgbOf(hex).join(' ')), hex).toBe(true)
+    }
+    for (const m of css.matchAll(/rgba?\((\d+)[ ,]+(\d+)[ ,]+(\d+)/g))
+      expect(kit.has(`${m[1]} ${m[2]} ${m[3]}`), m[0]).toBe(true)
+    expect(css).not.toMatch(/oklch\(|hsla?\(|color-mix\(|(?<!repeating-)linear-gradient\(/)
+  })
+
+  it('gives Base Blue backgrounds only to the band, the primary button, the dock’s current tab and the selected DEX bar', () => {
+    const css = stripComments(sharedCss)
+    const blueBg = [
+      ...css.matchAll(/([^{}]+)\{[^{}]*background(?:-color)?:\s*var\(--(?:blue|band)\)/g),
+    ]
+      .map((m) => (m[1] ?? '').trim())
+      .sort()
+    expect(blueBg).toEqual([
+      '.band-ground',
+      '.btn.primary',
+      '.dexf-row[aria-checked="true"] .dexf-bar i',
+      '.dock a[aria-current="page"]',
+    ])
   })
 })
 
-describe('type scale (§3.3, T4, T5)', () => {
+describe('retired v3 token names (§3.2)', () => {
+  /** The v3 names that v4 replaces or retires; `--field-` and `--ht-` were the field of light. */
+  const RETIRED = [
+    '--raised',
+    '--overlay',
+    '--well',
+    '--hover',
+    '--border-subtle',
+    '--border',
+    '--control',
+    '--text-3',
+    '--ok-bg',
+    '--warn-bg',
+    '--bad-bg',
+    '--bad-mark',
+    '--band-op',
+    '--dot',
+    '--shadow-pop',
+    '--shadow-dialog',
+    '--t-prose',
+    '--dur-hover',
+    '--appbar-h',
+    '--field-under',
+  ]
+
+  it('neither defines nor reads a retired name, in any stylesheet or component', () => {
+    const code = [stripComments(allCss), ...sources].join('\n')
+    for (const name of RETIRED) {
+      const escaped = name.replace(/-/g, '\\-')
+      expect(code, name).not.toMatch(new RegExp(`${escaped}(?![\\w-])\\s*:`))
+      expect(code, name).not.toMatch(new RegExp(`var\\(${escaped}(?![\\w-])`))
+    }
+    expect(code).not.toMatch(/var\(--(?:ht|dot)-/)
+  })
+})
+
+describe('type (§3.3, §3.4)', () => {
   it('keeps each fluid size within 2.5 × its minimum', () => {
     for (const m of tokensCss.matchAll(/--t-[\w-]+: clamp\(([\d.]+)rem, [^,]+, ([\d.]+)rem\)/g))
       expect(Number(m[2]) / Number(m[1])).toBeLessThanOrEqual(2.5)
   })
 
-  it('sets every font size from a token (or 1rem, the phone body and input size), never below 12 px', () => {
+  it('sets every font size from a token (or 1rem, or inherit), never below 12 px', () => {
     for (const m of allCss.matchAll(/font-size:\s*([^;]+);/g)) {
       const value = (m[1] ?? '').trim()
       expect(value, value).toMatch(/^(var\(--t-[\w-]+\)|1rem|inherit)$/)
     }
+    for (const m of tokensCss.matchAll(/--t-[\w-]+:\s*([\d.]+)rem;/g))
+      expect(Number(m[1]), m[0]).toBeGreaterThanOrEqual(0.75)
+  })
+
+  it('uppercases only the eyebrow, in mono at +0.09em', () => {
+    const upper = [
+      ...stripComments(allCss).matchAll(/([^{}]+)\{[^{}]*text-transform:\s*uppercase/g),
+    ]
+    expect(upper.map((m) => (m[1] ?? '').trim())).toEqual(['.eyebrow'])
+    const eyebrow = block(sharedCss, '.eyebrow')
+    expect(eyebrow).toMatch(/font-family:\s*var\(--mono\)/)
+    expect(eyebrow).toMatch(/letter-spacing:\s*0\.09em/)
+  })
+
+  it('sets mono only on eyebrows, ids, addresses, block numbers and code', () => {
+    const mono = [
+      ...stripComments(sharedCss).matchAll(/([^{}]+)\{[^{}]*font-family:\s*var\(--mono\)/g),
+    ]
+      .flatMap((m) => (m[1] ?? '').split(','))
+      .map((s) => s.trim())
+      .sort()
+    expect(mono).toEqual(['.addr', '.codeblock', '.eyebrow', '.mono', 'code', 'kbd', 'pre', 'samp'])
   })
 })
 
-describe('fonts (§3.2, T2)', () => {
+describe('fonts (§3.3)', () => {
   const fontsCss = read(join(STYLES, 'fonts.css'))
   const html = read(join(WEB, 'index.html'))
 
@@ -182,138 +286,8 @@ describe('fonts (§3.2, T2)', () => {
     expect(everything).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/)
   })
 
-  it('pins theme-color to the canvas of each scheme (C8)', () => {
-    expect(html).toContain('media="(prefers-color-scheme: light)" content="#f8f9fc"')
-    expect(html).toContain('media="(prefers-color-scheme: dark)" content="#0e131c"')
-  })
-})
-
-describe('definition-of-done greps (principles §17)', () => {
-  it('has no uppercase, no transition: all and no ease-in anywhere in the stylesheets', () => {
-    expect(allCss).not.toMatch(/text-transform:\s*uppercase/)
-    expect(allCss).not.toMatch(/transition:\s*all/)
-    expect(allCss).not.toMatch(/ease-in[^-]/)
-  })
-
-  it('keeps middle dots and arrows out of the UI strings (CP6, tell 3)', () => {
-    const strings = uiSources.join('\n').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')
-    expect(strings).not.toMatch(/ · /)
-    expect(strings).not.toMatch(/→|->\s*</)
-  })
-
-  it('uses the typographic apostrophe in UI strings (CP8)', () => {
-    const strings = uiSources.join('\n').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')
-    const straight = strings.match(/[A-Za-z}]'(s|t|re|ll|ve|d|m)\b.{0,24}/g) ?? []
-    expect(straight).toEqual([])
-  })
-
-  it('defines every custom property the stylesheets and components read', () => {
-    const defined = new Set([...allCss.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]))
-    for (const s of sources) for (const m of s.matchAll(/['"`](--[\w-]+)['"`]/g)) defined.add(m[1])
-    const used = [...`${allCss}\n${sources.join('\n')}`.matchAll(/var\((--[\w-]+)(\s*,)?/g)]
-      .filter((m) => !m[2])
-      .map((m) => m[1] ?? '')
-    expect([...new Set(used)].filter((name) => !defined.has(name))).toEqual([])
-  })
-})
-
-describe('motion is written no-motion first (§3.8, M9)', () => {
-  const still = stripMedia(allCss, '(prefers-reduced-motion: no-preference)')
-
-  it('moves nothing outside the no-preference block', () => {
-    for (const m of still.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      const [, selector = '', body = ''] = m
-      if (/:active/.test(selector)) expect(body, selector).not.toMatch(/transform/)
-      for (const anim of body.matchAll(/animation:\s*([\w-]+)/g))
-        expect(['fade-in', 'none'], selector).toContain(anim[1])
-    }
-  })
-
-  it('uses only the three easings of the tokens', () => {
-    const curves = new Set(
-      [...allCss.matchAll(/cubic-bezier\(([^)]*)\)/g)].map((m) =>
-        (m[1] ?? '').replace(/\s+/g, ' ').trim(),
-      ),
-    )
-    expect([...curves].sort()).toEqual([
-      '0.23, 1, 0.32, 1',
-      '0.32, 0.72, 0, 1',
-      '0.77, 0, 0.175, 1',
-    ])
-  })
-})
-
-/** The contents of every `@media <query> { … }` block whose query contains `query`, joined. */
-function inMedia(css: string, query: string): string {
-  const parts: string[] = []
-  let from = 0
-  for (;;) {
-    const at = css.indexOf(`@media ${query}`, from)
-    if (at < 0) return parts.join('\n')
-    let depth = 0
-    const open = css.indexOf('{', at)
-    let i = open
-    for (; i < css.length; i++) {
-      if (css[i] === '{') depth++
-      else if (css[i] === '}' && --depth === 0) break
-    }
-    parts.push(css.slice(open + 1, i))
-    from = i + 1
-  }
-}
-
-describe('touch targets (A5, UX2-06)', () => {
-  const coarse = inMedia(allCss, '(pointer: coarse)')
-
-  it('gives a standalone link or trigger a hit area of at least 44 × 44 on touch', () => {
-    expect(block(coarse, '.touch-hit')).toMatch(/position:\s*relative/)
-    const hit = block(coarse, '.touch-hit::after')
-    expect(hit).toMatch(/position:\s*absolute/)
-    expect(hit).toMatch(/width:\s*max\(44px,/)
-    expect(hit).toMatch(/height:\s*max\(44px,/)
-    // The demo line's trigger reaches 44 px down from the top of the page.
-    expect(block(coarse, '.demo-inner .touch-hit::after')).toMatch(/height:\s*44px/)
-    expect(block(coarse, '.foot-links a')).toMatch(/min-height:\s*44px/)
-    expect(block(coarse, '.foot-links a::after')).toMatch(/width:\s*max\(44px, 100%\)/)
-  })
-
-  it('uses it on the meta-line pool link, How the score works, About the demo, the Gap marker, the worst-moment times and the token route', () => {
-    const at = (file: string) => read(join(SRC, file))
-    expect(at('pages/mm/ScorecardTitle.tsx')).toMatch(/className="plink touch-hit"/)
-    expect(at('pages/Gaps.tsx')).toMatch(/className="plink touch-hit"/)
-    expect(at('components/shell/DemoLine.tsx')).toMatch(/triggerClassName="quiet-link touch-hit"/)
-    expect(at('components/charts/DepthButterfly.tsx')).toMatch(/className="bf-gap-link touch-hit"/)
-    expect(at('pages/mm/ScorecardSections.tsx')).toMatch(/className="touch-hit"/)
-    expect(at('pages/token/TokenFacts.tsx').match(/touch-hit/g)).toHaveLength(2)
-  })
-
-  it('keeps the Not rated chip reachable above a row link, with the standalone-trigger hit area', () => {
-    // The stretched row links (`.row-link::after`, `.rl-link::after`) paint over a non-positioned
-    // button, so a hover or tap would navigate instead of opening the reason (as `.dash .gloss`).
-    const stretched = block(allCss, '.ptable .row-link::after')
-    expect(stretched).toMatch(/position:\s*absolute/)
-    expect(stretched).toMatch(/inset:\s*0/)
-    const above = block(allCss, '.grade.is-unrated .gloss')
-    expect(above).toMatch(/position:\s*relative/)
-    expect(above).toMatch(/z-index:\s*1\b/)
-    expect(block(allCss, '.dash .gloss')).toMatch(/z-index:\s*1\b/)
-    const chip = read(join(SRC, 'components/ui/GradeGlyph.tsx'))
-    expect(chip).toMatch(/className="touch-hit"/)
-  })
-})
-
-describe('layout guards (UX2-01, UX2-03)', () => {
-  it('lets a loaded short page rest its footer at the viewport bottom, not below the fold', () => {
-    expect(block(allCss, 'main')).not.toMatch(/min-height/)
-    // Only a route skeleton or the route cross-fade holds <main> to the first viewport.
-    expect(allCss).toMatch(
-      /\nmain:is\(:has\(\.skel-stack\), :root:active-view-transition \*\) \{\s*min-height:/,
-    )
-  })
-
-  it('keeps one- and two-word disclosure labels on one line', () => {
-    expect(block(allCss, '.disc-label')).toMatch(/text-wrap:\s*pretty/)
-    expect(block(allCss, '.disc-label.is-short')).toMatch(/text-wrap:\s*balance/)
-    expect(block(allCss, '.doc-sec-head .disc-label')).toMatch(/white-space:\s*nowrap/)
+  it('pins theme-color to white in light and Gray 100 in dark', () => {
+    expect(html).toContain('media="(prefers-color-scheme: light)" content="#ffffff"')
+    expect(html).toContain('media="(prefers-color-scheme: dark)" content="#0a0b0d"')
   })
 })

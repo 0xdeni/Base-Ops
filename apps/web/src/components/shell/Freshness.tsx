@@ -1,11 +1,11 @@
 /**
- * Data freshness (ia-v3 §3.2, docs/design/visual-v3.md §5.1): a button with a 6 px `ok` dot and
- * "Updated 2 min ago" (the dot alone, as a 44 px target, on phones). Its popover lists Updated,
- * Block (grouped), Pools tracked and the full UTC snapshot time. When the API is unreachable it
- * reads "Offline" with a `bad` triangle, and the popover adds the error and Retry (ST7). Values
- * swap with no animation and are not announced (M8, A11). A published live snapshot (static build
- * of a `live` bundle) never updates: the button reads "As of 25 Oct, 08:14 UTC" with a hollow
- * `text-3` dot instead of the `ok` one, and its popover gives the snapshot and export times.
+ * Data freshness (docs/design/visual-v4.md §5.1, ia-v3 §3.2): pushed to the right of the app bar,
+ * an 8 px Green circle and the eyebrow "Block 53,069,244" in a 40 px button (the dot alone, as a
+ * 44 × 44 target, on phones). Never a square. Its popover gives the snapshot time, the block and
+ * "492 of 580" pools tracked. Live data says how long ago it was updated in the button's name and
+ * the popover; a published snapshot gives its absolute time instead, never "… ago". When the API is
+ * unreachable it reads "Offline" with a Red triangle, and the popover adds the error and Retry.
+ * Values swap with no animation and are not announced.
  */
 import { useDataNow, useIsConnecting, useSnapshot } from '../../api/context.js'
 import { errorText } from '../../api/errors.js'
@@ -19,6 +19,31 @@ function tracked(data: HealthResponse): string {
   return `${count(data.trackedCount)} of ${count(data.poolCount)}`
 }
 
+/** "Block 53,069,244, 492 of 580 pools tracked, 25 Oct 2026, 11:30 UTC" (the native tooltip). */
+function summary(data: HealthResponse, at: number | null): string {
+  return [
+    data.latestBlock ? `Block ${group(data.latestBlock)}` : null,
+    `${tracked(data)} pools tracked`,
+    at === null ? null : dated(at),
+  ]
+    .filter(Boolean)
+    .join(', ')
+}
+
+/** The trigger: the circle and the block as an eyebrow, or the words before any snapshot. */
+function BlockTrigger({ data, snapshot }: { data: HealthResponse; snapshot?: boolean }) {
+  return (
+    <>
+      <span className={`fresh-dot${snapshot ? ' is-snapshot' : ''}`} aria-hidden="true" />
+      {data.latestBlock ? (
+        <span className="eyebrow fresh-text">Block {group(data.latestBlock)}</span>
+      ) : (
+        <span className="fresh-text">No snapshot yet</span>
+      )}
+    </>
+  )
+}
+
 /** The freshness of a published snapshot: its absolute time, never "… ago". */
 function SnapshotFreshness({
   data,
@@ -29,27 +54,15 @@ function SnapshotFreshness({
   at: number
   exportedAt: number
 }) {
-  const text = `As of ${full(at)}`
-  const summary = [
-    data.latestBlock ? `Block ${group(data.latestBlock)}` : null,
-    `${tracked(data)} pools tracked`,
-    dated(at),
-  ]
-    .filter(Boolean)
-    .join(', ')
   return (
     <Popover
       label="Data freshness"
       triggerClassName="fresh"
       triggerLabel={`Data freshness: as of ${full(at)}`}
-      triggerTitle={summary}
-      trigger={
-        <>
-          <span className="fresh-dot is-snapshot" aria-hidden="true" />
-          <span className="fresh-text">{text}</span>
-        </>
-      }
+      triggerTitle={summary(data, at)}
+      trigger={<BlockTrigger data={data} snapshot />}
     >
+      <p className="eyebrow">Snapshot</p>
       <dl className="pop-dl">
         <div>
           <dt>Snapshot</dt>
@@ -57,7 +70,7 @@ function SnapshotFreshness({
         </div>
         <div>
           <dt>Block</dt>
-          <dd>{group(data.latestBlock)}</dd>
+          <dd className="mono">{group(data.latestBlock)}</dd>
         </div>
         <div>
           <dt>Pools tracked</dt>
@@ -68,6 +81,7 @@ function SnapshotFreshness({
           <dd>{dated(exportedAt)}</dd>
         </div>
       </dl>
+      <p className="small t2">This page does not update.</p>
     </Popover>
   )
 }
@@ -80,7 +94,7 @@ export function Freshness() {
   const data = health.data
   const offline = health.isError || (data !== undefined && !data.ok)
 
-  // Booting on a slow API: the slot says so in words, with no status dot (ST1).
+  // Booting on a slow API: the slot says so in words, with no status dot.
   if (!data && !health.isError && connecting)
     return <span className="fresh is-connecting">Connecting…</span>
   if (!data && !health.isError) return <span className="fresh" aria-hidden="true" />
@@ -117,28 +131,16 @@ export function Freshness() {
   }
 
   if (!data) return null
-  const updated =
-    data.latestSnapshotAt === null ? 'No snapshot yet' : ago(data.latestSnapshotAt, now)
-  const text = data.latestSnapshotAt === null ? 'No snapshot yet' : `Updated ${updated}`
-  const summary = [
-    data.latestBlock ? `Block ${group(data.latestBlock)}` : null,
-    `${tracked(data)} pools tracked`,
-    data.latestSnapshotAt === null ? null : full(data.latestSnapshotAt),
-  ]
-    .filter(Boolean)
-    .join(', ')
+  const at = data.latestSnapshotAt
+  const updated = at === null ? 'No snapshot yet' : ago(at, now)
+  const text = at === null ? 'No snapshot yet' : `Updated ${updated}`
   return (
     <Popover
       label="Data freshness"
       triggerClassName="fresh"
       triggerLabel={`Data freshness: ${text.charAt(0).toLowerCase()}${text.slice(1)}`}
-      triggerTitle={summary}
-      trigger={
-        <>
-          <span className="fresh-dot" aria-hidden="true" />
-          <span className="fresh-text">{text}</span>
-        </>
-      }
+      triggerTitle={summary(data, at)}
+      trigger={<BlockTrigger data={data} />}
     >
       <dl className="pop-dl">
         <div>
@@ -147,7 +149,7 @@ export function Freshness() {
         </div>
         <div>
           <dt>Block</dt>
-          <dd>{group(data.latestBlock)}</dd>
+          <dd className="mono">{group(data.latestBlock)}</dd>
         </div>
         <div>
           <dt>Pools tracked</dt>
@@ -155,7 +157,7 @@ export function Freshness() {
         </div>
         <div>
           <dt>Snapshot</dt>
-          <dd>{full(data.latestSnapshotAt)}</dd>
+          <dd>{full(at)}</dd>
         </div>
       </dl>
     </Popover>

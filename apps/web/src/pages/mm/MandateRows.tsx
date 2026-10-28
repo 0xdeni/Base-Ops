@@ -1,12 +1,15 @@
 /**
- * The Scorecards list's rows (ia-v3 §4.5, docs/design/visual-v3.md §6.5): the shared mandate row,
- * reading "Alice Markets (synthetic) on USDC / AERO, Aerodrome v2". On desktop with 10 mandates or
- * fewer each row adds its 7 d uptime strip, where only breaches are coloured (CH8); those samples
- * are fetched only then (ia-v3 §6.3).
+ * The Scorecards list's block contents (ia-v3 §4.5, docs/design/visual-v4.md §6.6):
+ * - `MandateRows`: the shared mandate row, reading "Demo Markets on USDC / AERO, Aerodrome v2".
+ *   On desktop with 10 mandates or fewer each row adds its 7 d uptime strip, where only breaches
+ *   are coloured (CH8); those samples are fetched only then (ia-v3 §6.3).
+ * - `HowItWorks`: with no mandate registered, one destination block over the band that says how a
+ *   scorecard is checked and opens the method (§5.12).
  */
 import { useScorecardSamples } from '../../api/hooks.js'
 import type { PoolMetaDto, ScorecardSummaryDto } from '../../api/types.js'
 import { UptimeStrip } from '../../components/charts/UptimeStrip.js'
+import { Block } from '../../components/ui/Block.js'
 import { MandateRow } from '../../components/ui/MandateRow.js'
 import { NB } from '../../lib/format.js'
 import { poolWords, windowPoints } from './mmText.js'
@@ -38,7 +41,7 @@ export function MandateRows({
   strips: boolean
 }) {
   return (
-    <ol className="rowlist mml-list">
+    <ol className="rowlist is-ruled mml-list">
       {items.map((s) => {
         const words = poolWords(s.mandate.poolId, pools.get(s.mandate.poolId))
         return (
@@ -51,5 +54,19 @@ export function MandateRows({
         )
       })}
     </ol>
+  )
+}
+
+export function HowItWorks() {
+  return (
+    <Block over to="/methodology#scorecards" className="mml-how">
+      <span className="eyebrow">Methodology</span>
+      <h2 className="h2">what a scorecard checks</h2>
+      <span className="take">
+        At every snapshot the pool is rebuilt with only the market maker’s own liquidity, and its
+        depth on each side and its spread are measured against the mandate.
+      </span>
+      <span className="ulink">How scorecards work</span>
+    </Block>
   )
 }

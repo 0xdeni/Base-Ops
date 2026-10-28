@@ -5,7 +5,7 @@ Status: **contract for the v3 redesign**.
 - Visual rules (type, colour, motion, numbers, charts) are in [`principles.md`](principles.md) and are cited here by ID.
 - The reasons for each change are in [`critique-v2.md`](critique-v2.md).
 
-**Amended screens.** The v3 visual spec changes some screens in this file ([visual-v3.md §2](visual-v3.md#2-rules-this-spec-adds-to-principlesmd-and-ia-v3md)). The new wording is carried in at the screen it changes, marked "amended", and wins over the older wording beside it. The amended rules are in [`principles.md`](principles.md). Money examples written before the `N1` change show fewer figures ($5.1M); under principles `N1` money has 3 significant figures ($5.10M).
+**Amended screens.** The v3 visual spec changes some screens in this file ([visual-v3.md §2](visual-v3.md#2-rules-this-spec-adds-to-principlesmd-and-ia-v3md)). The new wording is carried in at the screen it changes, marked "amended", and wins over the older wording beside it. The amended rules are in [`principles.md`](principles.md). The v4 visual spec ([`visual-v4.md`](visual-v4.md)) keeps every screen, its order, the disclosure ladder, the states and the URL state of this file, and changes the look; where it amends a screen it is noted here as "v4 amended" and wins. Money examples written before the `N1` change show fewer figures ($5.1M); under principles `N1` money has 3 significant figures ($5.10M).
 
 **Two constraints hold throughout:**
 1. Every v2 route keeps working.
@@ -95,6 +95,8 @@ NN/g measured that about 57 % of viewing time falls above the fold, and 74 % wit
 | Token            | Depth butterfly of the token's pools             |                                                                                      ≤ 6 |             ≤ 1,600 |
 | Methodology      | Metric index                                     |                                                                       0 outside formulas |              exempt |
 
+v4 amended ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the page lengths of [visual-v4.md §6.1](visual-v4.md#61-budgets) replace the `P9` column, and the first-viewport counts of §6.1 the `P2` column. Every page but Not found opens on a flat Base Blue band that carries its focal element (Pools: the square field and the DEX filter, whose five shares are labels exempt from `P2`; Scorecard: the KPI chart of the latest sample).
+
 ---
 
 ## 2. Routes and URL state
@@ -182,6 +184,7 @@ Three short groups, no middle dots:
   - "A 'Show data' disclosure follows the figure."
   - The first-viewport count is unchanged at 7: H1 1, lead pool count 1, total labels 2, facts 3.
 - The first-visit grow-from-spine animation is the product's one orchestrated moment (`M6`).
+- v4 amended ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the butterfly sits on the band, the sell side white on Blue and the buy side Yellow; the total row draws the 7 deepest pools as segments with a hatched rest, and a bracket states the deepest pool's share. The first view plays on whichever route a session lands on, not only Home (`M6`).
 
 **Answer and facts (L0–L1). 7 data numbers in total (`P2`):**
 - **H1, display:** "$26.1M sits within 2 % of the price on Base."
@@ -398,6 +401,8 @@ desktop 1440×900
 ```
 
 On phones the order is: title block, answer, curve (240 px), then the facts as a 2×2 grid without uppercase labels.
+
+v4 amended ([visual-v4.md §1.8](visual-v4.md#18-rules-this-spec-amends)): the curve sits on the band in flat white (sell) and Yellow (buy) areas with ringed square points and its two ±2 % labels above the plot; the facts are one ink block over the band's lower edge; an eyebrow (mono caps, the one exception to `T11`) names the DEX and fee above the title.
 
 **Sections (L1), in order.** Each section is a heading, one visual, one takeaway, and "Details" (L2).
 1. **Health.**
@@ -803,7 +808,7 @@ Nothing is removed from the product. Only these change:
 4. **Token total depth** is the client-side sum of `pools[].depth2Usd`. Note in the tooltip that a pool counted for two tokens contributes to both token pages.
 5. **Mandates on a pool:** `useScorecards({pool: id})`, already supported by the HTTP, mock and static clients.
 6. **History series** for health, TVL and price already exist in `HistoryPoint`. No API change.
-7. **Tests.** Page tests (`Home.test.tsx`, `Pools.test.tsx`, `PoolDetail.test.tsx`, `Scorecard.test.tsx`, `Scorecards.test.tsx`, `Token.test.tsx`, `Methodology.test.tsx`) assert this contract: answer sentences, focal element presence, disclosure contents and URL parameters. The greps from `principles.md` §17 are test cases (no `text-transform: uppercase`, no `·` in `.tsx` UI strings, no `→` in link text).
+7. **Tests.** Page tests (`Home.test.tsx`, `Pools.test.tsx`, `PoolDetail.test.tsx`, `Scorecard.test.tsx`, `Scorecards.test.tsx`, `Token.test.tsx`, `Methodology.test.tsx`) assert this contract: answer sentences, focal element presence, disclosure contents and URL parameters. The greps from `principles.md` §17 are test cases (no `text-transform: uppercase`, no `·` in `.tsx` UI strings, no `→` in link text). v4 amended: `text-transform: uppercase` appears only in the `.eyebrow` rule (`T1`, `T11`).
 
 ## 7. Sources
 

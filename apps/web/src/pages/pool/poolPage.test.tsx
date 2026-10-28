@@ -1,0 +1,181 @@
+/**
+ * The Pool page's edge cases: stored sides with the price read from the base token, About this
+ * pool's identifiers, a pool with no grade, and not found.
+ */
+import { cleanup, fireEvent, screen, within } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
+import { createMockClient } from '../../api/mock.js'
+import { NB, usd } from '../../lib/format.js'
+import {
+  facts,
+  HOOKS,
+  loaded,
+  NOW,
+  renderPool,
+  USDC_AERO,
+  USDC_CBBTC,
+  V3_ADDRESS,
+  V3_WETH_USDC,
+  V4_ETH_USDC,
+  V4_POOL_ID,
+  ZERO_ADDRESS,
+} from './testing.js'
+
+afterEach(cleanup)
+
+describe('Pool page: stored sides, price from the base token (N2, UX2-02)', () => {
+  /** The stored ±2 % sides: up lifts token0 (USDC here), down pushes it. */
+  async function stored(id: string) {
+    const detail = await createMockClient({ now: NOW }).pool(id)
+    const level = detail.latest?.depthUsd.find((d) => d.pct === 2)
+    return { up: level?.upUsd ?? null, down: level?.downUsd ?? null }
+  }
+
+  it.each([
+    [USDC_AERO, 'AERO', /^1\sAERO = 1\.32\sUSDC$/, /^1\sUSDC = 0\.7576\sAERO$/],
+    [USDC_CBBTC, 'cbBTC', /^1\scbBTC = 98,522\.17\sUSDC$/, /^1\sUSDC = 0\.00001015\scbBTC$/],
+  ])('%s keeps USDC’s sides and prices %s in USDC', async (id, base, line, flipped) => {
+    const { up, down } = await stored(id)
+    renderPool(id)
+    await screen.findByRole('heading', { level: 1, name: `USDC / ${base}` })
+    // The sides are the stored ones, token0's, as Home and the scorecards show them.
+    expect(document.querySelector('.answer')?.textContent).toBe(
+      `It takes ${usd(up)} of buying to lift USDC 2${NB}% and ${usd(down)} of selling to push it down.`,
+    )
+    expect(document.querySelector('.pool-price')?.textContent).toMatch(line)
+    fireEvent.click(screen.getByRole('button', { name: `Show price in ${base}` }), { detail: 0 })
+    expect(document.querySelector('.pool-price')?.textContent).toMatch(flipped)
+  })
+})
+
+describe('Pool page: the pair title', () => {
+  it('glues the slash to the first symbol, so a wrapping title never starts a line with it', async () => {
+    renderPool(V3_WETH_USDC)
+    const h1 = await loaded()
+    expect(h1.textContent).toBe(`WETH${NB}/ USDC`)
+    expect(h1.textContent).toContain(`${NB}/ `)
+    expect(h1.textContent).not.toMatch(/ \//)
+    expect(
+      within(h1)
+        .getAllByRole('link')
+        .map((a) => a.textContent),
+    ).toEqual(['WETH', 'USDC'])
+  })
+})
+
+describe('Pool page: About this pool (L3)', () => {
+  it('links an address-keyed pool to Basescan and offers a copy', async () => {
+    const { container } = renderPool(V3_WETH_USDC)
+    await loaded()
+    const links = [...container.querySelectorAll('a[href^="https://basescan.org"]')]
+    expect(links.map((a) => a.getAttribute('href'))).toEqual([
+      `https://basescan.org/address/${V3_ADDRESS}`,
+    ])
+    expect(screen.getByTitle(V3_ADDRESS).textContent).toBe(
+      `${V3_ADDRESS.slice(0, 10)}…${V3_ADDRESS.slice(-6)}`,
+    )
+    expect(screen.getByRole('button', { name: 'Copy address', hidden: true })).toBeTruthy()
+  })
+
+  it('shows a Uniswap v4 pool id as text, never as a dead explorer link', async () => {
+    const { container } = renderPool(V4_ETH_USDC)
+    await loaded()
+    expect(container.querySelectorAll('a[href^="https://basescan.org"]')).toHaveLength(0)
+    const id = screen.getByTitle(V4_POOL_ID)
+    expect(id.tagName).toBe('SPAN')
+    expect(screen.getByRole('button', { name: 'Copy pool id', hidden: true })).toBeTruthy()
+  })
+
+  it('names a hooks contract only when the pool has one', async () => {
+    renderPool(V4_ETH_USDC, { meta: { hooks: ZERO_ADDRESS } })
+    await loaded()
+    expect(screen.queryByText('Hooks')).toBeNull()
+    cleanup()
+    renderPool(V4_ETH_USDC, { meta: { hooks: HOOKS } })
+    await loaded()
+    expect(screen.getByText('Hooks')).toBeTruthy()
+    expect(screen.getByTitle(HOOKS).getAttribute('href')).toBe(
+      `https://basescan.org/address/${HOOKS}`,
+    )
+  })
+})
+
+describe('Pool page: a pool with no grade', () => {
+  const THIN = 'aerodrome-v2:0x2b6f9a1c4d8e3f7a0b5c6d9e1f2a3b4c5d6e7f80'
+  const ONE_SIDED = 'uniswap-v3:0x61d4c2e8a3f90b7d5c1e6a4f2b8d3c09e7a5b1f4'
+  const UNPRICED = 'uniswap-v3:0x9f3b7e1a5c2d8046e9b1a7c3f5d20e8b4a6c1d93'
+  const opened = async () => {
+    const health = screen.getByRole('region', { name: 'health' })
+    fireEvent.click(within(health).getByRole('button', { name: 'Details' }), { detail: 0 })
+    return health
+  }
+
+  it('says "Not rated" instead of a letter, and why, for a pool that is too thin', async () => {
+    renderPool(THIN)
+    await screen.findByRole('heading', { level: 1, name: /AERO \/ DEGEN/ })
+    expect(within(facts()).queryByRole('img', { name: /^Grade/ })).toBeNull()
+    const chip = within(facts()).getByRole('button', { name: 'Not rated' })
+    fireEvent.focus(chip)
+    expect((await screen.findByRole('tooltip')).textContent).toContain(
+      `Too thin to rate: neither side holds $5K within 2${NB}%.`,
+    )
+    const reason = `Too thin to rate: neither side holds $5K within 2${NB}%.`
+    const health = await opened()
+    // the takeaway and the Details line both say it; the numbers stay in the table
+    // (the default matcher folds the no-break space in the text it reads, not in the needle)
+    expect(within(health).getAllByText(reason.replaceAll(NB, ' '))).toHaveLength(2)
+    const table = within(health).getByRole('table', { name: 'Health components' })
+    expect(within(table).getByText('Total, not rated')).toBeTruthy()
+    expect(within(table).queryByText(/grade [A-F]/)).toBeNull()
+    expect(within(table).getAllByRole('row')).toHaveLength(6)
+  })
+
+  it('says "Too thin on one side" for a pool with a buy side only, and that it can’t absorb $10K', async () => {
+    renderPool(ONE_SIDED)
+    await screen.findByRole('heading', { level: 1, name: /BRETT \/ DEGEN/ })
+    fireEvent.focus(within(facts()).getByRole('button', { name: 'Not rated' }))
+    expect((await screen.findByRole('tooltip')).textContent).toContain(
+      `Too thin on one side: the thinner side holds under $5K within 2${NB}%.`,
+    )
+    // a priced pool with no $10K spread: the words where the spread would be
+    const spread = [...facts().querySelectorAll('.fact')].find(
+      (f) => f.querySelector('dt')?.textContent === 'spread at $10K, a round trip',
+    )
+    expect(spread?.querySelector('dd')?.textContent).toBe(`Can’t absorb $10K`)
+    expect(document.querySelector('.answer')?.textContent).toMatch(
+      /^Liquidity runs out before a 2\s% move/,
+    )
+  })
+
+  it('says "No USD price" for a pool with a token that has none, with no spread to show', async () => {
+    renderPool(UNPRICED)
+    await screen.findByRole('heading', { level: 1, name: /WETH \/ TOSHI/ })
+    fireEvent.focus(within(facts()).getByRole('button', { name: 'Not rated' }))
+    expect((await screen.findByRole('tooltip')).textContent).toContain(
+      'No USD price: a token in this pool has no price in dollars.',
+    )
+    const spread = [...facts().querySelectorAll('.fact')].find(
+      (f) => f.querySelector('dt')?.textContent === 'spread at $10K, a round trip',
+    )
+    expect(spread?.querySelector('dd')?.textContent).toBe('—')
+    expect(document.querySelector('.answer')?.textContent).toBe(
+      `It takes $42K of selling to push WETH down 2${NB}%. The buy side is unknown: TOSHI has no USD price.`,
+    )
+  })
+
+  it('shows the grade of a rated pool as before', async () => {
+    renderPool(V3_WETH_USDC)
+    await loaded()
+    expect(within(facts()).getByRole('img', { name: /^Grade [A-F]$/ })).toBeTruthy()
+    expect(within(facts()).queryByRole('button', { name: 'Not rated' })).toBeNull()
+  })
+})
+
+describe('Pool page: states', () => {
+  it('says which pool was not found, with the id and two ways on', async () => {
+    renderPool('uniswap-v3:0x00000000000000000000000000000000000000aa')
+    expect(await screen.findByRole('heading', { level: 1, name: 'pool not found' })).toBeTruthy()
+    expect(screen.getByText('uniswap-v3:0x00000000000000000000000000000000000000aa')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Browse pools' }).getAttribute('href')).toBe('/pools')
+  })
+})

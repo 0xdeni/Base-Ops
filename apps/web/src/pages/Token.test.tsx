@@ -23,14 +23,34 @@ function LocationProbe() {
   return null
 }
 
-/** Renders the WETH token page; `via` replaces the mock's price route when given. */
-function renderToken({ via, query = '' }: { via?: string[]; query?: string } = {}) {
+/**
+ * Renders the WETH token page; `via` replaces the mock's price route when given, and `extra` adds
+ * that many copies of its deepest pool (with their own ids) to page the pools sheet.
+ */
+function renderToken({
+  via,
+  query = '',
+  extra = 0,
+}: {
+  via?: string[]
+  query?: string
+  extra?: number
+} = {}) {
   const base = createMockClient({ now: 1_760_000_000 })
   const client: ApiClient = {
     ...base,
     async token(address, q) {
       const detail = await base.token(address, q)
-      return via ? { ...detail, via } : detail
+      const first = detail.pools[0]
+      const copies =
+        first && extra
+          ? Array.from({ length: extra }, (_, i) => ({
+              ...first,
+              pool: { ...first.pool, id: `${first.pool.id}${i}` },
+            }))
+          : []
+      const pools = [...detail.pools, ...copies]
+      return { ...detail, ...(via ? { via } : {}), pools, total: pools.length }
     },
   }
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -59,20 +79,26 @@ const routeRow = () => {
   return dd
 }
 
-describe('Token page: the first view (ia-v3 §4.7)', () => {
+describe('Token page: the title section and the band (visual-v4 §6.8)', () => {
   it('answers with the depth around the price across the scored pools', async () => {
     renderToken()
-    await loaded()
-    expect(document.querySelector('a.back')?.getAttribute('href')).toBe('/pools')
-    expect(document.querySelector('.answer')?.textContent).toMatch(
+    const h1 = await loaded()
+    expect(h1.className).toContain('title')
+    const title = screen.getByRole('region', { name: 'WETH' })
+    expect(within(title).getByRole('link', { name: 'Pools' }).getAttribute('href')).toBe('/pools')
+    expect(title.querySelector('.eyebrow')?.textContent).toBe('Token')
+    expect(within(title).getByText('Wrapped Ether')).toBeTruthy()
+    expect(title.querySelector('.answer')?.textContent).toMatch(
       /^\$[\d.]+[KMB]? sits within 2\s% of the price (across WETH’s \d+ scored pools|in WETH’s one scored pool)\.$/,
     )
   })
 
-  it('draws the butterfly of its pools, closed by "All of WETH", with the numbers behind Show data', async () => {
+  it('draws the butterfly of its pools on the band, closed by "All of WETH", with the numbers behind Show data', async () => {
     renderToken()
     await loaded()
-    const figure = screen.getByRole('group', { name: /^WETH: / })
+    const band = screen.getByRole('region', { name: /^Depth within ±2\s% of WETH’s price/ })
+    expect(band.querySelector('.band-ground')).toBeTruthy()
+    const figure = within(band).getByRole('group', { name: /^WETH: / })
     expect(within(figure).getByText('All of WETH')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Show data' }), { detail: 0 })
     const table = await screen.findByRole('table', { name: `Depth within 2${NB}% by pool` })
@@ -83,6 +109,9 @@ describe('Token page: the first view (ia-v3 §4.7)', () => {
   it('states the USD price, the pools discovered and where the price comes from', async () => {
     renderToken({ via: [V3_WETH_USDC] })
     await loaded()
+    // One ink block over the band's lower edge.
+    expect(facts().classList.contains('ink')).toBe(true)
+    expect(facts().closest('.overlap')).toBeTruthy()
     const labels = [...facts().querySelectorAll('dt')].map((d) => d.textContent)
     expect(labels[0]).toBe('USD price')
     expect(labels[1]).toMatch(/^pools? discovered/)
@@ -191,6 +220,44 @@ describe('Token page: the pools table', () => {
   })
 })
 
+describe('Token page: the pools sheet (visual-v4 §6.8)', () => {
+  it('sets the table in a sheet with its heading, finding and count', async () => {
+    renderToken()
+    await loaded()
+    const sheet = screen.getByRole('region', { name: 'pools' })
+    expect(sheet.querySelector('.blk--flush')).toBeTruthy()
+    expect(within(sheet).getByText(/holds (\d+|under 1)\s% of WETH’s depth\.$/)).toBeTruthy()
+    expect(sheet.querySelector('.tbl-caption [aria-live]')?.textContent).toBe('10 pools')
+    expect(within(sheet).queryByRole('button', { name: /^Show all/ })).toBeNull()
+    const about = screen.getByRole('region', { name: 'about this token' })
+    expect(about.classList).toContain('blk--panel')
+  })
+
+  it('lists the first 10 pools, then all of them behind one toggle kept in the URL', async () => {
+    renderToken({ extra: 4 })
+    await loaded()
+    const sheet = screen.getByRole('region', { name: 'pools' })
+    const table = within(sheet).getByRole('table', { name: 'Pools containing WETH' })
+    expect(within(table).getAllByRole('row')).toHaveLength(11)
+    expect(sheet.querySelector('.tbl-caption [aria-live]')?.textContent).toBe('10 of 14 pools')
+    const more = within(sheet).getByRole('button', { name: 'Show all 14 pools' })
+    expect(more.getAttribute('aria-expanded')).toBe('false')
+    act(() => {
+      fireEvent.click(more, { detail: 0 })
+    })
+    expect(search).toBe('?rows=all')
+    expect(within(table).getAllByRole('row')).toHaveLength(15)
+    // The same button stays, so keyboard focus stays where it was pressed.
+    expect(more.textContent).toBe('Show the first 10')
+    expect(more.getAttribute('aria-expanded')).toBe('true')
+    cleanup()
+    renderToken({ extra: 4, query: '?rows=all' })
+    await loaded()
+    const again = screen.getByRole('table', { name: 'Pools containing WETH' })
+    expect(within(again).getAllByRole('row')).toHaveLength(15)
+  })
+})
+
 describe('Token page: states', () => {
   it('says the token was not found, with the address', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -202,7 +269,7 @@ describe('Token page: states', () => {
         </MemoryRouter>
       </Providers>,
     )
-    expect(await screen.findByRole('heading', { level: 1, name: 'Token not found' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { level: 1, name: 'token not found' })).toBeTruthy()
     expect(screen.getByText(missing)).toBeTruthy()
   })
 })

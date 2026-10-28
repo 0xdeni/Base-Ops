@@ -1,5 +1,5 @@
 /**
- * The Token page's words (ia-v3 §4.7, docs/design/visual-v3.md §6.7): the answer, the price route
+ * The Token page's words (ia-v3 §4.7, docs/design/visual-v4.md §6.8): the answer, the price route
  * and the Pools takeaway, plus the one view change the butterfly needs. Values are read as stored
  * and only formatted; the answer's total is the client-side sum of the pools' ±2 % depth that
  * ia-v3 §6.4 specifies.

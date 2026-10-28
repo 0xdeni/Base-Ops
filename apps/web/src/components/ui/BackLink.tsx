@@ -1,6 +1,7 @@
 /**
- * The back link above every detail title (K2, §5.2): a 16 px left chevron plus the list's name,
- * 13 / 500 text-2. Its chevron's optical edge aligns with the title (−4 px margin).
+ * The back link above every detail title (docs/design/visual-v4.md §5.3): a 16 px chevron and the
+ * list's name, 14 px / 700, `--text-2` (`--text-1` on hover), 32 px high (44 on touch), 4 px left
+ * of the edge so the chevron's optical edge aligns with the title.
  */
 import { Link } from 'react-router-dom'
 import { Icon } from './Icon.js'

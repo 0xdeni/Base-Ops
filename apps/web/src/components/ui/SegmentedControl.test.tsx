@@ -29,7 +29,7 @@ function Harness({ onChange }: { onChange: (v: Win, meta: { keyboard: boolean })
 
 const radio = (name: string) => screen.getByRole('radio', { name })
 
-describe('SegmentedControl (K4, §5.3)', () => {
+describe('SegmentedControl (§5.4)', () => {
   it('is a labelled radiogroup with a roving tab stop on the selected item', () => {
     render(<Harness onChange={() => {}} />)
     expect(screen.getByRole('radiogroup', { name: 'Time window' })).toBeTruthy()
@@ -64,6 +64,22 @@ describe('SegmentedControl (K4, §5.3)', () => {
     // Choosing the selected item again is not a change.
     fireEvent.click(radio('30 d'), { detail: 1 })
     expect(onChange).toHaveBeenCalledTimes(2)
+  })
+
+  it('has a band variant', () => {
+    render(
+      <SegmentedControl
+        label="Rating"
+        onBand
+        options={[
+          { value: 'all', label: 'All pools' },
+          { value: 'rated', label: 'Rated only' },
+        ]}
+        value="all"
+        onChange={() => {}}
+      />,
+    )
+    expect(screen.getByRole('radiogroup', { name: 'Rating' }).className).toBe('seg is-band')
   })
 
   it('clips the thumb to the selected item and moves it instantly after a keyboard change', () => {

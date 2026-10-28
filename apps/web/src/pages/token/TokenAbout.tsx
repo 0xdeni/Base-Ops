@@ -1,7 +1,9 @@
 /**
- * "About this token" (L3, ia-v3 §4.7 section 2): the address (mono, Basescan, copy), decimals, when
- * the price was derived, and the full price route with each pool step linking to its pool. The
- * native ETH ↔ WETH edge reads "ETH to WETH"; a pool the observatory does not know keeps its id.
+ * "about this token" (L3, ia-v3 §4.7 section 2, docs/design/visual-v4.md §6.8): a panel after the
+ * pools sheet, the "About this token" disclosure on phones. The address (mono, Basescan, copy),
+ * decimals, when the price was derived, and the full price route with each pool step linking to
+ * its pool. The native ETH ↔ WETH edge reads "ETH to WETH"; a pool the observatory does not know
+ * keeps its id.
  */
 import { NATIVE_ETH } from '@depthwatch/core'
 import { Fragment, type ReactNode } from 'react'
@@ -56,7 +58,7 @@ export function TokenAbout({
   const native = token.address === NATIVE_ETH
   const steps = routeSteps(detail.via, metas)
   return (
-    <AboutSection id="s-about" title="About this token">
+    <AboutSection id="s-about" title="about this token" disclosureLabel="About this token">
       <dl className="about">
         <Row term="Address">
           {native ? (

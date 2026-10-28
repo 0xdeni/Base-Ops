@@ -1,7 +1,7 @@
 /**
  * Test fixtures for the chart tests: the demo world's six pools, one snapshot and a scorecard
- * series, with the numbers of the v3 spec ($11.8M and $14.3M totals, the $31.5K gap pool,
- * $5.10M and $6.08M at ±2 %). Imported by tests only; nothing here reaches the bundle.
+ * series ($11.8M and $14.3M totals, the $31.5K gap pool, $5.10M and $6.08M at ±2 %). Imported
+ * by tests only; nothing here reaches the bundle.
  */
 import type { Dex } from '@depthwatch/core'
 import type { MmSampleDto, PoolSnapshotDto, PoolSummary } from '../../api/types.js'

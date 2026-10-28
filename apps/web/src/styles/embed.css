@@ -1,30 +1,26 @@
-/* Embed badge (docs/design/visual-v3.md §5.11): the API's badge SVG unaltered in a well, copy
-   buttons, a cache note, and mono code blocks behind "Show code". */
+/* Embed badge (docs/design/visual-v4.md §5.11): the API's badge SVG unaltered, "Copy HTML" and
+   "Copy Markdown" (ghost, small), the cache note, and mono code blocks behind "Show code". */
 
 .badge-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s4);
-  flex-wrap: wrap;
 }
 .badge-prev {
   display: inline-flex;
-  padding: var(--s4);
-  border-radius: var(--r-code);
-  background: var(--well);
 }
 .badge-prev img {
   display: block;
   height: 20px;
 }
-/* The two copy buttons move as one unit: never one beside the preview and one below it. */
+/* The two copy buttons move as one unit. */
 .copy-row {
   display: flex;
   flex: 0 0 auto;
   flex-wrap: wrap;
-  gap: var(--s4);
+  gap: var(--s3);
 }
-/* Phones: the preview alone, then the button pair on the next row, whatever the badge's width. */
 @media (max-width: 52.49em) {
   .badge-row {
     flex-direction: column;
@@ -32,22 +28,23 @@
   }
 }
 .code-label {
-  font-size: var(--t-small);
-  line-height: 1.385;
-  color: var(--text-2);
   margin: var(--s3) 0 var(--s1);
+  font-size: var(--t-small);
+  font-weight: 650;
+  color: var(--text-2);
 }
+/* Code blocks: `--surface-2`, radius 10, 13 px mono, scrolling sideways. */
 .codeblock {
   margin: 0;
-  background: var(--well);
+  padding: 12px 14px;
   border-radius: var(--r-code);
-  padding: var(--s3) var(--s4);
+  background: var(--surface-2);
+  color: var(--text-1);
   font-family: var(--mono);
   font-size: var(--t-small);
-  line-height: 1.6;
-  overflow-x: auto;
+  line-height: 1.5;
   white-space: pre;
-  color: var(--text-1);
+  overflow-x: auto;
 }
 .codeblock:focus-visible {
   outline-offset: -2px;

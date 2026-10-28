@@ -1,13 +1,15 @@
 /**
- * The Pools explorer's URL state (ia-v3 §2, docs/design/visual-v3.md §6.2, §7 "URL state"): `q`,
- * `sort`, `dir`, `dex`, `cols`, `page`, `rated` (only the rated pools) and `unrated` (pages of
- * unrated pools opened behind "Show N unrated pools"). Defaults are left out of the URL and every change
- * replaces the entry instead of pushing one. v2 links keep their meaning (`?sort=depth&dir=asc`,
- * `?dex=aerodrome-v2`, `?q=weth`). The sort keys, columns and order are the shared pools table's
- * (lib/poolsTable.ts); a page-side sort (spread, top LP share) orders the API's page of 200.
+ * The Pools explorer's URL state (ia-v3 §2, docs/design/visual-v4.md §6.3): `q`, `sort`, `dir`,
+ * `dex`, `cols`, `page`, `rated` (only the rated pools), `unrated` (pages of unrated pools opened
+ * behind "Show N unrated pools") and `rows` (`all`: every loaded rated row on a phone, where the
+ * list shows 25 at first). Defaults are left out of the URL and every change replaces the entry
+ * instead of pushing one. v2 links keep their meaning (`?sort=depth&dir=asc`, `?dex=aerodrome-v2`,
+ * `?q=weth`). The sort keys, columns and order are the shared pools table's (lib/poolsTable.ts); a
+ * page-side sort (spread, top LP share) orders the API's page of 200.
  */
 import { DEXES, type Dex } from '@depthwatch/core'
 import type { SortDir } from '../../api/types.js'
+import { count } from '../../lib/format.js'
 import {
   colsParam,
   defaultDir,
@@ -28,9 +30,13 @@ export interface PoolsState {
   ratedOnly: boolean
   /** Pages of 50 unrated pools shown after the rated ones; 0 keeps them behind "Show N unrated pools". */
   unrated: number
+  /** `rows=all`: a phone shows every loaded rated row instead of the first 25. */
+  allRows: boolean
 }
 
 export const PAGE_SIZE = 50
+/** Rated rows a phone shows before "Show all 50 rated pools" (§5.8). */
+export const PHONE_PAGE = 25
 /** The API's largest page: the rows a page-side sort (spread, top LP share) orders. */
 export const CLIENT_SORT_LIMIT = 200
 export const DEFAULT_SORT: PoolsSortKey = 'health'
@@ -48,6 +54,7 @@ export function readPoolsState(params: URLSearchParams): PoolsState {
     page: Number.isFinite(page) && page > 1 ? Math.min(page, 100) : 1,
     ratedOnly,
     unrated: !ratedOnly && Number.isFinite(unrated) && unrated > 0 ? Math.min(unrated, 100) : 0,
+    allRows: params.get('rows') === 'all',
   }
 }
 
@@ -77,5 +84,29 @@ export function writePoolsState(
   put('page', next.page > 1 ? String(next.page) : '')
   put('rated', next.ratedOnly ? '1' : '')
   put('unrated', next.unrated > 0 ? String(next.unrated) : '')
+  put('rows', next.allRows ? 'all' : '')
   return out
+}
+
+/**
+ * The rated rows a phone shows (§5.8): the first 25 until the reader asks for all of them, and
+ * every loaded row once the unrated pools are open, so they always follow the last rated one.
+ * Desktop shows every loaded row (pages of 50).
+ */
+export function visibleRows<T>(
+  rows: readonly T[],
+  { phone, allRows, unratedOpen }: { phone: boolean; allRows: boolean; unratedOpen: boolean },
+): T[] {
+  if (!phone || allRows || unratedOpen) return [...rows]
+  return rows.slice(0, PHONE_PAGE)
+}
+
+/**
+ * The phone's "show all" button: "Show all 50 rated pools" when every rated pool the list can show
+ * is loaded, otherwise the loaded rows behind it ("Show 25 more pools"); then the pages take over.
+ */
+export function showAllRowsLabel(loaded: number, everyRow: boolean): string {
+  if (everyRow) return `Show all ${count(loaded)} rated ${loaded === 1 ? 'pool' : 'pools'}`
+  const more = loaded - PHONE_PAGE
+  return `Show ${count(more)} more ${more === 1 ? 'pool' : 'pools'}`
 }

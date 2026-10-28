@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppRoutes, Providers } from '../App.js'
 import { createMockClient } from '../api/mock.js'
 import type { ApiClient } from '../api/types.js'
+import { FIRST_VIEW_KEY } from '../lib/firstView.js'
 import { isInAppHref, routeIntentOf } from './Layout.js'
+import { DOCK_QUERY } from './shell/Dock.js'
 
 const NOW = 1_760_000_000
 const NB = ' '
@@ -125,13 +127,15 @@ describe('route changes', () => {
   })
 })
 
-describe('freshness (ia-v3 §3.2)', () => {
-  it('reads "Updated 2 min ago" against the data clock and opens the details popover', async () => {
+describe('freshness (§5.1, ia-v3 §3.2)', () => {
+  it('shows the circle and the block, says "updated 2 min ago" in its name and opens the details', async () => {
     renderAt('/methodology', { demo: true, dataNow: NOW + 120 })
     const button = await screen.findByRole('button', {
       name: `Data freshness: updated 2${NB}min ago`,
     })
-    expect(button.textContent).toBe(`Updated 2${NB}min ago`)
+    expect(button.textContent).toMatch(/^Block \d{1,3}(,\d{3})+$/)
+    expect(button.querySelector('.eyebrow')?.textContent).toBe(button.textContent)
+    expect(button.querySelector('.fresh-dot')?.getAttribute('aria-hidden')).toBe('true')
     expect(button.getAttribute('title')).toMatch(
       /^Block \d{1,3}(,\d{3})+, [\d,]+ of [\d,]+ pools tracked, /,
     )
@@ -177,7 +181,7 @@ describe('demo line and footer (ia-v3 §3.1, §3.3)', () => {
       'Every number comes from the real pipeline run over a simulated week of Base.',
     )
     const footer = screen.getByRole('contentinfo')
-    expect(within(footer).getByText('Data: synthetic demo world')).toBeTruthy()
+    expect(within(footer).getByText('Data: a synthetic demo world')).toBeTruthy()
   })
 
   it('reads "In-repo mock data" in mock mode and shows no demo line for live data', () => {
@@ -185,23 +189,96 @@ describe('demo line and footer (ia-v3 §3.1, §3.3)', () => {
     expect(screen.getByRole('note', { name: 'Data source' }).textContent).toMatch(
       /^In-repo mock data/,
     )
-    expect(within(screen.getByRole('contentinfo')).getByText('Data: in-repo mock')).toBeTruthy()
+    expect(within(screen.getByRole('contentinfo')).getByText('Data: the in-repo mock')).toBeTruthy()
     cleanup()
     renderAt('/mm', { mock: false })
     expect(screen.queryByRole('note')).toBeNull()
     expect(within(screen.getByRole('contentinfo')).getByText('Data: Base mainnet')).toBeTruthy()
   })
 
-  it('carries the promise and the Methodology, API and GitHub links, without middle dots', () => {
+  it('carries the promise, "Built on Base" in plain text and the Methodology, API and GitHub links', () => {
     renderAt('/mm')
     const footer = screen.getByRole('contentinfo')
-    expect(
-      within(footer).getByText('Open source and read-only. No token, no custody.'),
-    ).toBeTruthy()
+    expect(footer.querySelector('.foot-say')?.textContent).toBe(
+      'Open source and read-only. No token, no custody. Built on Base: it indexes Uniswap and Aerodrome pools on Base mainnet. Data: the in-repo mock.',
+    )
+    expect(footer.querySelector('img, svg[aria-label]')).toBeNull()
     const href = (name: string) => within(footer).getByRole('link', { name }).getAttribute('href')
     expect(href('Methodology')).toBe('/methodology')
     expect(href('API')).toBe('/AGENTS.md')
     expect(href('GitHub')).toBe('https://github.com/0xdeni/Base-Ops')
     expect(footer.textContent).not.toContain('·')
+    expect(footer.textContent).not.toMatch(/partner/i)
+  })
+})
+
+describe('the first view (§4.1)', () => {
+  let calls: { keyframes: Keyframe[]; options: KeyframeEffectOptions }[]
+  beforeEach(() => {
+    window.sessionStorage.clear()
+    calls = []
+    Element.prototype.animate = function animate(keyframes, options) {
+      calls.push({
+        keyframes: keyframes as Keyframe[],
+        options: options as KeyframeEffectOptions,
+      })
+      return { cancel() {}, startTime: null } as unknown as Animation
+    }
+  })
+  afterEach(() => {
+    Reflect.deleteProperty(Element.prototype, 'animate')
+    window.sessionStorage.clear()
+  })
+
+  it('plays once per session on the landing route, by 450 ms, and never on a route change', async () => {
+    // Not found's title section opts into the timeline (`data-rise`, `data-in`).
+    renderAt('/nowhere')
+    await waitFor(() => expect(window.sessionStorage.getItem(FIRST_VIEW_KEY)).toBe('1'))
+    expect(document.documentElement.hasAttribute('data-first-view')).toBe(false)
+    const first = calls.length
+    expect(first).toBeGreaterThan(0)
+    for (const c of calls)
+      expect(Number(c.options.delay ?? 0) + Number(c.options.duration)).toBeLessThanOrEqual(450)
+    fireEvent.click(within(nav()).getByRole('link', { name: 'Gaps' }), { detail: 0 })
+    await waitFor(() => expect(current()).toEqual(['Gaps']))
+    expect(calls).toHaveLength(first)
+    cleanup()
+    // A new load in the same session does not play it again.
+    renderAt('/gaps')
+    await screen.findByRole('heading', { level: 1 })
+    expect(calls).toHaveLength(first)
+  })
+
+  it('replays with ?replay=1', async () => {
+    window.sessionStorage.setItem(FIRST_VIEW_KEY, '1')
+    renderAt('/nowhere?replay=1')
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0))
+  })
+})
+
+describe('the dock (§5.1, PH3)', () => {
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'matchMedia')
+  })
+
+  it('stays out of a browser tab and replaces the tab strip in an installed app', () => {
+    renderAt('/gaps')
+    expect(document.querySelector('.dock')).toBeNull()
+    cleanup()
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (q: string) => ({
+        matches: q === DOCK_QUERY,
+        addEventListener() {},
+        removeEventListener() {},
+      }),
+    })
+    renderAt('/gaps')
+    const dock = document.querySelector('nav.dock') as HTMLElement
+    expect(dock.getAttribute('aria-label')).toBe('Primary')
+    const tabs = within(dock).getAllByRole('link')
+    expect(tabs.map((a) => a.textContent)).toEqual(['Pools', 'Gaps', 'Scorecards', 'Method'])
+    expect(tabs.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'page', null, null])
+    expect(within(dock).getByRole('link', { name: 'Methodology' })).toBeTruthy()
   })
 })

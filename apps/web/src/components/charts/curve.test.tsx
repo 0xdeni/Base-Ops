@@ -1,22 +1,44 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PoolSnapshotDto } from '../../api/types.js'
 import { DepthCurveTable } from './ChartTables.js'
 import { placeChartTip } from './ChartTooltip.js'
 import { SNAPSHOT, USDC, WETH } from './chartFixtures.js'
 import {
+  areaPath,
   asymmetryNote,
   clampTickX,
   curveGeometry,
   curveLabel,
   curvePoints,
+  emptyNote,
   nearestPoint,
+  outPath,
+  twoPct,
 } from './curveModel.js'
 import { DepthCurve } from './DepthCurve.js'
 
 afterEach(cleanup)
 
 const NB = ' '
+const MINUS = '−'
+
+// jsdom has no PointerEvent: a MouseEvent that carries `pointerType` stands in.
+class TestPointerEvent extends MouseEvent {
+  pointerType: string
+  constructor(type: string, init: PointerEventInit = {}) {
+    super(type, init)
+    this.pointerType = init.pointerType ?? 'mouse'
+  }
+}
+
+/** A snapshot whose every measured level holds $0 on both sides. */
+function empty(): PoolSnapshotDto {
+  return {
+    ...SNAPSHOT,
+    depthUsd: SNAPSHOT.depthUsd.map((d) => ({ ...d, upUsd: 0, downUsd: 0, totalUsd: 0 })),
+  }
+}
 
 function exhausted(): PoolSnapshotDto {
   const depth = SNAPSHOT.depth.map((d) =>
@@ -52,23 +74,46 @@ describe('curve data (CH3)', () => {
     expect(curveLabel(pts)).toContain('Buy side: no USD price')
   })
 
-  it('places points on a log x and a zero-based y with a nice top', () => {
+  it('places points on a log x and a linear y from 0, topped at ceil(1.06 × max / step) × step', () => {
     const g = curveGeometry(points, 1200, false)
     expect(g.H).toBe(340)
-    expect(g.base).toBe(310)
-    expect(g.ytop).toBe(15_000_000)
-    expect(g.yTicks).toEqual([5_000_000, 10_000_000, 15_000_000])
+    expect(g.top).toBe(72)
+    expect(g.base).toBe(312)
+    // max $14.3M × 1.06 = $15.2M over 5 steps: the round step at or above $3.04M is $5M.
+    expect(g.step).toBe(5_000_000)
+    expect(g.yMax).toBe(20_000_000)
+    expect(g.yTicks).toEqual([10_000_000, 20_000_000])
     expect(g.fy(0)).toBe(g.base)
-    expect(g.fy(15_000_000)).toBe(36)
-    expect(g.fx(5)).toBeCloseTo(1196, 6)
-    expect(g.sell[0]).toEqual([600, 310])
+    expect(g.fy(g.yMax)).toBe(72)
+    // x = cx ± log(1 + |p|) / log 6 × (W / 2 − 10): ±5 % lands 10 px inside the edge.
+    expect(g.fx(5)).toBeCloseTo(1190, 6)
+    expect(g.fx(-5)).toBeCloseTo(10, 6)
+    expect(g.fx(2)).toBeCloseTo(600 + (Math.log(3) / Math.log(6)) * 590, 6)
+    expect(g.sell[0]).toEqual([600, 312])
     expect(g.sell).toHaveLength(4)
-    expect(curveGeometry(points, 343, true).H).toBe(240)
+    const phone = curveGeometry(points, 343, true)
+    expect([phone.H, phone.top, phone.base]).toEqual([240, 16, 212])
   })
 
-  it('marks where a side runs out of liquidity', () => {
+  it('closes each side’s flat area to the baseline at its outermost point, never past ±5 %', () => {
+    const g = curveGeometry(points, 1200, false)
+    const d = areaPath(g.buy, g.exhausted.buy, g.base)
+    expect(d.startsWith('M600.00 312.00')).toBe(true)
+    expect(d.endsWith(`L${g.fx(5).toFixed(2)} 312.00Z`)).toBe(true)
+    expect(outPath(g.buy, g.exhausted.buy)).toBe('')
+    const wider = {
+      ...SNAPSHOT,
+      depthUsd: [...SNAPSHOT.depthUsd, { pct: 10, upUsd: 1, downUsd: 1, totalUsd: 2 }],
+    }
+    expect(curvePoints(wider, WETH, USDC).map((p) => p.pct)).toEqual([-5, -2, -1, 1, 2, 5])
+  })
+
+  it('marks where a side runs out of liquidity: the area stops, a dashed segment goes on', () => {
     const g = curveGeometry(curvePoints(exhausted(), WETH, USDC), 1200, false)
     expect(g.exhausted).toEqual({ sell: -1, buy: 3 })
+    const area = areaPath(g.buy, g.exhausted.buy, g.base)
+    expect(area.endsWith(`L${g.fx(2).toFixed(2)} 312.00Z`)).toBe(true)
+    expect(outPath(g.buy, g.exhausted.buy).split('L')).toHaveLength(2)
   })
 
   it('snaps the pointer to the nearest measured point', () => {
@@ -77,9 +122,32 @@ describe('curve data (CH3)', () => {
     expect(nearestPoint(points, g.fx, 0)).toBe(0)
   })
 
-  it('keeps x tick labels 14 px inside the edges', () => {
-    expect(clampTickX(1199, 1200)).toBe(1186)
-    expect(clampTickX(2, 1200)).toBe(14)
+  it('keeps x tick labels 16 px inside the edges', () => {
+    expect(clampTickX(1199, 1200)).toBe(1184)
+    expect(clampTickX(2, 1200)).toBe(16)
+  })
+
+  it('finds the ±2 % points for the direct labels', () => {
+    expect(twoPct(points, 'sell')?.usd).toBe(5_102_004.52)
+    expect(twoPct(points, 'buy')?.usd).toBe(6_079_641.56)
+  })
+
+  it('marks a snapshot with $0 at every level empty: no step, no axis top, no ticks', () => {
+    const zero = curvePoints(empty(), WETH, USDC)
+    expect(zero).toHaveLength(6)
+    const g = curveGeometry(zero, 1200, false)
+    expect(g.empty).toBe(true)
+    expect([g.step, g.yMax]).toEqual([0, 0])
+    expect(g.yTicks).toEqual([])
+    expect(g.fy(0)).toBe(g.base)
+    expect(curveGeometry(points, 1200, false).empty).toBe(false)
+    expect(emptyNote(zero, WETH, USDC)).toBe(
+      `No liquidity sits within 5${NB}% of the price at this snapshot.`,
+    )
+    const sellOnly = zero.filter((p) => p.side === 'sell')
+    expect(emptyNote(sellOnly, WETH, USDC)).toBe(
+      `No liquidity sits within 5${NB}% of the price on the sell side at this snapshot; USDC has no USD price.`,
+    )
   })
 
   it('states the asymmetry of the ±2 % depth in Show data', () => {
@@ -98,14 +166,14 @@ describe('curve data (CH3)', () => {
 
 describe('placeChartTip (CH2)', () => {
   const vp = { width: 1440, height: 900 }
-  it('sits 16 px beside the point, away from the direct label, vertically centred', () => {
-    expect(placeChartTip(700, 300, 160, 80, vp, 'right')).toEqual({ left: 716, top: 260 })
-    expect(placeChartTip(700, 300, 160, 80, vp, 'left')).toEqual({ left: 524, top: 260 })
+  it('sits 18 px beside the point, vertically centred', () => {
+    expect(placeChartTip(700, 300, 160, 80, vp, 'right')).toEqual({ left: 718, top: 260 })
+    expect(placeChartTip(700, 300, 160, 80, vp, 'left')).toEqual({ left: 522, top: 260 })
   })
 
   it('flips when it would leave the viewport', () => {
-    expect(placeChartTip(1400, 300, 160, 80, vp, 'right').left).toBe(1224)
-    expect(placeChartTip(40, 300, 160, 80, vp, 'left').left).toBe(56)
+    expect(placeChartTip(1400, 300, 160, 80, vp, 'right').left).toBe(1222)
+    expect(placeChartTip(40, 300, 160, 80, vp, 'left').left).toBe(58)
     expect(placeChartTip(40, 20, 160, 80, vp, 'left').top).toBe(8)
   })
 })
@@ -125,20 +193,26 @@ describe('DepthCurve', () => {
     expect(img.getAttribute('aria-label')).toContain(
       `Sell side: $2.64M to move −1${NB}%, $5.10M to move −2${NB}%, $10.5M to move −5${NB}%`,
     )
-    const labels = [...container.querySelectorAll('.chart-label')].map((e) => e.textContent)
-    expect(labels).toEqual(['$5.10M', '$6.08M'])
-    const ticks = [...container.querySelectorAll('.chart-text')].map((e) => e.textContent)
-    expect(ticks).toEqual(
-      expect.arrayContaining(['$5M', '$10M', '$15M', `−5${NB}%`, 'Mid', `+5${NB}%`]),
+    const labels = [...container.querySelectorAll('.cv-lab')].map((e) => e.textContent)
+    expect(labels).toEqual([`Sell −2${NB}%$5.10M`, `Buy +2${NB}%$6.08M`])
+    const ticks = [...container.querySelectorAll('.ax')].map((e) => e.textContent)
+    expect(ticks).toEqual(expect.arrayContaining(['$10M', '$20M', `−5${NB}%`, 'Mid', `+5${NB}%`]))
+    // The phone readout row carries the same two values.
+    expect(container.querySelector('.cv-read')?.textContent).toBe(
+      `Sell −2${NB}%$5.10MBuy +2${NB}%$6.08M`,
     )
   })
 
-  it('fills each side with the field of light: a halftone pattern under a ramp mask', () => {
+  it('fills each side flat, with ringed square points and the ±2 % band', () => {
     const { container } = renderCurve()
-    const patterns = container.querySelectorAll('pattern')
-    expect(patterns).toHaveLength(3)
-    expect(container.querySelector('mask g, g[mask]')).toBeTruthy()
-    expect(container.querySelectorAll('g[mask] path')).toHaveLength(2)
+    expect(container.querySelectorAll('.cv-areas path.cv-area')).toHaveLength(2)
+    expect(container.querySelector('pattern, mask, linearGradient')).toBeNull()
+    const pts = container.querySelectorAll('rect.cv-pt')
+    expect(pts).toHaveLength(6)
+    expect(pts[0]?.getAttribute('width')).toBe('12')
+    expect(pts[0]?.getAttribute('rx')).toBe('3')
+    expect(container.querySelector('rect.cv-band')).toBeTruthy()
+    expect(screen.getByText(/^Straight lines join measured points only/)).toBeTruthy()
   })
 
   it('steps through the points with the arrow keys and opens the tooltip; Escape clears', () => {
@@ -149,37 +223,93 @@ describe('DepthCurve', () => {
       `+5${NB}%, buy side: $14.3M, 14.34M${NB}USDC spent, reached`,
     )
     fireEvent.keyDown(img, { key: 'ArrowLeft' })
-    const tip = document.querySelector('.tip.is-chart')
+    const tip = document.querySelector('.tip.chart-tip')
     expect(tip?.textContent).toContain(`+2${NB}%, buy side`)
-    // Both sides list Depth, the token traded, then Price: the tooltip keeps one shape (DV2-04).
+    // Both sides list Depth, the token traded, then Price: the tooltip keeps one shape.
     expect(tip?.textContent).toContain(`Spent6.080M${NB}USDC`)
     expect(tip?.querySelectorAll('.tt-row')).toHaveLength(3)
     expect(tip?.textContent).toContain('Reached')
     for (let i = 0; i < 3; i++) fireEvent.keyDown(img, { key: 'ArrowLeft' })
-    const sold = document.querySelector('.tip.is-chart')?.textContent
+    const sold = document.querySelector('.tip.chart-tip')?.textContent
     expect(sold).toContain(`Sold2,074${NB}WETH`)
-    expect(document.querySelectorAll('.tip.is-chart .tt-row')).toHaveLength(3)
     expect(container.querySelector('.xh')).toBeTruthy()
-    expect(container.querySelector('circle[r="5"]')).toBeTruthy()
+    // The selected point grows from 12 to 16 px.
+    expect(container.querySelector('rect.cv-pt.is-on')?.getAttribute('width')).toBe('16')
     fireEvent.keyDown(img, { key: 'Escape' })
-    expect(document.querySelector('.tip.is-chart')).toBeNull()
+    expect(document.querySelector('.tip.chart-tip')).toBeNull()
     expect(container.querySelector('.xh')).toBeNull()
+  })
+
+  it('draws no plot for a snapshot with no liquidity: one sentence, then the foot row', () => {
+    const { container } = renderCurve(empty())
+    expect(container.querySelector('svg.chart-svg, figure.cv')).toBeNull()
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(container.querySelectorAll('.ax, .cv-lab, rect.cv-pt, .cv-read')).toHaveLength(0)
+    expect(container.querySelector('.cv-empty')?.textContent).toBe(
+      `No liquidity sits within 5${NB}% of the price at this snapshot.`,
+    )
+    expect(screen.getByRole('button', { name: /Show data/ })).toBeTruthy()
+    expect(screen.getByText(/^Straight lines join measured points only/)).toBeTruthy()
+  })
+
+  describe('pointer and touch', () => {
+    beforeEach(() => vi.stubGlobal('PointerEvent', TestPointerEvent))
+    afterEach(() => vi.unstubAllGlobals())
+    const tip = () => document.querySelector('.tip.chart-tip')
+    // jsdom lays nothing out: the plot starts at 0, so a point's centre is its x plus 6.
+    const xOf = (c: HTMLElement, i: number) =>
+      Number(c.querySelectorAll('rect.cv-pt')[i]?.getAttribute('x')) + 6
+    const tap = (el: Element, clientX: number) => {
+      fireEvent.pointerDown(el, { pointerType: 'touch', clientX })
+      fireEvent.pointerUp(el, { pointerType: 'touch', clientX })
+      // A lifting finger leaves the element too.
+      fireEvent.pointerLeave(el, { pointerType: 'touch', clientX })
+      fireEvent.click(el, { clientX })
+    }
+
+    it('follows a mouse and clears when it leaves the plot', () => {
+      const { container } = renderCurve()
+      const img = screen.getByRole('img')
+      fireEvent.pointerMove(img, { pointerType: 'mouse', clientX: xOf(container, 4) })
+      expect(tip()?.textContent).toContain(`+2${NB}%, buy side`)
+      fireEvent.pointerLeave(img, { pointerType: 'mouse' })
+      expect(tip()).toBeNull()
+    })
+
+    it('keeps a tapped point read after the finger lifts, until a second tap or a tap elsewhere', () => {
+      const { container } = renderCurve()
+      const img = screen.getByRole('img')
+      tap(img, xOf(container, 1))
+      expect(tip()?.textContent).toContain(`${MINUS}2${NB}%, sell side`)
+      expect(container.querySelector('rect.cv-pt.is-on')?.getAttribute('width')).toBe('16')
+      expect(container.querySelector('.xh')).toBeTruthy()
+      // A tap on the same point clears it; the next one reads it again.
+      tap(img, xOf(container, 1))
+      expect(tip()).toBeNull()
+      tap(img, xOf(container, 4))
+      expect(tip()?.textContent).toContain(`+2${NB}%, buy side`)
+      // A press anywhere outside the plot clears it.
+      fireEvent.pointerDown(document.body, { pointerType: 'touch' })
+      expect(tip()).toBeNull()
+      expect(container.querySelector('.xh')).toBeNull()
+    })
   })
 
   it('draws an exhausted side dashed with "Liquidity runs out"', () => {
     const { container } = renderCurve(exhausted())
-    expect(container.querySelector('.c-line.buy.is-exhausted')).toBeTruthy()
+    expect(container.querySelector('.cv-out.buy')).toBeTruthy()
     expect(screen.getByText('Liquidity runs out')).toBeTruthy()
   })
 
-  it('shows the per-level table and the asymmetry under Show data', () => {
+  it('shows the per-level table and the asymmetry under Show data, on a block', () => {
     renderCurve()
     fireEvent.click(screen.getByRole('button', { name: 'Show data' }))
     const row = screen.getByText(/^±2.%$/).closest('tr')
-    expect(row?.textContent).toBe(`±2${NB}%$5.10M2,074$6.08M6.080M`)
+    expect(row?.textContent).toBe(`±2${NB}%$5.10M2,074$6.08M6.080MReached`)
     const heads = screen.getAllByRole('columnheader').map((h) => h.textContent)
-    expect(heads).toEqual(['Move', 'Sell side', 'WETH sold', 'Buy side', 'USDC spent'])
+    expect(heads).toEqual(['Move', 'Sell side', 'WETH sold', 'Buy side', 'USDC spent', 'Price'])
     expect(screen.getByText(/Buying meets 19/)).toBeTruthy()
+    expect(screen.getByRole('table').closest('.band-data')).toBeTruthy()
   })
 
   it('says so in a sentence when neither side is priced', () => {

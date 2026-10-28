@@ -1,69 +1,121 @@
-/* Pool page parts (docs/design/visual-v3.md §6.3). Rhythm:
-   answer to curve 32 (24 on phones), curve to Show data 12, Show data to facts 32, facts to the
-   gap callout 16, facts to the first section 64 (32 on phones). Classes are page-prefixed. */
+/* Pool (docs/design/visual-v4.md §6.4): the title section, the band with the depth curve, the facts
+   row over the band, the sections sheet and the about panel. Page-local classes carry the `pool-`
+   prefix; the band, blocks, facts, sections and charts come from styles/ and components/.
+   Rhythm: back link, 8 to the eyebrow, 12 to the title, 12 to the price line, 24 to the band; the
+   facts row overlaps the band; 24 to the sheet, 24 to the panel. */
 
-.pool-price {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s1);
+/* ---------- Title section ---------- */
+.pool-eb {
+  margin-top: var(--s2);
 }
-.pool-fig {
-  margin-top: var(--s6);
+.pool-ttl-main {
   min-width: 0;
 }
-.pool-facts {
-  margin-top: var(--s6);
+.pool-title {
+  overflow-wrap: anywhere;
 }
-.pool-gap-callout {
-  margin-top: var(--s4);
-  font-size: var(--t-data);
-  line-height: 1.43;
-  color: var(--text-2);
+/* Each symbol links to its token page: no rule at rest, a heavy one on hover. */
+.pool-tok {
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-decoration-thickness: 0.06em;
+  text-underline-offset: 0.1em;
+  transition: text-decoration-color var(--d-hover) ease;
 }
-.pool-ts-head {
+@media (hover: hover) and (pointer: fine) {
+  .pool-tok:hover {
+    text-decoration-color: currentColor;
+  }
+}
+.pool-tok:focus-visible {
+  border-radius: 8px;
+}
+.pool-line {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--s4);
   flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: var(--s3);
+  font-size: var(--t-pair);
+  font-weight: 650;
+  line-height: 1.3;
 }
-.pool-more-series {
+.pool-error {
   margin-top: var(--s5);
 }
 
-/* Mandates on this pool: the scorecards-list row. */
-
-/* Loading (ST1): the final heights. */
-.pool-skel-answer {
+/* ---------- The band ---------- */
+.pool-band-empty {
   margin-top: var(--s4);
 }
-.pool-skel-curve {
-  margin-top: var(--s6);
+
+/* ---------- Facts row over the band, then the sheet and the about panel ---------- */
+.pool-facts .facts-note .ulink {
+  white-space: nowrap;
 }
-.pool-skel-facts {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--s6);
-  margin-top: 44px;
+.pool-rest {
+  margin-top: var(--s5);
 }
-.pool-skel-facts > span {
-  display: grid;
-  gap: 6px;
+.pool-ts-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s4);
+}
+.pool-ts-cap {
+  max-width: 70ch;
 }
 
+/* Mandates on this pool: the rows say it; on phones the finding would repeat their status words. */
 @media (max-width: 52.49em) {
-  .pool-fig {
-    margin-top: var(--s5);
-  }
-  /* The rows say it; the takeaway would repeat their status words. */
   .pool-sec-mm .takeaway {
     display: none;
   }
-  .pool-skel-curve {
-    margin-top: var(--s5);
-  }
+}
+
+/* ---------- Loading (ST1): the final sizes ---------- */
+.pool-skel-text {
+  display: grid;
+}
+.pool-skel-line {
+  display: block;
+  height: 1lh;
+  padding-block: 0.14em;
+}
+.pool-skel-band {
+  gap: 0;
+}
+.pool-skel-legend {
+  display: flex;
+  justify-content: space-between;
+  height: 18px;
+  align-items: center;
+}
+.pool-skel-read {
+  margin-top: var(--s4);
+}
+.pool-skel-curve {
+  margin-top: var(--s4);
+}
+.pool-skel-foot {
+  margin-block: 24px 12px;
+}
+.pool-skel-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s5) var(--s4);
+}
+.pool-skel-facts > span {
+  display: grid;
+  gap: var(--s2);
+  align-content: start;
+}
+.pool-skel-facts .skel {
+  background: var(--g80);
+}
+@media (min-width: 64em) {
   .pool-skel-facts {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--s4);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--s6);
   }
 }

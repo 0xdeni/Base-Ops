@@ -1,9 +1,12 @@
 /**
- * The two previews below Home's facts (ia-v3 §4.1, docs/design/visual-v3.md §6.1): "Where
- * liquidity is thin" (at most 3 pools trading 3× their depth or more) and "Market makers on the
- * record" (at most 3 mandates). Each heading row carries its "See all" link (shortened to "See
- * all" on phones, with the full name kept as its accessible name), then one takeaway and a ruled
- * row list whose rows are links. The full feeds live on /gaps and /mm (P7).
+ * The two previews under Home's facts (P7, docs/design/visual-v4.md §6.2), at most 3 rows each:
+ * - "where liquidity is thin" (7 columns): the count sentence, the three biggest gaps as rows
+ *   (pool, "Trades 205× its depth a day", the turnover glyph and the gap score), then "See all
+ *   gaps" and the glyph's caption;
+ * - "market makers on the record" (5 columns): with no mandate, one destination panel saying so
+ *   and what a scorecard is; with mandates, their rows (status, name, market maker and pool, 7 d
+ *   uptime against its target) and "See all scorecards".
+ * The full feeds live on /gaps and /mm.
  */
 import type { UseQueryResult } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -17,43 +20,57 @@ import type {
   ScorecardsResponse,
 } from '../../api/types.js'
 import { TurnoverGlyph } from '../../components/charts/index.js'
+import { Block, blockClass } from '../../components/ui/Block.js'
 import { Glossary } from '../../components/ui/Glossary.js'
 import { MandateRow } from '../../components/ui/MandateRow.js'
-import { SectionError } from '../../components/ui/States.js'
-import { pairLabel, poolDesc, poolHref, ratio, shortAddress } from '../../lib/format.js'
+import { SectionError, Skeleton } from '../../components/ui/States.js'
+import { pairLabel, poolDesc, poolHref, ratio, score, shortAddress } from '../../lib/format.js'
 import { splitPoolId } from '../../lib/scorecard.js'
-import { GAPS_QUIET_LINE, GLOSS, gapsTakeaway, mandatesTakeaway, tradesLine } from './copy.js'
+import {
+  GAPS_QUIET_LINE,
+  gapsTakeaway,
+  KPIS_DEFINITION,
+  mandatesTakeaway,
+  noMandates,
+  SCORECARD_LINE,
+} from './copy.js'
 
 /** Rows in each preview (P7: previews hold at most 3 rows and link out). */
 export const PREVIEW_ROWS = 3
 
+const GAPS_TITLE = 'where liquidity is thin'
+const MM_TITLE = 'market makers on the record'
+
+/** A preview block: the lowercase heading and its one sentence, then the rows and the foot. */
 function Preview({
   id,
   title,
-  more,
+  span,
+  panel = false,
   takeaway,
+  busy = false,
   children,
 }: {
   id: string
   title: string
-  /** The "See all" link: its full name ("See all gaps") and where it goes. */
-  more?: { to: string; name: string; tail: string }
+  span: 5 | 7
+  panel?: boolean
   takeaway: ReactNode
+  busy?: boolean
   children?: ReactNode
 }) {
   return (
-    <section className="preview" aria-labelledby={id}>
-      <div className="pv-head">
+    <section
+      className={blockClass({ variant: panel ? 'panel' : 'plain', span, className: 'home-pv' })}
+      aria-labelledby={id}
+      aria-busy={busy || undefined}
+    >
+      <div className="blk-head">
         <h2 className="h2" id={id}>
           {title}
         </h2>
-        {more ? (
-          <Link className="plink go" to={more.to} aria-label={more.name}>
-            See all<span className="go-long"> {more.tail}</span>
-          </Link>
-        ) : null}
+        {takeaway ? <p className="take">{takeaway}</p> : null}
       </div>
-      <p className="takeaway">{takeaway}</p>
       {children}
     </section>
   )
@@ -61,21 +78,55 @@ function Preview({
 
 function GapRow({ item }: { item: GapItem }) {
   const pool = item.pool.pool
+  const pair = pairLabel(pool.token0, pool.token1)
+  const r = ratio(item.gap.turnoverRatio)
   return (
     <li>
-      <div className="rl-row pv-row">
-        <div className="cell-pool">
-          <Link className="pp rl-link" to={poolHref(pool.id)}>
-            {pairLabel(pool.token0, pool.token1)}
+      <div className="rl-row home-gap-row">
+        <span className="cell-pool">
+          <Link
+            className="pp rl-link"
+            to={poolHref(pool.id)}
+            aria-label={`${pair}, ${poolDesc(pool)}: trades ${r} its depth a day, gap score ${score(item.gap.gapScore)}`}
+          >
+            {pair}
           </Link>
           <span className="pd">{poolDesc(pool)}</span>
-          <span className="pd">{tradesLine(ratio(item.gap.turnoverRatio))}</span>
-        </div>
+        </span>
+        <span className="row-say">
+          <span className="long">Trades </span>
+          {r}
+          <span className="long"> its depth a day</span>
+        </span>
         <TurnoverGlyph gapScore={item.gap.gapScore} />
       </div>
     </li>
   )
 }
+
+/** The sentence, static rows and the foot's line under a preview's heading while it loads (ST1). */
+function SkeletonBody({ waiting }: { waiting: boolean }) {
+  const cls = waiting ? ' is-waiting' : ''
+  return (
+    <>
+      <ul className={`rowlist is-ruled home-skel-rows${cls}`} aria-hidden="true">
+        {[0, 1, 2].map((i) => (
+          <li key={i} className="rl-row">
+            <Skeleton height={15} width="40%" />
+          </li>
+        ))}
+      </ul>
+      <span className={`blk-foot home-skel-foot${cls}`} aria-hidden="true">
+        <Skeleton height={15} width="12ch" />
+      </span>
+    </>
+  )
+}
+
+/** The takeaway's line while the preview loads. */
+const skeletonTake = (waiting: boolean) => (
+  <Skeleton height="1lh" width="28ch" className={waiting ? 'is-waiting' : undefined} />
+)
 
 export function GapsPreview({
   gaps,
@@ -88,31 +139,39 @@ export function GapsPreview({
   /** Loading for under 300 ms: the skeleton holds its space unseen (M10). */
   waiting: boolean
 }) {
-  const more = { to: '/gaps', name: 'See all gaps', tail: 'gaps' }
+  const foot = (caption: boolean) => (
+    <div className="blk-foot">
+      <Link className="ulink touch-hit" to="/gaps">
+        See all gaps
+      </Link>
+      {caption ? <span className="cap">Gap score 0–100; the tick marks 3× turnover</span> : null}
+    </div>
+  )
   if (gaps.isError)
     return (
-      <Preview id="home-gaps" title="Where liquidity is thin" more={more} takeaway={null}>
+      <Preview id="home-gaps" title={GAPS_TITLE} span={7} takeaway={null}>
         <SectionError what="the gaps" onRetry={() => void gaps.refetch()} />
+        {foot(false)}
       </Preview>
     )
   if (!meaningful)
-    return <PreviewSkeleton id="home-gaps" title="Where liquidity is thin" waiting={waiting} />
+    return (
+      <Preview id="home-gaps" title={GAPS_TITLE} span={7} takeaway={skeletonTake(waiting)} busy>
+        <SkeletonBody waiting={waiting} />
+      </Preview>
+    )
   const shown = meaningful.slice(0, PREVIEW_ROWS)
   return (
-    <Preview
-      id="home-gaps"
-      title="Where liquidity is thin"
-      more={more}
-      takeaway={gapsTakeaway(meaningful.length)}
-    >
+    <Preview id="home-gaps" title={GAPS_TITLE} span={7} takeaway={gapsTakeaway(meaningful.length)}>
       {shown.length > 0 ? (
-        <ol className="rowlist is-ruled pv-rows">
+        <ul className="rowlist is-ruled">
           {shown.map((g) => (
             <GapRow key={g.pool.pool.id} item={g} />
           ))}
           {shown.length < PREVIEW_ROWS ? <li className="rl-quiet">{GAPS_QUIET_LINE}</li> : null}
-        </ol>
+        </ul>
       ) : null}
+      {foot(shown.length > 0)}
     </Preview>
   )
 }
@@ -126,11 +185,14 @@ function poolName(poolId: string, meta: PoolMetaDto | undefined): string {
 export function MandatesPreview({
   scorecards,
   pools,
+  snapshot,
   waiting,
 }: {
   scorecards: UseQueryResult<ScorecardsResponse>
   /** Every scored pool, for the mandated pools' names. */
   pools: readonly PoolSummary[] | undefined
+  /** The page shows a published snapshot, which speaks of itself as one. */
+  snapshot: boolean
   waiting: boolean
 }) {
   const items = scorecards.data?.items
@@ -139,47 +201,48 @@ export function MandatesPreview({
   // Mandated pools that are not scored are looked up one by one (they share the pool page's cache).
   const missing = pools ? shown.map((s) => s.mandate.poolId).filter((id) => !known.has(id)) : []
   const metas = usePoolMetas(missing)
-  const title = 'Market makers on the record'
-  const more = { to: '/mm', name: 'See all scorecards', tail: 'scorecards' }
   if (scorecards.isError)
     return (
-      <Preview id="home-mm" title={title} more={more} takeaway={null}>
+      <Preview id="home-mm" title={MM_TITLE} span={5} panel takeaway={null}>
         <SectionError what="the scorecards" onRetry={() => void scorecards.refetch()} />
       </Preview>
     )
-  if (!items) return <PreviewSkeleton id="home-mm" title={title} waiting={waiting} />
+  if (!items)
+    return (
+      <Preview id="home-mm" title={MM_TITLE} span={5} panel takeaway={skeletonTake(waiting)} busy>
+        <SkeletonBody waiting={waiting} />
+      </Preview>
+    )
   if (items.length === 0)
     return (
-      <Preview
-        id="home-mm"
-        title={title}
-        takeaway={
-          <>
-            No market-maker mandates registered yet.{' '}
-            <Link className="plink" to="/methodology#scorecards">
-              How scorecards work
-            </Link>
-          </>
-        }
-      />
+      <Block variant="panel" span={5} to="/methodology#scorecards" className="home-pv home-mm">
+        <span className="blk-head">
+          <h2 className="h2" id="home-mm">
+            {MM_TITLE}
+          </h2>
+          <span className="take">{noMandates(snapshot)}</span>
+        </span>
+        <span className="take">{SCORECARD_LINE}</span>
+        <span className="ulink">How scorecards work</span>
+      </Block>
     )
   const words = mandatesTakeaway(items)
   return (
     <Preview
       id="home-mm"
-      title={title}
-      more={more}
+      title={MM_TITLE}
+      span={5}
       takeaway={
         <>
           {words.before}
-          <Glossary definition={GLOSS.kpis} anchor="scorecards">
+          <Glossary definition={KPIS_DEFINITION} anchor="scorecards">
             KPIs
           </Glossary>
           {words.after}
         </>
       }
     >
-      <ol className="rowlist is-ruled pv-rows">
+      <ol className="rowlist is-ruled">
         {shown.map((s) => (
           <MandateRow
             key={s.mandate.id}
@@ -191,20 +254,11 @@ export function MandatesPreview({
           />
         ))}
       </ol>
-    </Preview>
-  )
-}
-
-/** A preview's heading with static row blocks while its list loads (ST1). */
-function PreviewSkeleton({ id, title, waiting }: { id: string; title: string; waiting: boolean }) {
-  const cls = waiting ? ' is-waiting' : ''
-  return (
-    <Preview id={id} title={title} takeaway={<span className={`skel-text home-skel-take${cls}`} />}>
-      <ol className={`rowlist is-ruled pv-rows${cls}`} aria-hidden="true">
-        {[0, 1].map((i) => (
-          <li key={i} className="pv-skel-row" />
-        ))}
-      </ol>
+      <div className="blk-foot">
+        <Link className="ulink touch-hit" to="/mm">
+          See all scorecards
+        </Link>
+      </div>
     </Preview>
   )
 }
