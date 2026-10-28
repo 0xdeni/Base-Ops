@@ -15,7 +15,9 @@ this page explains it.
   rounding as the contracts. Conversion to `number` happens once, at the human-facing edge
   (`rawToHuman`), never in the middle of a computation.
 - **Hermetic tests.** Chain code is exercised through a fixture transport that answers JSON-RPC
-  requests from recorded data. Nothing in `pnpm test` opens a socket.
+  requests from recorded data. `pnpm test` never reaches the network: the only sockets are loopback
+  servers on `127.0.0.1` that a test starts itself (the API, `serve` and `start` servers, a webhook
+  receiver, a fixture JSON-RPC endpoint).
 - **Never extrapolate.** A pool state carries the tick range it is known for. Simulations stop at
   the boundary and report `complete = false` rather than invent liquidity.
 
@@ -661,4 +663,4 @@ dashboard is a Vite + React 19 app with TanStack Query; the dev server proxies `
   one `breached`); webhook delivery against a local HTTP server on `127.0.0.1`.
 - **web:** component and client tests under jsdom against the mock client.
 
-`pnpm test` runs all of it in a few seconds and needs no network.
+`pnpm test` runs all of it in a minute or two and needs no network.
