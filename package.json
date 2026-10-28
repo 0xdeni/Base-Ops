@@ -23,7 +23,7 @@
     "depthwatch": "tsx apps/cli/src/main.ts"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.2.0",
+    "@biomejs/biome": "^2.6.3",
     "@types/node": "^22.18.0",
     "jsdom": "^26.1.0",
     "tsx": "^4.20.0",
