@@ -14,7 +14,7 @@ import { Glossary } from '../../components/ui/Glossary.js'
 import { Section } from '../../components/ui/Section.js'
 import { TableScroll } from '../../components/ui/TableScroll.js'
 import { Unknown } from '../../components/ui/Unknown.js'
-import { count, NB, price, scoreExact, shareOf, usd } from '../../lib/format.js'
+import { count, NB, price, scoreExact, shareOf, tokenText, usd } from '../../lib/format.js'
 import { unratedDetail } from '../../lib/rating.js'
 import {
   costTakeaway,
@@ -140,7 +140,7 @@ export function CostSection({ detail }: { detail: PoolDetail }) {
               </tbody>
             </table>
             <p className="tbl-note">
-              Average prices in {token1.symbol} per {token0.symbol}, fees included.
+              Average prices in {tokenText(token1)} per {tokenText(token0)}, fees included.
             </p>
           </TableScroll>
         ),

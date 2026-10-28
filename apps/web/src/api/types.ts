@@ -35,7 +35,11 @@ import type {
   UptimeWindow,
 } from '@depthwatch/core'
 
-export type PoolMetaDto = Jsonified<PoolMeta>
+/** A token on the wire: `label` tells apart tokens sharing a symbol (absent from older servers). */
+export type TokenDto = TokenInfo & { label?: string }
+export type PoolMetaDto = Jsonified<
+  Omit<PoolMeta, 'token0' | 'token1'> & { token0: TokenDto; token1: TokenDto }
+>
 export type PoolSnapshotDto = Jsonified<PoolSnapshot>
 export type DepthLevelDto = Jsonified<DepthLevel>
 export type {
@@ -279,6 +283,8 @@ export interface HistoryPoint {
   tvlUsd: number | null
   /** Liquidity Health Score total (0..100) at this snapshot. */
   health: number
+  /** The LP fee (pips) this snapshot used; null when stored before it, absent from older servers. */
+  feePips?: number | null
 }
 
 /** `GET /api/pools/:id/history?window=`. The window ends at the pool's newest snapshot. */
@@ -309,7 +315,7 @@ export interface GapsResponse {
 
 /** `GET /api/tokens/:address` */
 export interface TokenDetail {
-  token: TokenInfo
+  token: TokenDto
   /** Derived USD price; null when the token is unreachable from the stable anchors. */
   usd: number | null
   /**

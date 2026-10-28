@@ -3,8 +3,11 @@
  * and §7). The web formats and draws only; metrics come from `@depthwatch/core`.
  * Units are glued with a no-break space (U+00A0), minus is U+2212, unknown is "—" (D6).
  */
-import { DEXES, type Dex, type HealthGrade, type TokenInfo } from '@depthwatch/core'
+import { DEXES, type Dex, type HealthGrade, hasDynamicFee, type TokenInfo } from '@depthwatch/core'
 import { groupDigits, rawToDecimal } from './raw.js'
+import { type NamedToken, unitText } from './tokenNames.js'
+
+export { type NamedToken, pairLabel, tokenText, unitText } from './tokenNames.js'
 
 /** No-break space: between a number and its unit or % (N7). */
 export const NB = ' '
@@ -195,16 +198,32 @@ export function amount(raw: string | null | undefined, decimals: number): string
   return `${sign}${body}`
 }
 
-/** `amount` plus the token's symbol: "1,250 USDC". */
-export function tokenAmount(raw: string | null | undefined, token: TokenInfo): string {
+/**
+ * `amount` plus the token as its unit: "1,250 USDC". With the pool's `other` token, the unit is
+ * `unitText`, so an amount in an AERO/AERO pool says which AERO.
+ */
+export function tokenAmount(
+  raw: string | null | undefined,
+  token: TokenInfo & NamedToken,
+  other?: NamedToken,
+): string {
   const text = amount(raw, token.decimals)
-  return text === DASH ? DASH : `${text}${NB}${token.symbol}`
+  return text === DASH ? DASH : `${text}${NB}${other ? unitText(token, other) : token.symbol}`
 }
 
 /** Fee in pips (1e-6): "0.05 %", "0.3 %", "1 %". */
 export function fee(feePips: number): string {
   const text = (feePips / 10_000).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')
   return `${text}${NB}%`
+}
+
+/**
+ * A pool's fee where it names the pool: "0.3 %", or "0.0465 % dynamic" for a DEX whose fee can
+ * change every block (core `hasDynamicFee`: both Slipstreams), where it is the latest snapshot's
+ * (the reading at discovery for a pool never snapshotted).
+ */
+export function feeText(pool: { dex: string; feePips: number }): string {
+  return `${fee(pool.feePips)}${hasDynamicFee(pool) ? ' dynamic' : ''}`
 }
 
 /** A count with grouping: "1,284". */
@@ -311,6 +330,8 @@ export const DEX_LABEL: Readonly<Record<Dex, string>> = {
   'uniswap-v4': 'Uniswap v4',
   'aerodrome-v2': 'Aerodrome v2',
   'aerodrome-slipstream': 'Aerodrome Slipstream',
+  'aero-v2': 'Aero v2',
+  'aero-slipstream': 'Aero Slipstream',
 }
 
 export function dexLabel(dex: string): string {
@@ -326,12 +347,8 @@ export function poolDesc(
   pool: { dex: string; feePips: number; stable?: boolean },
   tieBreak?: string,
 ): string {
-  const desc = `${dexLabel(pool.dex)}, ${fee(pool.feePips)}${pool.stable ? ', stable pair' : ''}`
+  const desc = `${dexLabel(pool.dex)}, ${feeText(pool)}${pool.stable ? ', stable pair' : ''}`
   return tieBreak ? `${desc}, ${tieBreak}` : desc
-}
-
-export function pairLabel(token0: Pick<TokenInfo, 'symbol'>, token1: Pick<TokenInfo, 'symbol'>) {
-  return `${token0.symbol} / ${token1.symbol}`
 }
 
 /** Grade bands (C4): A–B ok (circle), C warn (square), D–F bad (triangle). */

@@ -260,7 +260,7 @@ describe('demo line and footer (ia-v3 §3.1, §3.3)', () => {
     renderAt('/mm')
     const footer = screen.getByRole('contentinfo')
     expect(footer.querySelector('.foot-say')?.textContent).toBe(
-      'Open source and read-only. No token, no custody. Built on Base: it indexes Uniswap and Aerodrome pools on Base mainnet. Data: the in-repo mock.',
+      'Open source and read-only. No token, no custody. Built on Base: it indexes Uniswap, Aerodrome and Aero pools on Base mainnet. Data: the in-repo mock.',
     )
     expect(footer.querySelector('img, svg[aria-label]')).toBeNull()
     const href = (name: string) => within(footer).getByRole('link', { name }).getAttribute('href')

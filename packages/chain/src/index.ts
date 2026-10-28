@@ -1,6 +1,8 @@
 export * from './abi/index.js'
 export { slipstreamPoolId } from './adapters/aerodromeSlipstream.js'
 export { aerodromeV2PoolId, bpsToPips } from './adapters/aerodromeV2.js'
+export { aeroSlipstreamPoolId } from './adapters/aeroSlipstream.js'
+export { aeroV2PoolId } from './adapters/aeroV2.js'
 export { ADAPTERS } from './adapters/index.js'
 export { uniswapV3PoolId } from './adapters/uniswapV3.js'
 export {
@@ -30,6 +32,12 @@ export {
   redactUrls,
   statedMaxLogRange,
 } from './internal/logErrors.js'
+export {
+  isPoolConfigChangedError,
+  type PoolConfigChange,
+  PoolConfigChangedError,
+  poolConfigFix,
+} from './internal/poolErrors.js'
 export {
   bitmapPosition,
   coveragePct,

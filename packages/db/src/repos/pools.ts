@@ -19,15 +19,26 @@ export interface PoolListOptions extends PoolFilter {
   offset?: number
 }
 
+/** A pool with a snapshot keeps its fee: the snapshot step writes it (`setFees`), nothing else. */
 const UPSERT = `INSERT INTO pools (
     id, dex, kind, address, pool_id, token0, token1, fee_pips, tick_spacing, stable, hooks,
     created_at_block, tracked, first_seen_at
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
   ON CONFLICT(id) DO UPDATE SET
     dex = excluded.dex, kind = excluded.kind, address = excluded.address, pool_id = excluded.pool_id,
-    token0 = excluded.token0, token1 = excluded.token1, fee_pips = excluded.fee_pips,
+    token0 = excluded.token0, token1 = excluded.token1,
+    fee_pips = CASE WHEN EXISTS (SELECT 1 FROM snapshots s WHERE s.pool_id = excluded.id)
+      THEN pools.fee_pips ELSE excluded.fee_pips END,
     tick_spacing = excluded.tick_spacing, stable = excluded.stable, hooks = excluded.hooks,
     created_at_block = excluded.created_at_block`
+
+const SET_FEE = 'UPDATE pools SET fee_pips = ? WHERE id = ? AND fee_pips <> ?'
+
+/** The LP fee a snapshot's state read for one pool (`PoolSnapshot.feePips`). */
+export interface PoolFee {
+  id: string
+  feePips: number
+}
 
 const ORDER = 'ORDER BY p.id'
 
@@ -40,7 +51,9 @@ export class PoolsRepo {
 
   /**
    * Inserts or updates pool metadata, together with the embedded token0/token1 rows.
-   * `tracked` and `first_seen_at` are preserved for pools already known.
+   * `tracked` and `first_seen_at` are preserved for pools already known, and so is `fee_pips` once
+   * the pool has a snapshot: from then on it is the latest snapshot's reading (`setFees`), which a
+   * discovery or seeding reading taken at another block must not replace.
    */
   upsertMany(pools: readonly PoolMeta[]): number {
     if (pools.length === 0) return 0
@@ -66,6 +79,22 @@ export class PoolsRepo {
         ])
       }
       return pools.length
+    })
+  }
+
+  /**
+   * Writes only the fee column of each pool: what the snapshot step stores for every pool it
+   * snapshotted, in the transaction that stores the snapshots. No other column is touched, so a
+   * `discover --seed` that rewrote a pool's `hooks` meanwhile keeps its write. Unknown ids are
+   * skipped. Returns the number of pools whose stored fee changed.
+   */
+  setFees(fees: readonly PoolFee[]): number {
+    if (fees.length === 0) return 0
+    return this.ctx.transaction(() => {
+      let changed = 0
+      for (const { id, feePips } of fees)
+        changed += this.ctx.run(SET_FEE, [feePips, id, feePips]).changes
+      return changed
     })
   }
 

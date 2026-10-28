@@ -2,7 +2,7 @@
  * The README's first steps and measured figures match what the CLI does. Its Quick start opens
  * with the seed, which reads factory views, rather than a factory-log scan of about 97,000
  * requests; its status points at a dated record of what has run on Base; and its free-RPC volume
- * cost quotes the same first-pass figure as docs/ARCHITECTURE.md, three event sources for four
+ * cost quotes the same first-pass figure as docs/ARCHITECTURE.md, three event sources for six
  * DEXes.
  */
 import { readFileSync } from 'node:fs'
@@ -63,8 +63,11 @@ describe('README: what has run on Base', () => {
 describe('README and docs/ARCHITECTURE.md: volume cost on a 10-block plan', () => {
   const freeRpc = flat(section(readme, '### Running on a free RPC'))
 
-  it('counts per event source, three for four DEXes, not per DEX', () => {
-    expect(freeRpc).toMatch(/per 10 blocks per event source \(three: Uniswap v3 and Slipstream/)
+  it('counts per event source, three for six DEXes, not per DEX', () => {
+    expect(freeRpc).toMatch(
+      /per 10 blocks per event source \(three for six DEXes: Uniswap v3 and both Slipstreams share one, Aerodrome v2 and Aero v2 another\)/,
+    )
+    expect(freeRpc).toContain('with all six DEXes tracked')
     expect(freeRpc).not.toMatch(/per DEX/)
   })
 

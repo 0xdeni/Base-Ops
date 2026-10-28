@@ -32,7 +32,7 @@ import {
 
 const COLUMNS = `id, pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd,
   active_liquidity, depth_json, depth_usd_json, spreads_json, concentration_json,
-  depth2_usd, spread10k_bps, owner_top1_share, price_deviation_bps`
+  depth2_usd, spread10k_bps, owner_top1_share, price_deviation_bps, fee_pips`
 
 const SUMMARY_COLUMNS = `id, pool_id, block_number, timestamp, price, tvl_usd,
   depth2_usd, owner_top1_share, price_deviation_bps`
@@ -74,8 +74,11 @@ const SUMMARY_OUTER = `${SUMMARY_COLUMNS},
   ${depth2SideSql('depth_usd_json', 'downUsd')} AS depth2_down_usd,
   ${spread10kPointSql('spreads_json')} AS spread10k_point`
 
-/** The summary columns plus the range HHI and owner coverage: what a history series is scored from. */
-const HEALTH_SUMMARY = `${SUMMARY_OUTER},
+/**
+ * The summary columns plus the range HHI and owner coverage (what a history series is scored
+ * from) and the fee the snapshot used.
+ */
+const HEALTH_SUMMARY = `${SUMMARY_OUTER}, fee_pips,
   json_extract(concentration_json, '$.rangeHhi') AS range_hhi,
   json_extract(concentration_json, '$.owners.coverage') AS owner_coverage`
 
@@ -83,8 +86,8 @@ const HEALTH_SUMMARY = `${SUMMARY_OUTER},
 const INSERT = `INSERT OR IGNORE INTO snapshots (
     pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd, active_liquidity,
     depth_json, depth_usd_json, spreads_json, concentration_json,
-    depth2_usd, spread10k_bps, owner_top1_share, price_deviation_bps
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    depth2_usd, spread10k_bps, owner_top1_share, price_deviation_bps, fee_pips
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 /**
  * Newest row per pool: highest timestamp, then highest id (insertion order) as the tie-break.
@@ -116,6 +119,7 @@ export function rowToSnapshot(row: Row): PoolSnapshot {
       colJsonOrNull<ConcentrationMetrics>(row, 'concentration_json'),
     ),
     priceDeviationBps: colNumberOrNull(row, 'price_deviation_bps'),
+    feePips: colNumberOrNull(row, 'fee_pips'),
   }
 }
 
@@ -154,6 +158,7 @@ export function rowToSnapshotHealthSummary(row: Row): SnapshotHealthSummary {
     ...rowToSnapshotSummary(row),
     rangeHhi: colNumberOrNull(row, 'range_hhi'),
     ownerCoverage: colNumberOrNull(row, 'owner_coverage'),
+    feePips: colNumberOrNull(row, 'fee_pips'),
   }
 }
 
@@ -183,6 +188,7 @@ export class SnapshotsRepo {
       summary.spread10kBps,
       summary.ownerTop1Share,
       snapshot.priceDeviationBps,
+      snapshot.feePips,
     ])
     return changes === 0 ? null : lastInsertRowid
   }

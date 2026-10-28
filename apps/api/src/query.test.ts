@@ -1,3 +1,4 @@
+import { DEXES } from '@depthwatch/core'
 import { describe, expect, it } from 'vitest'
 import {
   gapsQuerySchema,
@@ -70,6 +71,15 @@ describe('poolsQuerySchema', () => {
         offset: 10,
       },
     })
+  })
+
+  it('accepts every DEXES id, the Aero ones included, and only those', () => {
+    for (const dex of DEXES) {
+      const parsed = parseQuery(poolsQuerySchema, { dex })
+      expect(parsed.ok && parsed.data.dex, dex).toBe(dex)
+    }
+    expect(parseQuery(poolsQuerySchema, { dex: 'aero' }).ok).toBe(false)
+    expect(parseQuery(poolsQuerySchema, { dex: 'Aero-V2' }).ok).toBe(false)
   })
 
   it.each([

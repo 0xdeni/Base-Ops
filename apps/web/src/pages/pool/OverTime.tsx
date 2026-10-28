@@ -21,7 +21,7 @@ import { SegmentedControl } from '../../components/ui/SegmentedControl.js'
 import { SectionError, Skeleton, useDelayedPending } from '../../components/ui/States.js'
 import { TableScroll } from '../../components/ui/TableScroll.js'
 import { TextChange } from '../../components/ui/TextChange.js'
-import { bps, count, NB, price, score, uptime, usd } from '../../lib/format.js'
+import { bps, count, NB, price, score, tokenText, uptime, usd } from '../../lib/format.js'
 import { baseQuote } from '../../lib/orient.js'
 import { useIsPhone } from '../../lib/useMediaQuery.js'
 import { overTimeCaption, persistenceParts, tooFewTakeaway } from './poolText.js'
@@ -93,7 +93,7 @@ function moreSeries(
     })
   out.push({
     key: 'price',
-    label: `Price, ${quote.symbol} per ${base.symbol}`,
+    label: `Price, ${tokenText(quote)} per ${tokenText(base)}`,
     height: 120,
     value: (pt) => (inverted ? (pt.price > 0 ? 1 / pt.price : null) : pt.price),
     format: price,

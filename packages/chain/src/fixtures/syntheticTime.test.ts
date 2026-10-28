@@ -4,7 +4,13 @@
  * their bounds, the scripted market-maker events happen at the stated times (seen through the
  * reader, as the pipeline sees them), position logs and swaps form one history across epochs.
  */
-import { type ConcentratedState, DEXES, type PoolMeta, sqrtPriceX96ToPrice } from '@depthwatch/core'
+import {
+  type ConcentratedState,
+  DEXES,
+  hasDynamicFee,
+  type PoolMeta,
+  sqrtPriceX96ToPrice,
+} from '@depthwatch/core'
 import { describe, expect, it } from 'vitest'
 import { createChainReader } from '../reader.js'
 import { createFixtureTransport } from '../transport/fixture.js'
@@ -47,6 +53,9 @@ async function discoverAll(reader: ReturnType<typeof readerAt>, toBlock: bigint)
   for (const dex of DEXES) pools.push(...(await reader.discoverPools(dex, 1n, toBlock)))
   return pools
 }
+
+/** A pool's identity: everything but the fee of a pool whose fee is a reading of the block. */
+const identity = (pool: PoolMeta) => (hasDynamicFee(pool) ? { ...pool, feePips: 0 } : pool)
 
 function poolById(pools: readonly PoolMeta[], id: string): PoolMeta {
   const pool = pools.find((p) => p.id === id)
@@ -107,8 +116,17 @@ describe('createSyntheticFixture with an epoch', () => {
     const late = readerAt({ epochTimestamp: NOW })
     const head = SYNTHETIC_DEFAULTS.latestBlock
     const pools = await discoverAll(early, head - 302_400n)
-    expect(pools).toHaveLength(6)
-    expect(await discoverAll(late, head)).toEqual(pools)
+    expect(pools).toHaveLength(8)
+    const latePools = await discoverAll(late, head)
+    expect(latePools.map(identity)).toEqual(pools.map(identity))
+    // The Aero Slipstream pool's hook fee is the hour's reading, between its base fee and cap.
+    const aeroFee = (list: PoolMeta[]) =>
+      poolById(list, SYNTHETIC_POOL_IDS.wethUsdcAeroSlipstream).feePips
+    expect(aeroFee(latePools)).not.toBe(aeroFee(pools))
+    for (const fee of [aeroFee(pools), aeroFee(latePools)]) {
+      expect(fee).toBeGreaterThanOrEqual(225)
+      expect(fee).toBeLessThanOrEqual(5_000)
+    }
     const v3 = poolById(pools, SYNTHETIC_POOL_IDS.wethUsdcV3)
     const prices: number[] = []
     const liquidity: bigint[] = []
@@ -122,7 +140,7 @@ describe('createSyntheticFixture with an epoch', () => {
       expect(Math.abs(price / SYNTHETIC_PRICES.ETH - 1)).toBeLessThan(0.04)
     expect(Math.max(...prices) / Math.min(...prices)).toBeGreaterThan(1.01)
     expect(new Set(liquidity).size).toBeGreaterThan(5)
-    for (let pool = 0; pool < 6; pool++)
+    for (let pool = 0; pool < 8; pool++)
       for (let hour = NOW / HOUR - 8 * 24; hour <= NOW / HOUR; hour++) {
         const f = liquidityFactor(1, pool, 0, hour)
         expect(f).toBeGreaterThanOrEqual(0.75)

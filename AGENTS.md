@@ -1,9 +1,9 @@
 # AGENTS.md
 
 Depthwatch is an open-source (MIT) liquidity observatory for Base mainnet: it indexes Uniswap
-v3/v4 and Aerodrome pools and publishes depth at ±1/2/5 %, effective spread, LP concentration,
-persistence, a Liquidity Health Score and market-maker scorecards through a CLI pipeline, a Hono
-API and a React dashboard. No token, no custody, no trading.
+v3/v4, Aerodrome and Aero pools and publishes depth at ±1/2/5 %, effective spread, LP
+concentration, persistence, a Liquidity Health Score and market-maker scorecards through a CLI
+pipeline, a Hono API and a React dashboard. No token, no custody, no trading.
 
 This file is for coding agents working on this repository. An agent that wants to use a running
 Depthwatch API reads `GET /AGENTS.md` on that server instead (source:

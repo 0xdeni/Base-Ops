@@ -294,12 +294,27 @@ describe('discoverStep: request budget', () => {
   it('announces a first scan of any DEX from its deployment at the default 2 000-block chunks', () => {
     const chunk = BigInt(loadConfig({}).logChunkSize)
     expect(chunk).toBe(2_000n)
-    // A head on 2026-10-25; every DEX's first scan is far past the threshold.
+    // A head on 2026-10-25; every first scan of the older DEXes is far past the threshold. Aero's
+    // factories date from 2026-10-21, so its first scans are short.
     const head = 53_061_869n
+    const young = new Set<string>(['aero-v2', 'aero-slipstream'])
     for (const dex of DEXES) {
       const chunks = (head - defaultStartBlock(BASE_ADDRESSES, dex) + chunk) / chunk
-      expect(chunks, dex).toBeGreaterThan(DISCOVER_WARN_CHUNKS)
+      if (young.has(dex)) expect(chunks, dex).toBeLessThan(DISCOVER_WARN_CHUNKS)
+      else expect(chunks, dex).toBeGreaterThan(DISCOVER_WARN_CHUNKS)
     }
+  })
+
+  it("starts the Aero DEXes at their factories' first blocks", () => {
+    expect(defaultStartBlock(BASE_ADDRESSES, 'aero-v2')).toBe(52_880_042n)
+    expect(defaultStartBlock(BASE_ADDRESSES, 'aero-slipstream')).toBe(52_881_649n)
+    const later = { ...BASE_ADDRESSES.aeroSlipstream[0]!, name: 'later', startBlock: 53_000_000n }
+    const addresses = {
+      ...BASE_ADDRESSES,
+      aeroSlipstream: [later, ...BASE_ADDRESSES.aeroSlipstream],
+    }
+    expect(defaultStartBlock(addresses, 'aero-slipstream')).toBe(52_881_649n)
+    expect(defaultStartBlock({ ...BASE_ADDRESSES, aeroSlipstream: [] }, 'aero-slipstream')).toBe(0n)
   })
 })
 

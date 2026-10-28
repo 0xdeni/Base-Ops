@@ -96,7 +96,9 @@ docker compose -f deploy/compose.yaml up -d --build
   creates no root-owned file in `/data`. Do not run the live commands (`snapshot`, `volume`,
   `mm sample`, …) beside `start`: it runs them on its schedule, and every extra run adds snapshots
   and samples between passes (a row for a block already stored is skipped), each one more sample
-  in streaks, uptime and persistence.
+  in streaks, uptime and persistence. `discover --seed` is the one live command that is safe
+  beside `start`: it writes pools only, no snapshots or samples, and the snapshot step writes back
+  only each pool's fee, so a seed that lands during a snapshot keeps its write.
 
 ## A reverse proxy with TLS
 
@@ -225,3 +227,36 @@ of the three files is sound only while the server is stopped. A backup restores 
 file must be writable by the user the server runs as: the image's entrypoint hands `/data` to
 `node` when the container starts as root; under `--user node`, or on a bare install, `chown` a
 file copied as root yourself, or `start` exits with `database is not writable`.
+
+## Upgrading
+
+A new build migrates the database when it first opens it, and an older build then refuses the
+file (`database schema version 7 is newer than this build (6); upgrade depthwatch`) before any
+step runs. Take a backup ([Backups](#backups)) before upgrading if you may need to roll back:
+rolling back means restoring that backup.
+
+The upgrade that indexes Aero's venues (schema version 7, which stores the fee each snapshot
+used):
+- `start` covers every DEX by default, now six. A server started with an explicit `--dex` list
+  sees nothing new until `aero-v2` and `aero-slipstream` are added to it.
+- The two new DEXes have no seed cursor, so the next pass seeds their pools of the reference
+  tokens (and of `DEPTHWATCH_SEED_TOKENS`) before anything else; factory-log discovery then scans
+  their factories from their first block over the following passes.
+- The first volume pass after their pools are tracked reads 24 h for the two event sources they
+  share with Uniswap v3 and Aerodrome v2 once (the new pools have no volume yet); later passes
+  are back to their usual size.
+- A snapshot that fails a pool with `swap hook changed`, `initial fee enabled` or `fee module
+  changed` found an Aero contract set up differently from the reviewed one, and publishes nothing
+  for that pool rather than depth modelled on the old setup. Its log line (`pool configuration
+  changed; not snapshotted`) names the remedy in `fix`:
+  - `swap hook changed`, `initial fee enabled`: review the change against
+    [docs/research/base-contracts.md](research/base-contracts.md), then run `depthwatch discover
+    --seed` (with Compose, through `docker compose exec -u node depthwatch`). It reads the hook of
+    every stored Aero Slipstream pool again, seeded pair or not, and stores a pool off the
+    reviewed setup as hooked: the next snapshots publish its price without depth (`hooked`), and
+    a pool whose initial fee was turned off is modelled again.
+  - `fee module changed`: an Aero v2 factory points at another fee module. The reviewed module is
+    pinned in code (`aeroV2.volatileFeeModule` / `stableFeeModule` in
+    `packages/chain/src/addresses.ts`, recorded in docs/research/base-contracts.md), so review the
+    new module and run a build that pins it. `discover --seed` does not help: seeding and log
+    discovery of `aero-v2` fail the same way until then, while the other DEXes run on.

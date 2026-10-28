@@ -24,16 +24,19 @@ function LocationProbe() {
 }
 
 /**
- * Renders the WETH token page; `via` replaces the mock's price route when given, and `extra` adds
- * that many copies of its deepest pool (with their own ids) to page the pools sheet.
+ * Renders the WETH token page; `via` replaces the mock's price route when given, `keep` keeps only
+ * the first that many of its pools, and `extra` adds that many copies of its deepest pool (with
+ * their own ids) to page the pools sheet.
  */
 function renderToken({
   via,
   query = '',
+  keep,
   extra = 0,
 }: {
   via?: string[]
   query?: string
+  keep?: number
   extra?: number
 } = {}) {
   const base = createMockClient({ now: 1_760_000_000 })
@@ -49,7 +52,7 @@ function renderToken({
               pool: { ...first.pool, id: `${first.pool.id}${i}` },
             }))
           : []
-      const pools = [...detail.pools, ...copies]
+      const pools = [...detail.pools.slice(0, keep), ...copies]
       return { ...detail, ...(via ? { via } : {}), pools, total: pools.length }
     },
   }
@@ -188,7 +191,7 @@ describe('Token page: the pools table', () => {
   })
 
   it('marks a pool with no grade "Not rated" and keeps it last when sorting by health', async () => {
-    for (const query of ['?sort=health', '?sort=health&dir=asc']) {
+    for (const query of ['?sort=health&rows=all', '?sort=health&dir=asc&rows=all']) {
       renderToken({ query })
       await loaded()
       const table = screen.getByRole('table', { name: 'Pools containing WETH' })
@@ -224,7 +227,7 @@ describe('Token page: the pools table', () => {
 
 describe('Token page: the pools sheet (visual-v4 §6.8)', () => {
   it('sets the table in a sheet with its heading, finding and count', async () => {
-    renderToken()
+    renderToken({ keep: 10 })
     await loaded()
     const sheet = screen.getByRole('region', { name: 'pools' })
     expect(sheet.querySelector('.blk--flush')).toBeTruthy()
@@ -236,7 +239,7 @@ describe('Token page: the pools sheet (visual-v4 §6.8)', () => {
   })
 
   it('lists the first 10 pools, then all of them behind one toggle kept in the URL', async () => {
-    renderToken({ extra: 4 })
+    renderToken({ keep: 10, extra: 4 })
     await loaded()
     const sheet = screen.getByRole('region', { name: 'pools' })
     const table = within(sheet).getByRole('table', { name: 'Pools containing WETH' })
@@ -253,7 +256,7 @@ describe('Token page: the pools sheet (visual-v4 §6.8)', () => {
     expect(more.textContent).toBe('Show the first 10')
     expect(more.getAttribute('aria-expanded')).toBe('true')
     cleanup()
-    renderToken({ extra: 4, query: '?rows=all' })
+    renderToken({ keep: 10, extra: 4, query: '?rows=all' })
     await loaded()
     const again = screen.getByRole('table', { name: 'Pools containing WETH' })
     expect(within(again).getAllByRole('row')).toHaveLength(15)

@@ -1,11 +1,19 @@
-import type { ChainReader } from '@depthwatch/chain'
+import {
+  type ChainReader,
+  createChainReader,
+  createFixtureTransport,
+  createSyntheticFixture,
+  syntheticAddresses,
+  syntheticWorld,
+} from '@depthwatch/chain'
 import type { Address, PoolMeta, SwapEvent, TokenInfo } from '@depthwatch/core'
-import { minBigint } from '@depthwatch/core'
+import { DEXES, minBigint } from '@depthwatch/core'
 import { IN_MEMORY, openDatabase } from '@depthwatch/db'
 import { describe, expect, it } from 'vitest'
 import { loadConfig } from '../config.js'
 import { createLogger } from '../log.js'
 import { createPipelineContext } from './context.js'
+import { discoverStep } from './discover.js'
 import { bucketSwaps, hourStartOf, pricedSide, type UsdLookup, volumeStep } from './volume.js'
 
 const token = (address: string, symbol: string, decimals: number): TokenInfo => ({
@@ -227,6 +235,43 @@ describe('volumeStep', () => {
     )
     expect(progress.every((line) => /chunks=\d+\/4531 /.test(line))).toBe(true)
     expect(lines.some((line) => line.includes('stored hourly volume chunks=4531'))).toBe(true)
+  })
+
+  it('reads the Aero pools in the shared scans: three eth_getLogs for six DEXes', async () => {
+    let logs = 0
+    const chain = createChainReader({
+      transport: createFixtureTransport(createSyntheticFixture()),
+      addresses: syntheticAddresses(),
+      logChunkSize: 100_000,
+      onRequest: ({ method }) => {
+        if (method === 'eth_getLogs') logs++
+      },
+    })
+    const db = openDatabase(IN_MEMORY)
+    try {
+      const config = loadConfig({ DEPTHWATCH_LOG_CHUNK: '100000' })
+      const ctx = createPipelineContext({ db, chain, config })
+      await discoverStep(ctx, { windowChunks: 1_000 })
+      const pools = db.pools.list()
+      expect(new Set(pools.map((p) => p.dex))).toEqual(new Set(DEXES))
+      db.pools.setTracked(
+        pools.map((p) => p.id),
+        true,
+      )
+      logs = 0
+      const result = await volumeStep(ctx)
+      // One 100 000-block chunk per scan: Uniswap v3 with both Slipstreams, Uniswap v4, and
+      // Aerodrome v2 with Aero v2.
+      expect(logs).toBe(3)
+      const world = syntheticWorld()
+      expect(result.swaps).toBe(world.pools.reduce((n, p) => n + p.swapCount, 0))
+      for (const pool of world.pools)
+        expect(db.volume.series(pool.meta.id, 0).reduce((n, b) => n + b.swapCount, 0)).toBe(
+          pool.swapCount,
+        )
+    } finally {
+      db.close()
+    }
   })
 
   it('keeps progress below 100 % until the end when the provider caps chunks lower', async () => {

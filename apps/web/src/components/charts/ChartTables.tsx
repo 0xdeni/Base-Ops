@@ -4,7 +4,7 @@
  * the same stored values the charts draw; nothing is recomputed.
  */
 import type { MmSampleDto, PoolSnapshotDto, PoolSummary, SampleWindow } from '../../api/types.js'
-import { abs, amount, day, NB, shareOf, usd } from '../../lib/format.js'
+import { abs, amount, day, NB, shareOf, tokenText, usd } from '../../lib/format.js'
 import { breachSides, dailySummary, sampleKeys } from '../../lib/scorecard.js'
 import { staleQuoteDetail } from '../../lib/staleQuote.js'
 import { TableScroll } from '../ui/TableScroll.js'
@@ -108,8 +108,8 @@ export function DepthCurveTable({
   token1,
 }: {
   snapshot: PoolSnapshotDto
-  token0: { symbol: string; decimals: number }
-  token1: { symbol: string; decimals: number }
+  token0: { symbol: string; label?: string; decimals: number }
+  token1: { symbol: string; label?: string; decimals: number }
 }) {
   const note = asymmetryNote(snapshot)
   return (
@@ -124,13 +124,13 @@ export function DepthCurveTable({
                 Sell side
               </th>
               <th scope="col" className="r">
-                {token0.symbol} sold
+                {tokenText(token0)} sold
               </th>
               <th scope="col" className="r">
                 Buy side
               </th>
               <th scope="col" className="r">
-                {token1.symbol} spent
+                {tokenText(token1)} spent
               </th>
               <th scope="col" className="r">
                 Price

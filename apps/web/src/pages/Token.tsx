@@ -17,7 +17,7 @@ import type { ButterflyGap } from '../components/charts/DepthButterfly.js'
 import { MEANINGFUL_GAP_TURNOVER } from '../components/charts/TurnoverGlyph.js'
 import { BackLink } from '../components/ui/BackLink.js'
 import { NotFoundState, SectionError, useDelayedPending } from '../components/ui/States.js'
-import { isPoolId } from '../lib/format.js'
+import { isPoolId, tokenText } from '../lib/format.js'
 import type { TableState } from '../lib/poolsTable.js'
 import { cachedToken } from '../routeData.js'
 import { TokenAbout } from './token/TokenAbout.js'
@@ -75,7 +75,7 @@ function TokenView({
   const metas = new Map([...known, ...fetched])
   return (
     <div className="token">
-      <title>{`${token.symbol} – Depthwatch`}</title>
+      <title>{`${tokenText(token)} – Depthwatch`}</title>
       <TokenTitle
         token={token}
         answer={
@@ -84,12 +84,12 @@ function TokenView({
           </p>
         }
       />
-      <TokenBand symbol={token.symbol} pools={pools} gap={gap} />
+      <TokenBand symbol={tokenText(token)} pools={pools} gap={gap} />
       <TokenFacts detail={detail} metas={metas} />
       {pools.length ? (
         <TokenPools
           pools={pools}
-          symbol={token.symbol}
+          symbol={tokenText(token)}
           totals={detail}
           state={state}
           allRows={allRows}

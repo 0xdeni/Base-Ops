@@ -6,15 +6,19 @@ import {
   sqrtPriceX96ToPrice,
 } from '@depthwatch/core'
 import { describe, expect, it } from 'vitest'
+import { BASE_ADDRESSES } from '../addresses.js'
 import { createChainReader } from '../reader.js'
 import { createFixtureTransport } from '../transport/fixture.js'
 import {
   createSyntheticFixture,
+  SYNTHETIC_AERO_START_OFFSET,
   SYNTHETIC_DEFAULTS,
   SYNTHETIC_GAUGES,
+  SYNTHETIC_HISTORY,
   SYNTHETIC_OWNERS,
   SYNTHETIC_POOL_IDS,
   SYNTHETIC_PRICES,
+  syntheticAddresses,
 } from './synthetic.js'
 import { syntheticWorld } from './syntheticWorld.js'
 
@@ -44,7 +48,8 @@ describe('createSyntheticFixture', () => {
     const discovered: PoolMeta[] = []
     for (const dex of DEXES)
       discovered.push(...(await reader.discoverPools(dex, 1n, latest.number)))
-    expect(discovered).toHaveLength(6)
+    expect(new Set(discovered.map((p) => p.dex))).toEqual(new Set(DEXES))
+    expect(discovered).toHaveLength(8)
     expect(new Set(discovered.map((p) => p.id))).toEqual(new Set(byId.keys()))
     for (const pool of discovered) expect(pool).toEqual(byId.get(pool.id)?.meta)
     const symbols = new Set(discovered.flatMap((p) => [p.token0.symbol, p.token1.symbol]))
@@ -125,7 +130,7 @@ describe('createSyntheticFixture', () => {
         expect(positions).toEqual([])
         continue
       }
-      // The NFPM reports the holder: the CLGauge for the staked Slipstream position.
+      // The NFPM reports the holder: the CLGauge for the staked Slipstream positions.
       const expected = synthetic.positions.map((p) => ({
         owner: p.holder,
         tickLower: p.tickLower,
@@ -137,7 +142,7 @@ describe('createSyntheticFixture', () => {
       // Resolving against the synthetic owners gives the depositors back; other pools are untouched.
       const resolved = await reader.resolveStakedOwners(pool, positions, SYNTHETIC_OWNERS)
       expect(resolved.map((p) => p.owner)).toEqual(synthetic.positions.map((p) => p.owner))
-      if (synthetic.variant !== 'slipstream') expect(resolved).toEqual(positions)
+      if (synthetic.gauge === null) expect(resolved).toEqual(positions)
     }
 
     const swaps = await reader.readSwaps(discovered, range.fromBlock, range.toBlock)
@@ -227,6 +232,52 @@ describe('createSyntheticFixture', () => {
         SYNTHETIC_DEFAULTS.latestBlock,
       )
       expect(atBlock).toEqual([holdings[0]])
+    }
+  })
+
+  it('stakes most Aero Slipstream NFTs in its CLGauge and finds the Aero v2 gauge in the FactoryRegistry', async () => {
+    const cl = byId.get(SYNTHETIC_POOL_IDS.wethUsdcAeroSlipstream)
+    const v2 = byId.get(SYNTHETIC_POOL_IDS.aeroUsdcAeroV2)
+    if (cl?.kind !== 'concentrated' || v2?.kind !== 'v2') throw new Error('Aero pools missing')
+    expect(cl.meta).toMatchObject({ dex: 'aero-slipstream', tickSpacing: 50, hooks: null })
+    expect(cl.gauge).toBe(SYNTHETIC_GAUGES.wethUsdcAeroSlipstream)
+    const staked = cl.positions.filter((p) => p.holder === cl.gauge)
+    expect(staked.length).toBeGreaterThan(cl.positions.length / 2)
+    expect(await reader.readCustodians(cl.meta)).toEqual([cl.gauge])
+    expect(v2.meta).toMatchObject({ dex: 'aero-v2', kind: 'constant-product', feePips: 3_000 })
+    expect(v2.meta.token0.name).toBe('Aero')
+    const supply = v2.lpTotalSupply
+    const holdings = await reader.readLpHoldings(v2.meta, [SYNTHETIC_OWNERS[2]!])
+    expect(holdings).toEqual([
+      {
+        address: SYNTHETIC_OWNERS[2],
+        balance: (supply * 15n) / 100n,
+        staked: (supply * 35n) / 100n,
+        totalSupply: supply,
+      },
+    ])
+  })
+
+  it('dates the Aero factories and pools inside the history, BASE_ADDRESSES unchanged', () => {
+    const anchor = SYNTHETIC_DEFAULTS.latestBlock
+    const addresses = syntheticAddresses(anchor)
+    const start = anchor - SYNTHETIC_AERO_START_OFFSET
+    expect(addresses.aeroV2.startBlock).toBe(start)
+    expect(addresses.aeroSlipstream.map((d) => d.startBlock)).toEqual([start])
+    expect({ ...addresses, aeroV2: null, aeroSlipstream: null }).toEqual({
+      ...BASE_ADDRESSES,
+      aeroV2: null,
+      aeroSlipstream: null,
+    })
+    expect(BASE_ADDRESSES.aeroV2.startBlock).toBe(52_880_042n)
+    expect(BASE_ADDRESSES.aeroSlipstream.map((d) => d.startBlock)).toEqual([52_881_649n])
+    // Before the oldest epoch (and the position mints, which come after it): 2 s blocks.
+    const oldest = anchor - BigInt(SYNTHETIC_HISTORY.mintAgeSeconds / 2)
+    const aero = world.pools.filter((p) => p.meta.dex.startsWith('aero-'))
+    expect(aero.map((p) => p.meta.dex)).toEqual(['aero-v2', 'aero-slipstream'])
+    for (const pool of aero) {
+      expect(pool.meta.createdAtBlock).toBeGreaterThanOrEqual(start)
+      expect(pool.meta.createdAtBlock).toBeLessThan(oldest)
     }
   })
 

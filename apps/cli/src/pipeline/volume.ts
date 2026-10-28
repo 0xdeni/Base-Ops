@@ -13,12 +13,13 @@
  * before it are kept as stored, and a pass costs the blocks since that hour instead of the whole
  * window. A pool without coverage of the window (newly tracked, `--hours` wider than before, or
  * coverage older than the window) gets the whole window. Each log scan (one per `Swap` event
- * source: Uniswap v3 and Slipstream share one) is read once, from the earliest start of its pools,
- * since a log request costs the same for one pool or many. The kept buckets of the window are
- * revalued from their token totals at the current prices, so every hour of the window is valued
- * alike, as a full rescan would. The head's timestamp is stored (`volume:lastTs`): it anchors the
- * score's 24 h window. Every 30 s: blocks and chunks done/total, %, elapsed, ETA, backoffs. A stop
- * signal (`depthwatch start`) ends the scan and stores nothing.
+ * source: Uniswap v3 and both Slipstreams share one, Aerodrome v2 and Aero v2 another) is read
+ * once, from the earliest start of its pools, since a log request costs the same for one pool or
+ * many. The kept buckets of the window are revalued from their token totals at the current
+ * prices, so every hour of the window is valued alike, as a full rescan would. The head's
+ * timestamp is stored (`volume:lastTs`): it anchors the score's 24 h window. Every 30 s: blocks
+ * and chunks done/total, %, elapsed, ETA, backoffs. A stop signal (`depthwatch start`) ends the
+ * scan and stores nothing.
  */
 import { type SwapScanProgress, swapScanGroups, swapScanOf } from '@depthwatch/chain'
 import type { Address, Dex, PoolMeta, SwapEvent, VolumeBucket } from '@depthwatch/core'
@@ -227,9 +228,8 @@ function coverageOf(db: Database, poolId: string): VolumeCoverage | undefined {
 }
 
 /**
- * The tracked pools grouped by first block: each log scan (one per `Swap` event source, so
- * Uniswap v3 and Slipstream together, see chain `swapScanOf`) reads once, from its pools' earliest
- * start.
+ * The tracked pools grouped by first block: each log scan (one per `Swap` event source, see chain
+ * `swapScanOf`) reads once, from its pools' earliest start.
  */
 function scanGroups(
   tracked: readonly PoolMeta[],

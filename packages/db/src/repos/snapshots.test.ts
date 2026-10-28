@@ -245,7 +245,12 @@ describe('SnapshotsRepo', () => {
     const series = db.snapshots.seriesSummaryForPool(A, 10, 30)
     expect(series).toEqual(db.snapshots.seriesForPool(A, 10, 30).map(snapshotHealthSummary))
     expect(series.map((s) => s.updatedAt)).toEqual([10, 20, 30])
-    expect(series[0]).toEqual({ ...snapshotSummary(priced), rangeHhi: 0.25, ownerCoverage: 0.95 })
+    expect(series[0]).toEqual({
+      ...snapshotSummary(priced),
+      rangeHhi: 0.25,
+      ownerCoverage: 0.95,
+      feePips: 500,
+    })
     expect(series[1]).toMatchObject({
       depth2Usd: null,
       depth2UpUsd: null,

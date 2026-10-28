@@ -12,6 +12,7 @@ import type {
 import { buildHistoryPoints, HEALTH_PERSISTENCE_SECONDS } from '../history.js'
 import { historyQuerySchema, parseQuery, poolsQuerySchema } from '../query.js'
 import { toPoolSummary } from '../summary.js'
+import { labelPool } from '../tokenLabels.js'
 
 const WINDOW_SECONDS: Readonly<Record<HistoryWindow, number>> = Object.freeze({
   '24h': DAY_SECONDS,
@@ -40,7 +41,9 @@ export function poolsRoutes(ctx: ApiContext): Hono {
       limit: q.limit,
       offset: q.offset,
     })
-    const body: PoolsResponse = { items: result.items.map(toPoolSummary), total: result.total }
+    const shared = ctx.db.tokens.sharedSymbols()
+    const items = result.items.map((row) => toPoolSummary(row, shared))
+    const body: PoolsResponse = { items, total: result.total }
     return c.json(body)
   })
 
@@ -51,7 +54,7 @@ export function poolsRoutes(ctx: ApiContext): Hono {
     const score = ctx.db.scores.get(id)
     const latest = ctx.db.snapshots.latestForPool(id)
     const body: PoolDetail = {
-      pool: toJsonSafe(record.pool),
+      pool: toJsonSafe(labelPool(record.pool, ctx.db.tokens.sharedSymbols())),
       tracked: record.tracked,
       latest: latest ? toJsonSafe(latest) : null,
       score: score?.health ?? null,

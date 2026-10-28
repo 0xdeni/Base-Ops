@@ -24,7 +24,7 @@ const minimal = {
 
 const POOL_ID_PROBLEM =
   'poolId must be <dex>:<0x pool address>, or uniswap-v4:<0x pool id of 64 hex digits>, with ' +
-  '<dex> one of uniswap-v3, uniswap-v4, aerodrome-v2, aerodrome-slipstream'
+  '<dex> one of uniswap-v3, uniswap-v4, aerodrome-v2, aerodrome-slipstream, aero-v2, aero-slipstream'
 
 function problemsOf(input: unknown): string[] {
   try {
@@ -171,6 +171,10 @@ describe('parseMandate', () => {
     const v4 = `uniswap-v4:0x${'AB'.repeat(32)}`
     expect(parseMandate({ ...minimal, poolId: v4 }, now).poolId).toBe(v4.toLowerCase())
     const address = '0x00000000000000000000000000000000000000c1'
+    for (const dex of ['aero-v2', 'aero-slipstream'])
+      expect(parseMandate({ ...minimal, poolId: `${dex}:${address}` }, now).poolId).toBe(
+        `${dex}:${address}`,
+      )
     for (const poolId of [
       'not a pool at all',
       `uniswap-v9:${address}`,
@@ -181,6 +185,9 @@ describe('parseMandate', () => {
       `uniswap-v4:${address}`,
       `aerodrome-v2:${address}0`,
       `aerodrome-v2:${address.slice(2)}`,
+      `aero-v2:0x${'ab'.repeat(32)}`,
+      `aero-slipstream:0x${'ab'.repeat(32)}`,
+      `aero:${address}`,
       `uniswap-v3:${address}:extra`,
       '',
       42,

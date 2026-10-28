@@ -123,6 +123,7 @@ export const SNAPSHOT: PoolSnapshotDto = {
   ],
   concentration: null,
   priceDeviationBps: 0,
+  feePips: null,
 }
 
 /**

@@ -99,15 +99,18 @@ describe('ARCHITECTURE.md: RPC cost model uses the CLI chunk default', () => {
     expect(libChunks).toBe(chunksFor(VOLUME_WINDOW, DEFAULT_LOG_CHUNK_SIZE))
   })
 
-  it('counts per-cycle getLogs from the factory list and the CLI chunk default', () => {
-    const factories = [
-      BASE_ADDRESSES.uniswapV3.factory,
-      BASE_ADDRESSES.uniswapV4.poolManager,
-      BASE_ADDRESSES.aerodromeV2.poolFactory,
-      ...BASE_ADDRESSES.aerodromeSlipstream.map((d) => d.factory),
+  it('counts per-cycle getLogs from the discovery filters and the CLI chunk default', () => {
+    // One log filter per factory, except Aero v2: one filter over its volatile and stable factories.
+    const filters = [
+      [BASE_ADDRESSES.uniswapV3.factory],
+      [BASE_ADDRESSES.uniswapV4.poolManager],
+      [BASE_ADDRESSES.aerodromeV2.poolFactory],
+      ...BASE_ADDRESSES.aerodromeSlipstream.map((d) => [d.factory]),
+      [BASE_ADDRESSES.aeroV2.volatileFactory, BASE_ADDRESSES.aeroV2.stableFactory],
+      ...BASE_ADDRESSES.aeroSlipstream.map((d) => [d.factory]),
     ]
     const [discoveryLogs] = numbers(cycle, /(\d+) `getLogs` for discovery/)
-    expect(discoveryLogs).toBe(BigInt(factories.length))
+    expect(discoveryLogs).toBe(BigInt(filters.length))
     const [fewest, most] = numbers(
       cycle,
       /(\d+) to (\d+) `getLogs` per event source with tracked pools for volume/,
@@ -134,10 +137,11 @@ describe('ARCHITECTURE.md: RPC cost model uses the CLI chunk default', () => {
     expect(requests).toBe(chunksFor(VOLUME_WINDOW + 1n, 10n))
     const [daily] = numbers(free, /about ([\d,]+) requests per source a day/)
     expect(daily).toBe(BLOCKS_PER_DAY / 10n)
-    // Uniswap v3 and Slipstream share one scan (same Swap event): three sources for four DEXes.
+    // Uniswap v3 and both Slipstreams share one scan, both v2 AMMs another: three for six DEXes.
     const sources = BigInt(new Set(DEXES.map(swapScanOf)).size)
     expect(sources).toBe(3n)
-    const [all] = numbers(free, /about ([\d,]+) requests with all four DEXes \(three sources\)/)
+    expect(DEXES).toHaveLength(6)
+    const [all] = numbers(free, /about ([\d,]+) requests with all six DEXes \(three sources\)/)
     expect(all).toBe(((sources * chunksFor(VOLUME_WINDOW + 1n, 10n) + 50n) / 100n) * 100n)
   })
 })
@@ -159,9 +163,9 @@ describe('ARCHITECTURE.md: seeded discovery counts', () => {
 
   it('derives the candidate counts from the reference tokens and the seeded tiers', () => {
     const erc20 = REFERENCE_TOKENS.filter((t) => t.address !== NATIVE_ETH).length
-    const [tokens, erc20s, erc20Pairs, currencyPairs, v3, v2, v4] = numbers(
+    const [tokens, erc20s, erc20Pairs, currencyPairs, v3, v2, aeroV2, v4] = numbers(
       seed,
-      /With the (\d+) reference tokens \((\d+) ERC-20s and native ETH\) that is (\d+) ERC-20 pairs and (\d+) currency pairs: ([\d,]+) v3, ([\d,]+) Aerodrome v2, ([\d,]+) v4/,
+      /With the (\d+) reference tokens \((\d+) ERC-20s and native ETH\) that is (\d+) ERC-20 pairs and (\d+) currency pairs: ([\d,]+) v3, ([\d,]+) Aerodrome v2, ([\d,]+) Aero v2, ([\d,]+) v4/,
     )
     expect(tokens).toBe(BigInt(REFERENCE_TOKENS.length))
     expect(erc20s).toBe(BigInt(erc20))
@@ -169,6 +173,8 @@ describe('ARCHITECTURE.md: seeded discovery counts', () => {
     expect(currencyPairs).toBe(pairs(REFERENCE_TOKENS.length))
     expect(v3).toBe(pairs(erc20) * BigInt(UNISWAP_V3_CANDIDATE_FEES.length))
     expect(v2).toBe(pairs(erc20) * 2n)
+    // Two factories, one 2-argument getPool each.
+    expect(aeroV2).toBe(pairs(erc20) * 2n)
     expect(v4).toBe(pairs(REFERENCE_TOKENS.length) * BigInt(UNISWAP_V4_STANDARD_KEYS.length))
     const tiers = numbers(
       seed,

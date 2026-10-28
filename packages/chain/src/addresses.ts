@@ -1,18 +1,28 @@
 /**
  * Verified Base mainnet (chainId 8453) addresses. Source: docs/research/base-contracts.md (every
- * entry below carries an "independent check: confirmed" verdict there, and §2.8 records the
- * on-chain check of each). All lowercase. Token names are each token's own `name()` on chain.
+ * entry below carries an "independent check: confirmed" verdict there; §2.8 records the on-chain
+ * check of each, §2.9 that of the Aero entries). All lowercase. Token names are each token's own
+ * `name()` on chain.
  */
 import { type Address, NATIVE_ETH, type TokenInfo } from '@depthwatch/core'
 
 export interface SlipstreamDeployment {
-  /** Human label from the aerodrome-finance/slipstream README. */
+  /** Human label (Aerodrome: from the aerodrome-finance/slipstream README). */
   name: string
   factory: Address
   /** The NonfungiblePositionManager paired with this factory (each deployment has its own). */
   positionManager: Address
   /** First block to scan `PoolCreated` from. */
   startBlock: bigint
+}
+
+/** An Aero Slipstream deployment: its pools take their fee from a swap hook, not a fee module. */
+export interface AeroSlipstreamDeployment extends SlipstreamDeployment {
+  /**
+   * The reviewed DynamicSwapFeeHook (the factory's `defaultSwapHook()` when reviewed). A pool on
+   * another hook, or with the hook's initial fee enabled, is hooked (`PoolMeta.hooks`).
+   */
+  swapHook: Address
 }
 
 export interface ChainAddresses {
@@ -41,6 +51,23 @@ export interface ChainAddresses {
   }
   /** Three live CLFactory deployments, each with its own NFPM. Pool ids stay `aerodrome-slipstream:<pool>`. */
   aerodromeSlipstream: SlipstreamDeployment[]
+  /** Aero v2 (`aero-v2`): one factory per pool type; pool ids `aero-v2:<pool>`. */
+  aeroV2: {
+    /** V2_VOLATILE pools (constant product). */
+    volatileFactory: Address
+    /** V2_STABLE pools (x³y + xy³). */
+    stableFactory: Address
+    /** The CustomFeeModule the volatile factory's `feeModule()` must return to read a fee. */
+    volatileFeeModule: Address
+    /** The CustomFeeModule the stable factory's `feeModule()` must return to read a fee. */
+    stableFeeModule: Address
+    /** Pool → gauge (`targetToGauge`); not a discovery root. */
+    factoryRegistry: Address
+    /** First block with code of the earlier factory. */
+    startBlock: bigint
+  }
+  /** Aero Slipstream (`aero-slipstream`) CLFactory deployments; pool ids `aero-slipstream:<pool>`. */
+  aeroSlipstream: AeroSlipstreamDeployment[]
   /** Curated token list for display and sanity checks; decimals are still read on chain. */
   referenceTokens: TokenInfo[]
   /** USD anchors for `derivePrices` (USD-pegged stablecoins only). */
@@ -81,10 +108,16 @@ export const TOKENS = {
    */
   USDT: token('0xfde4c96c8593536e31f229ea8f37b2ada2699bb2', 'USDT', 'Tether USD', 6),
   EURC: token('0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42', 'EURC', 'EURC', 6),
-  AERO: token('0x940181a94a35a4569e4529a3cdfb74e38fd98631', 'AERO', 'Aerodrome', 18),
+  /**
+   * Aerodrome's AERO. It still trades; the new token's `MIGRATION()` contract converts it one way,
+   * 1:1, which is no price peg. Its symbol is also "AERO": the address tells the two apart.
+   */
+  AERO_AERODROME: token('0x940181a94a35a4569e4529a3cdfb74e38fd98631', 'AERO', 'Aerodrome', 18),
   DEGEN: token('0x4ed4e862860bed51a9570b96d89af5e1b0efefed', 'DEGEN', 'Degen', 18),
   VIRTUAL: token('0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b', 'VIRTUAL', 'Virtual Protocol', 18),
   BRETT: token('0x532f27101965dd16442e59d40670faf5ebb142e4', 'BRETT', 'Brett', 18),
+  /** Aero's AERO (2026-10-21), listed last so the older tokens keep their order. */
+  AERO: token('0x3f5bf3edac59d650d8fdf9657a71f2f904a3a4ee', 'AERO', 'Aero', 18),
 } as const satisfies Record<string, TokenInfo>
 
 export const REFERENCE_TOKENS: readonly TokenInfo[] = Object.freeze([
@@ -158,6 +191,24 @@ export const BASE_ADDRESSES: ChainAddresses = {
       startBlock: 44_394_724n,
     },
   ],
+  aeroV2: {
+    volatileFactory: '0x8e6a9fcd1d638cc760ffba397605fe3355de76d2',
+    stableFactory: '0x78589e876edcebdce72ee3436ab3c9ad3a7cef2d',
+    volatileFeeModule: '0x7949de8d67e4f6b8509bdbb43ff0503af1247a7a',
+    stableFeeModule: '0x0195fc76da986d66b2a468133a1be41e90893da6',
+    factoryRegistry: '0x7b2a2c12dc5ea2a31455952a05031c3e4bb28f3e',
+    // The volatile factory's first block with code; the stable factory's is 52,880,046.
+    startBlock: 52_880_042n,
+  },
+  aeroSlipstream: [
+    {
+      name: 'aero',
+      factory: '0x9cb220581b91b0c83223012fe69688b92ad07a76',
+      positionManager: '0x4857db576ee0e45f10525ec59527bfd10beec60b',
+      swapHook: '0xc0ed888afe87ed1acf01d9f19bb850159e3ce434',
+      startBlock: 52_881_649n,
+    },
+  ],
   referenceTokens: [...REFERENCE_TOKENS],
   stablecoinAnchors: { ...STABLECOIN_ANCHORS },
 }
@@ -208,6 +259,20 @@ export function resolveAddresses(overrides?: Partial<ChainAddresses>): ChainAddr
       ...d,
       factory: at(`aerodromeSlipstream[${i}].factory`, d.factory),
       positionManager: at(`aerodromeSlipstream[${i}].positionManager`, d.positionManager),
+    })),
+    aeroV2: {
+      ...merged.aeroV2,
+      volatileFactory: at('aeroV2.volatileFactory', merged.aeroV2.volatileFactory),
+      stableFactory: at('aeroV2.stableFactory', merged.aeroV2.stableFactory),
+      volatileFeeModule: at('aeroV2.volatileFeeModule', merged.aeroV2.volatileFeeModule),
+      stableFeeModule: at('aeroV2.stableFeeModule', merged.aeroV2.stableFeeModule),
+      factoryRegistry: at('aeroV2.factoryRegistry', merged.aeroV2.factoryRegistry),
+    },
+    aeroSlipstream: merged.aeroSlipstream.map((d, i) => ({
+      ...d,
+      factory: at(`aeroSlipstream[${i}].factory`, d.factory),
+      positionManager: at(`aeroSlipstream[${i}].positionManager`, d.positionManager),
+      swapHook: at(`aeroSlipstream[${i}].swapHook`, d.swapHook),
     })),
     referenceTokens: merged.referenceTokens.map((t, i) => ({
       ...t,

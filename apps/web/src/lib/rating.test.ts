@@ -21,7 +21,7 @@ describe('why a pool has no grade, in plain words', () => {
       'No USD price: a token in this pool has no price in dollars.',
     )
     expect(unratedDetail('hooked')).toBe(
-      'Hooked pool: its v4 hook runs its own swap code, so depth is not modelled.',
+      'Hooked pool: it runs a swap hook Depthwatch does not model; depth is not computed.',
     )
     expect(unratedDetail(null)).toBe('Not rated yet: the score is being refreshed.')
     for (const reason of ['thin', 'one-sided', 'unpriced', 'hooked'] as const) {

@@ -1,4 +1,8 @@
-/** Aerodrome v2 Pool (volatile x·y and stable x³y+xy³). Reserves are uint256, Swap has in/out amounts. */
+/**
+ * Aerodrome v2 Pool (volatile x·y and stable x³y+xy³). Reserves are uint256, Swap has in/out amounts.
+ * Aero v2 pools share `getReserves` and `Swap`, but their `metadata()` has 6 outputs (no `stable`)
+ * and `stable()` reverts (they expose `POOL_TYPE()`), so neither is read through this ABI for them.
+ */
 export const aerodromePoolAbi = [
   {
     type: 'function',

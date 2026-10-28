@@ -7,9 +7,9 @@
  * pool that is empty on one side of its price (an off-market pool that arbitrage has drained) is
  * not a route, however deep its other side, and neither is a Uniswap v4 pool with a hook (not
  * modelled). Depth comes from core's `computeDepth` on the pool's full state when the snapshot
- * step has read it, otherwise on a state built from the overview: reserves for Aerodrome v2
- * (exact), and for concentrated pools a *proxy* that assumes the active liquidity holds across the
- * band (no tick data yet). Native ETH (Uniswap v4 currency0 == 0x0) is tied to WETH by a 1:1 edge
+ * step has read it, otherwise on a state built from the overview: reserves for v2 pools
+ * (Aerodrome and Aero, exact), and for concentrated pools a *proxy* that assumes the active
+ * liquidity holds across the band (no tick data yet). Native ETH (Uniswap v4 currency0 == 0x0) is tied to WETH by a 1:1 edge
  * of unbounded weight. Anchors are the chain's USD stablecoins.
  */
 import type { PoolOverview } from '@depthwatch/chain'
@@ -51,7 +51,7 @@ export interface PoolPricing {
 }
 
 /**
- * A PoolState from the overview alone. Aerodrome v2 pools are complete (reserves + fee); for
+ * A PoolState from the overview alone. v2 pools are complete (reserves + the stored fee); for
  * concentrated pools the tick list is unknown, so the state carries no ticks and bounds of
  * ±PROXY_TICK_SPAN around the current tick, which makes the swap walk assume constant liquidity.
  */

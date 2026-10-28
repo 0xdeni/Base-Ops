@@ -1,7 +1,8 @@
 /**
- * Helpers shared by the address-keyed concentrated adapters (Uniswap v3, Slipstream): overview via
- * slot0/liquidity/balanceOf, state via the tick-bitmap walk, positions via an NFPM, and v3-style
- * `Swap` decoding (amounts already signed with positive = into the pool).
+ * Helpers shared by the address-keyed concentrated adapters (Uniswap v3, Aerodrome and Aero
+ * Slipstream): overview via slot0/liquidity/balanceOf, state via the tick-bitmap walk (with an
+ * optional guard riding in its first multicall), positions via an NFPM, and v3-style `Swap`
+ * decoding (amounts already signed with positive = into the pool).
  */
 import type {
   Address,
@@ -13,6 +14,7 @@ import type {
 } from '@depthwatch/core'
 import { hexToBigInt } from 'viem'
 import type { aerodromeCLPoolAbi } from '../abi/aerodromeCLPool.js'
+import type { aeroNFPMAbi } from '../abi/aeroNFPM.js'
 import { erc20Abi } from '../abi/erc20.js'
 import type { nonfungiblePositionManagerAbi } from '../abi/nonfungiblePositionManager.js'
 import type { slipstreamNFPMAbi } from '../abi/slipstreamNFPM.js'
@@ -23,6 +25,8 @@ import {
   asBigint,
   asNumber,
   asTuple,
+  type CallResult,
+  type ContractCall,
   expectResult,
   multicallBatched,
   optionalResult,
@@ -80,22 +84,30 @@ export async function overviewAddressKeyed(
   })
 }
 
+/**
+ * Calls a state read sends together with the pool's own (same multicall, same block) and the
+ * check their results must pass: `check` throws to fail the read before the tick walk starts.
+ */
+export interface StateGuard {
+  calls: readonly ContractCall[]
+  check(results: readonly CallResult[]): void
+}
+
 export async function readConcentratedAddressKeyed(
   ctx: ReaderContext,
   pool: PoolMeta,
   opts: StateOptions,
   abi: ConcentratedPoolAbi,
+  guard?: StateGuard,
 ): Promise<ConcentratedState> {
   const address = requireAddress(pool)
-  const base = await multicallBatched(
-    ctx,
-    (['slot0', 'liquidity', 'fee', 'tickSpacing'] as const).map((functionName) => ({
-      address,
-      abi,
-      functionName,
-    })),
-    opts.blockNumber,
-  )
+  const own = (['slot0', 'liquidity', 'fee', 'tickSpacing'] as const).map((functionName) => ({
+    address,
+    abi,
+    functionName,
+  }))
+  const base = await multicallBatched(ctx, [...own, ...(guard?.calls ?? [])], opts.blockNumber)
+  guard?.check(base.slice(own.length))
   const slot0 = asTuple(expectResult(base[0], `${pool.id} slot0`), 'slot0')
   const tick = asNumber(slot0[1], 'tick')
   const tickSpacing = asNumber(expectResult(base[3], `${pool.id} tickSpacing`), 'tickSpacing')
@@ -126,7 +138,8 @@ export async function readConcentratedAddressKeyed(
 
 export interface NfpmSpec {
   positionManager: Address
-  abi: typeof nonfungiblePositionManagerAbi | typeof slipstreamNFPMAbi
+  /** Its events and views: the Aero NFPM's `IncreaseLiquidity` has a topic of its own. */
+  abi: typeof nonfungiblePositionManagerAbi | typeof slipstreamNFPMAbi | typeof aeroNFPMAbi
   /** Fifth `positions()` output the pool must match: v3 fee (pips) or Slipstream tickSpacing. */
   keyValue: number
 }
@@ -217,9 +230,9 @@ export async function readNfpmPositions(
 
 /**
  * v3 / Slipstream `Swap`: amount0/amount1 are pool deltas (positive = received by the pool).
- * Slipstream's CLPool emits Uniswap v3's `Swap` event unchanged (same signature, hence the same
- * topic0, pinned by reader.swapScans.test.ts), so both adapters use this function and the reader
- * reads the pools of both DEXes in one filter per range.
+ * Aerodrome's and Aero's CLPools emit Uniswap v3's `Swap` event unchanged (same signature, hence
+ * the same topic0, pinned by reader.swapScans.test.ts), so the three adapters use this function
+ * and the reader reads the pools of all three DEXes in one filter per range.
  */
 export async function readV3StyleSwaps(
   ctx: ReaderContext,

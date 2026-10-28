@@ -145,6 +145,8 @@ export interface SnapshotSpec extends LadderSpec {
   ownerTop1Share: number | null
   /** Human token1 amount of active liquidity proxy (concentrated pools only). */
   activeLiquidity?: bigint
+  /** The LP fee the snapshot used (default: the pool's `feePips`); null for a row stored before it. */
+  feePips?: number | null
 }
 
 export function buildSnapshot(spec: SnapshotSpec): PoolSnapshot {
@@ -157,6 +159,7 @@ export function buildSnapshot(spec: SnapshotSpec): PoolSnapshot {
     token1Usd: spec.token1Usd,
     tvlUsd: spec.tvlUsd,
     activeLiquidity: spec.activeLiquidity ?? 0n,
+    feePips: spec.feePips === undefined ? spec.pool.feePips : spec.feePips,
     depth: buildDepth(spec),
     depthUsd: buildDepthUsd(spec),
     spreads: buildSpreads(spec.price, spec.spread10kBps, spec.maxFeasibleUsd),

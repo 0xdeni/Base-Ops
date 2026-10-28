@@ -100,17 +100,28 @@ export interface ChainReader {
    * state (see seed/index.ts). The PoolMeta equal what `discoverPools` yields for the same pools.
    */
   seedPools(opts?: SeedPoolsOptions): Promise<SeedResult>
+  /**
+   * Stored pools' PoolMeta read again at the head as discovery builds them (stored tokens, tick
+   * spacing and creation block kept), for DEXes whose PoolMeta holds a reading the state reads
+   * check (Aero Slipstream: `hooks`). Other DEXes' pools, and pools no factory reports, are left out.
+   */
+  refreshPoolMetas(pools: readonly PoolMeta[]): Promise<PoolMeta[]>
   readTokens(addresses: Address[]): Promise<TokenInfo[]>
   /** One multicall-batched pass over all pools at `blockNumber` (default: latest). */
   readOverview(pools: PoolMeta[], blockNumber?: bigint): Promise<PoolOverview[]>
-  /** Full pool state; concentrated pools get a tick walk covering ≥ max(2·bandPct, 10) % each side. */
+  /**
+   * Full pool state; concentrated pools get a tick walk covering ≥ max(2·bandPct, 10) % each side.
+   * An Aero pool whose configuration changed (fee module, swap hook, initial fee) throws
+   * `PoolConfigChangedError` (internal/poolErrors.ts).
+   */
   readState(pool: PoolMeta, opts: { bandPct: number; blockNumber?: bigint }): Promise<PoolState>
-  /** Positions touched in the range, with current liquidity/owner. Aerodrome v2: []. */
+  /** Positions touched in the range, with current liquidity/owner. Aerodrome v2 and Aero v2: []. */
   readPositions(pool: PoolMeta, opts: { fromBlock: bigint; toBlock: bigint }): Promise<Position[]>
   /**
    * Swap events with timestamps interpolated between anchor headers every `timestampSpan` blocks,
    * independent of the log chunk size (see internal/timestamps.ts). One log scan per `Swap` event
-   * source (Uniswap v3 and Slipstream pools share one filter; see internal/swapScans.ts);
+   * source (Uniswap v3 and both Slipstreams share one filter, Aerodrome v2 and Aero v2 another;
+   * see internal/swapScans.ts);
    * `onProgress` hears every chunk and backoff of them.
    */
   readSwaps(
@@ -120,9 +131,10 @@ export interface ChainReader {
     opts?: ReadSwapsOptions,
   ): Promise<SwapEvent[]>
   /**
-   * Aerodrome v2 only (other DEX kinds throw): LP-token balance, gauge-staked balance (gauge from
-   * `Voter.gauges(pool)`, 0n without one) and total supply per address, multicall-batched at
-   * `blockNumber` (default: latest). Addresses are lowercased and deduplicated, input order kept.
+   * Aerodrome v2 and Aero v2 only (other DEX kinds throw): LP-token balance, gauge-staked balance
+   * (gauge from `Voter.gauges(pool)` or, for Aero v2, `FactoryRegistry.targetToGauge(pool)`; 0n
+   * without one) and total supply per address, multicall-batched at `blockNumber` (default:
+   * latest). Addresses are lowercased and deduplicated, input order kept.
    */
   readLpHoldings(
     pool: PoolMeta,
@@ -130,9 +142,10 @@ export interface ChainReader {
     blockNumber?: bigint,
   ): Promise<LpHolding[]>
   /**
-   * Slipstream only: positions owned by the pool's CLGauge (`CLPool.gauge()`) are rewritten to the
-   * candidate for which `CLGauge.stakedContains(candidate, tokenId)` holds (first match wins);
-   * every other position passes through unchanged. Non-Slipstream pools: positions unchanged.
+   * Slipstream (Aerodrome and Aero) only: positions owned by the pool's CLGauge (`CLPool.gauge()`)
+   * are rewritten to the candidate for which `CLGauge.stakedContains(candidate, tokenId)` holds
+   * (first match wins); every other position passes through unchanged. Other pools: positions
+   * unchanged, nothing is read.
    */
   resolveStakedOwners(
     pool: PoolMeta,
@@ -142,8 +155,8 @@ export interface ChainReader {
   ): Promise<Position[]>
   /**
    * Addresses that hold the pool's positions on behalf of depositors (lowercase), at `blockNumber`
-   * (default: latest): a Slipstream pool's CLGauge (`CLPool.gauge()`), which owns every staked
-   * NFT. [] for a pool without a gauge and for the other DEXes (nothing is read).
+   * (default: latest): a Slipstream (Aerodrome or Aero) pool's CLGauge (`CLPool.gauge()`), which
+   * owns every staked NFT. [] for a pool without a gauge and for the other DEXes (nothing is read).
    */
   readCustodians(pool: PoolMeta, blockNumber?: bigint): Promise<Address[]>
 }
@@ -311,6 +324,18 @@ export function createChainReader(opts: CreateChainReaderOptions = {}): ChainRea
     discoverPools: (dex, fromBlock, toBlock) => ADAPTERS[dex].discover(ctx, fromBlock, toBlock),
     async seedPools(seedOpts = {}) {
       return seedPools(ctx, await resolveBlock(seedOpts.blockNumber), seedOpts)
+    },
+    async refreshPoolMetas(pools) {
+      const metas = await Promise.all(
+        [...groupByDex([...pools])].map(
+          ([dex, entries]) =>
+            ADAPTERS[dex].refreshMetas?.(
+              ctx,
+              entries.map((e) => e.pool),
+            ) ?? [],
+        ),
+      )
+      return metas.flat()
     },
     readTokens: (tokens) => readTokensWithCache(ctx, tokens),
     async readOverview(pools, blockNumber) {

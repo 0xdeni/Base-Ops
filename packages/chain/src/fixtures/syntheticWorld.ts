@@ -1,7 +1,9 @@
 /**
- * The six pools of the synthetic Base world, in discovery order:
+ * The eight pools of the synthetic Base world, in discovery order:
  * WETH/USDC v3 500, cbBTC/USDC v3 3000, ETH/USDC v4 500, AERO/USDC Aerodrome v2 volatile,
- * USDC/USDbC Aerodrome v2 stable, WETH/USDC Slipstream tickSpacing 100.
+ * USDC/USDbC Aerodrome v2 stable, WETH/USDC Slipstream tickSpacing 100, then the Aero pools of
+ * syntheticAero.ts: AERO (Aero)/USDC Aero v2 volatile and WETH/USDC Aero Slipstream tickSpacing 50
+ * (its fee a reading of the hour, most of its NFTs staked in its CLGauge).
  *
  * Market-maker fixtures (docs/design/scorecards.md §3): both v2 pools have a gauge and
  * `SYNTHETIC_OWNERS[0]` holds 40 % of their LP supply in wallet plus 10 % staked; the Slipstream
@@ -11,6 +13,11 @@
  */
 import { minBigint, type TokenInfo } from '@depthwatch/core'
 import { NATIVE_ETH_TOKEN, TOKENS } from '../addresses.js'
+import {
+  aeroHookFeeAt,
+  SYNTHETIC_AERO_SLIPSTREAM_SPEC,
+  SYNTHETIC_AERO_V2_SPEC,
+} from './syntheticAero.js'
 import {
   buildConcentrated,
   buildV2,
@@ -124,7 +131,7 @@ export const SYNTHETIC_POOL_SPECS: readonly SyntheticPoolSpec[] = Object.freeze(
     spec: {
       label: L.usdcAeroV2,
       token0: TOKENS.USDC,
-      token1: TOKENS.AERO,
+      token1: TOKENS.AERO_AERODROME,
       stable: false,
       feeBps: 30n,
       reserve0: 1_500_000n * 10n ** 6n,
@@ -177,6 +184,8 @@ export const SYNTHETIC_POOL_SPECS: readonly SyntheticPoolSpec[] = Object.freeze(
       activity: { volumeUsd: 10_000_000, swapCount: 150, token0Usd: ETH, token1Usd: USD },
     },
   },
+  { kind: 'v2', spec: SYNTHETIC_AERO_V2_SPEC },
+  { kind: 'concentrated', spec: SYNTHETIC_AERO_SLIPSTREAM_SPEC },
 ])
 
 type TimelineSeed = Pick<SyntheticTimeline, 'seed' | 'anchorTimestamp'>
@@ -202,6 +211,10 @@ export function concentratedFactorsAt(
 ): ConcentratedFactors {
   const { keepPct } = SYNTHETIC_EVENTS.slipstreamMarketMaker
   return {
+    // The Aero Slipstream pool's swap hook sets its fee per block: here, per hour.
+    ...(spec.variant === 'aero-slipstream'
+      ? { feePips: aeroHookFeeAt(timeline.seed, poolIndex, hour) }
+      : {}),
     price: pairPriceFactor(timeline, spec.token0, spec.token1, hour),
     liquidity: spec.templates.map((t, i) => {
       if (t.scripted !== 'slipstreamMarketMaker')
@@ -211,7 +224,7 @@ export function concentratedFactorsAt(
   }
 }
 
-/** An Aerodrome v2 pool during `hour` of the time-varying world. */
+/** A v2 pool (Aerodrome or Aero) during `hour` of the time-varying world. */
 export function v2FactorsAt(
   spec: V2Spec,
   poolIndex: number,

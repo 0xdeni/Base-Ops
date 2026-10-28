@@ -26,7 +26,7 @@ makers in one pool, or one agreement renegotiated under a new id).
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | `id`                     | Slug, `^[a-z0-9][a-z0-9-]{2,39}$`; the scorecard URL and the badge URL are built from it                                                                                                                                                                  | —       |
 | `name`                   | Display name of the agreement, at most 120 characters                                                                                                                                                                                                     | —       |
-| `poolId`                 | A pool id as the observatory uses it: `<dex>:0x<pool address>` for `uniswap-v3`, `aerodrome-v2` and `aerodrome-slipstream`, `uniswap-v4:0x<poolId>` (64 hex digits) for Uniswap v4; any case is accepted, stored lowercase                                | —       |
+| `poolId`                 | A pool id as the observatory uses it: `<dex>:0x<pool address>` for `uniswap-v3`, `aerodrome-v2`, `aerodrome-slipstream`, `aero-v2` and `aero-slipstream`, `uniswap-v4:0x<poolId>` (64 hex digits) for Uniswap v4; any case is accepted, stored lowercase  | —       |
 | `marketMaker`            | Display name of the market maker, at most 120 characters                                                                                                                                                                                                  | —       |
 | `addresses`              | The market maker's on-chain identities, lowercase, at least one and at most 50 (see [Attribution](#attribution))                                                                                                                                          | —       |
 | `kpis.minDepthUsd`       | USD depth the market maker must provide on **each** side (price up and price down) at `±bandPct`                                                                                                                                                          | —       |
@@ -41,7 +41,7 @@ makers in one pool, or one agreement renegotiated under a new id).
 | `notes`                  | Free text, at most 2,000 characters                                                                                                                                                                                                                       | `null`  |
 
 Validation (`parseMandate` in core) reports every problem at once: the id pattern; non-empty
-`name` and `marketMaker` of at most 120 characters each; a `poolId` of one of the four DEXes with
+`name` and `marketMaker` of at most 120 characters each; a `poolId` of one of the six DEXes with
 a 40-hex-digit pool address (64 hex digits for a Uniswap v4 pool id), in any case and stored
 lowercase, so it matches the observatory's pool ids; one to 50 valid addresses (any case is
 accepted, stored lowercase, duplicates dropped); `minDepthUsd > 0`; `0 < bandPct < 100`;
@@ -72,13 +72,18 @@ DEX, because each one records ownership differently.
 | Uniswap v4           | Position owners as the PositionManager reports them; for liquidity added by a hook or a vault contract, that contract's address | As for v3                                                                                                                                                                                                                                                    | `positions` |
 | Aerodrome Slipstream | Position owners; for positions staked in the pool's `CLGauge`, the **depositor** (the gauge shows up as `ownerOf`, not the LP)  | Indexed positions whose owner is the pool's gauge (`CLPool.gauge()`) are resolved with `CLGauge.stakedContains(candidate, tokenId)` for each registered address and rewritten to the matching depositor (first match wins); then filtered by owner as for v3 | `positions` |
 | Aerodrome v2         | LP-token holders; LP tokens staked in the pool's gauge count too                                                                | `balanceOf(address)` and `totalSupply()` on the pool (the LP token) and, when `Voter.gauges(pool)` is set, `Gauge.balanceOf(address)` for the staked part, all at the snapshot block                                                                         | `lp-share`  |
+| Aero Slipstream      | As for Aerodrome Slipstream: position owners, and the depositor of a position staked in the pool's `CLGauge`                    | As for Aerodrome Slipstream: the gauge is `CLPool.gauge()` and answers `stakedContains(candidate, tokenId)`; positions come from Aero's own NonfungiblePositionManager                                                                                       | `positions` |
+| Aero v2              | LP-token holders; LP tokens staked in the pool's gauge count too                                                                | As for Aerodrome v2, with the gauge read from Aero's FactoryRegistry, `targetToGauge(pool)` (none when it answers address(0)), never from a voter                                                                                                            | `lp-share`  |
 
-Gauge-staked attribution depends on the live Aerodrome Voter: an Aerodrome v2 pool's gauge is
-whatever `Voter.gauges(pool)` returns at the snapshot block, and a Slipstream pool's is
-`CLPool.gauge()`. At block ~52,918,274 (2026-10-21) the Voter killed its main gauges and
-de-whitelisted WETH, USDC and AERO (docs/research/base-contracts.md §2.8); a killed gauge is still
-returned and its staked LP still counts, but gauges created by a successor contract would not be
-seen, so LP staked there would be missed until it is confirmed where Aerodrome's gauges now live.
+Where the gauges live. On 2026-10-21 Aerodrome and Velodrome merged into Aero, which runs its own
+factories and gauges on Base (docs/research/base-contracts.md, `## aero`). An Aerodrome v2 pool's
+gauge is still whatever the Aerodrome Voter's `gauges(pool)` returns at the snapshot block: every
+Aerodrome gauge has been dead since the kills at blocks 52,918,274–52,918,331 (§2.8), but a killed
+gauge is still returned and LP still staked there still counts. An Aero v2 pool's gauge is the FactoryRegistry's
+`targetToGauge(pool)`, because Aero's LeafVoter has none of the old Voter's pool views; a
+Slipstream pool's, Aerodrome or Aero, is `CLPool.gauge()`. Liquidity that moved from an Aerodrome
+pool to an Aero pool is in another pool with another id, so a market maker that moved registers a
+new mandate for the Aero pool; the mandate on the Aerodrome pool keeps its history.
 
 From the holdings, core builds a **market-maker-only pool state**:
 - **Concentrated pools** (`buildMmConcentratedState`): a state that contains only the market
@@ -410,11 +415,12 @@ The badge shows the status and the 7 d uptime only; the page it links to carries
 
 Every sample names its block, and everything that produced it is public:
 1. Read the pool state at that block (`readState`, or `slot0` / `liquidity` / `tickBitmap` /
-   `ticks` directly; `getReserves` for Aerodrome v2).
+   `ticks` directly; `getReserves` for Aerodrome v2 and Aero v2).
 2. Find the market maker's holdings at that block: the position manager's positions owned by the
    addresses (for Slipstream, also the positions the pool's gauge holds for which
-   `stakedContains(address, tokenId)` is true); for Aerodrome v2, `balanceOf`, `Gauge.balanceOf`
-   and `totalSupply`.
+   `stakedContains(address, tokenId)` is true); for Aerodrome v2 and Aero v2, `balanceOf`,
+   `Gauge.balanceOf` (the gauge from the Aerodrome Voter or Aero's FactoryRegistry) and
+   `totalSupply`.
 3. Build the market-maker-only state (`buildMmConcentratedState` or `buildMmReserveState`).
 4. Run `computeDepth` at `bandPct` and `computeEffectiveSpread` at `spreadNotionalUsd` on it, in
    USD at the token prices the snapshot of that block recorded (`token0Usd`, `token1Usd`).

@@ -1,9 +1,10 @@
 /**
- * `readSwaps` scans per `Swap` event source: Uniswap v3 and Slipstream pools emit the same event
- * (checked here against both ABIs), so their pools share one filter per range, and every scan
- * reports chunks and backoffs to one progress object.
+ * `readSwaps` scans per `Swap` event source: Uniswap v3 and both Slipstreams emit the same event
+ * (checked here against both ABIs), as do Aerodrome v2 and Aero v2 pools, so their pools share one
+ * filter per range: three sources for six DEXes. Every scan reports chunks and backoffs to one
+ * progress object.
  */
-import type { Hex } from '@depthwatch/core'
+import { DEXES, type Hex } from '@depthwatch/core'
 import { describe, expect, it } from 'vitest'
 import { aerodromeCLPoolAbi } from './abi/aerodromeCLPool.js'
 import { aerodromePoolAbi } from './abi/aerodromePool.js'
@@ -29,6 +30,14 @@ const slip = poolMeta({
 })
 const v2 = poolMeta({ dex: 'aerodrome-v2', address: addr(0x403), token0: TOKEN_A, token1: TOKEN_D })
 const v4 = poolMeta({ dex: 'uniswap-v4', token0: TOKEN_A, token1: TOKEN_D })
+const aeroV2 = poolMeta({ dex: 'aero-v2', address: addr(0x404), token0: TOKEN_A, token1: TOKEN_D })
+const aeroCl = poolMeta({
+  dex: 'aero-slipstream',
+  address: addr(0x405),
+  token0: TOKEN_A,
+  token1: TOKEN_D,
+  tickSpacing: 50,
+})
 
 const swapLog = (address: Hex, blockNumber: bigint, amount0: bigint) =>
   makeLog({
@@ -66,6 +75,16 @@ describe('swap event sources', () => {
     expect([...groups.keys()]).toEqual(['uniswap-v3', 'uniswap-v4', 'aerodrome-v2'])
     expect(groups.get('uniswap-v3')).toEqual([v3, slip])
   })
+
+  it('joins Aero v2 to the Aerodrome v2 scan and Aero Slipstream to the v3 one', () => {
+    expect(swapScanOf('aero-v2')).toBe('aerodrome-v2')
+    expect(swapScanOf('aero-slipstream')).toBe('uniswap-v3')
+    expect(new Set(DEXES.map(swapScanOf)).size).toBe(3)
+    const groups = swapScanGroups([aeroCl, aeroV2, slip, v2, v3, v4])
+    expect([...groups.keys()]).toEqual(['uniswap-v3', 'uniswap-v4', 'aerodrome-v2'])
+    expect(groups.get('uniswap-v3')).toEqual([v3, slip, aeroCl])
+    expect(groups.get('aerodrome-v2')).toEqual([v2, aeroV2])
+  })
 })
 
 describe('readSwaps over v3 and Slipstream pools', () => {
@@ -93,6 +112,39 @@ describe('readSwaps over v3 and Slipstream pools', () => {
       [1, 10n, 20n, 1],
       [2, 20n, 20n, 1],
     ])
+  })
+
+  it('reads Aero pools in the shared filters: one eth_getLogs per source and chunk', async () => {
+    const fixture = newFixture(2_000n, 3_000_000)
+    addLogs(fixture, [
+      swapLog(aeroCl.address as Hex, 1_003n, 5n),
+      makeLog({
+        address: aeroV2.address as `0x${string}`,
+        abi: aerodromePoolAbi,
+        eventName: 'Swap',
+        args: {
+          sender: addr(0x7007),
+          to: addr(0x7007),
+          amount0In: 9n,
+          amount1In: 0n,
+          amount0Out: 0n,
+          amount1Out: 4n,
+        },
+        blockNumber: 1_004n,
+        logIndex: 0,
+      }),
+    ])
+    const counts = new Map<string, number>()
+    const reader = createChainReader({
+      transport: countingTransport(createFixtureTransport(fixture), counts),
+      logChunkSize: 10,
+    })
+    const swaps = await reader.readSwaps([v3, aeroCl, v2, aeroV2], 1_001n, 1_010n)
+    expect(swaps.map((s) => [s.poolId, s.amount0, s.amount1])).toEqual([
+      [aeroCl.id, 5n, -5n],
+      [aeroV2.id, 9n, -4n],
+    ])
+    expect(counts.get('eth_getLogs')).toBe(2) // two sources, one 10-block chunk each
   })
 
   it('counts backoffs by kind in the progress', async () => {

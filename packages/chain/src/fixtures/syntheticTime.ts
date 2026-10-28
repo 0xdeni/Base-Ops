@@ -68,7 +68,8 @@ export function assetOf(token: Address): SyntheticAsset {
   const address = token.toLowerCase()
   if (address === NATIVE_ETH || address === TOKENS.WETH.address) return 'ETH'
   if (address === TOKENS.CBBTC.address) return 'BTC'
-  if (address === TOKENS.AERO.address) return 'AERO'
+  // Both AEROs, Aerodrome's and Aero's, follow one price stream.
+  if (address === TOKENS.AERO_AERODROME.address || address === TOKENS.AERO.address) return 'AERO'
   return 'USD'
 }
 

@@ -2,7 +2,8 @@
 # The `depthwatch` command inside the Docker image (installed as /usr/local/bin/depthwatch and used
 # as the image's entrypoint): `depthwatch start` by default; the database-only commands (`mm
 # list`, `mm register`, …) with `docker compose exec -u node depthwatch depthwatch <command>`,
-# never a live command beside `start`. See docs/DEPLOY.md.
+# never a live command beside `start` but `discover --seed`, which writes pools only. See
+# docs/DEPLOY.md.
 set -eu
 
 # The database stays in the /data volume: a relative DEPTHWATCH_DB (the .env.example default, when

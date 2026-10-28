@@ -414,9 +414,11 @@ describe('GET /api/pools/:id/history', () => {
       spread10kBps: 8,
       tvlUsd: 12_500_000,
       health: expectedHealth,
+      // The fee the snapshot's depth and spread used, as stored with it.
+      feePips: 500,
     })
     expect(Object.keys(last ?? {}).sort()).toEqual(
-      ['depth2Usd', 'health', 'price', 'spread10kBps', 'timestamp', 'tvlUsd'].sort(),
+      ['depth2Usd', 'feePips', 'health', 'price', 'spread10kBps', 'timestamp', 'tvlUsd'].sort(),
     )
     // The first point of the window has a full trailing 24 h of snapshots behind it (lead-in),
     // so its persistence is not neutral either.

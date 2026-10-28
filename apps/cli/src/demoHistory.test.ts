@@ -38,7 +38,8 @@ describe('demo pipeline: seven days of history', () => {
       const ms = Date.now() - started
       expect(ms).toBeLessThan(20_000)
       expect(result.history.timestamps).toHaveLength(DEMO_HISTORY.points)
-      expect(result.history.snapshots).toBe(6 * DEMO_HISTORY.points)
+      // Eight pools: the six of the Uniswap and Aerodrome DEXes and the two Aero ones.
+      expect(result.history.snapshots).toBe(8 * DEMO_HISTORY.points)
       for (const id of db.pools.trackedIds()) {
         const score = db.scores.get(id)
         expect(score?.persistence7d.samples).toBe(DEMO_HISTORY.points - 1)
@@ -100,7 +101,7 @@ describe('demo history on a reused --db file', () => {
         db.close()
       }
     }
-    expect(counts[0]).toEqual([18, 6, counts[0]?.[2], 4, 3])
+    expect(counts[0]).toEqual([24, 6, counts[0]?.[2], 4, 3])
     expect(counts[1]).toEqual(counts[0])
   }, 30_000)
 })

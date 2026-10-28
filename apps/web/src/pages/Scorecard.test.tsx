@@ -73,7 +73,7 @@ describe('/mm/:id title section and answer (visual-v4 §6.7)', () => {
     expect(back?.textContent).toBe('Scorecards')
     expect(back?.getAttribute('href')).toBe('/mm')
     expect(document.querySelector('.sc-eb')?.textContent).toMatch(
-      /^Scorecard Demo Markets on WETH \/ AERO, Aerodrome Slipstream 0\.3.%$/,
+      /^Scorecard Demo Markets on WETH \/ AERO \(Aerodrome\), Aerodrome Slipstream 0\.3.% dynamic$/,
     )
     // One filled chip, under the title (K5).
     const chips = document.querySelectorAll('.status-chip')
@@ -81,7 +81,7 @@ describe('/mm/:id title section and answer (visual-v4 §6.7)', () => {
     expect(chips[0]?.textContent).toBe('Within KPI')
     const note = document.querySelector('.sc-note') as HTMLElement
     expect(note.textContent).toBe(
-      'Measured on the liquidity Demo Markets holds in the WETH / AERO pool.',
+      'Measured on the liquidity Demo Markets holds in the WETH / AERO (Aerodrome) pool.',
     )
     expect(within(note).getByRole('link').getAttribute('href')).toBe(poolHref(MOCK_MM_OK_POOL))
   })
@@ -375,9 +375,9 @@ describe('/mm/:id sections', () => {
     await chart()
     const about = section('mandate')
     fireEvent.click(within(about).getByRole('button', { name: 'Mandate details' }), { detail: 0 })
-    expect(within(about).getByRole('link', { name: 'USDC / AERO' }).getAttribute('href')).toBe(
-      poolHref(MOCK_MM_BREACHED_POOL),
-    )
+    expect(
+      within(about).getByRole('link', { name: 'USDC / AERO (Aerodrome)' }).getAttribute('href'),
+    ).toBe(poolHref(MOCK_MM_BREACHED_POOL))
   })
 })
 

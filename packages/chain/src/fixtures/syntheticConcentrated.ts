@@ -1,11 +1,13 @@
 /**
  * Registers state and position answers for one synthetic concentrated pool: slot0/liquidity/fee/
  * tickSpacing (or StateView equivalents), tick-bitmap words, `ticks()` per initialised tick, token
- * balances, NFPM/PositionManager position reads and the logs that lead to them.
+ * balances, NFPM/PositionManager position reads and the logs that lead to them; for the Aero
+ * Slipstream pool also its factory and swap-hook reads (syntheticAero.ts).
  */
 import type { Address } from '@depthwatch/core'
 import { aerodromeCLFactoryAbi } from '../abi/aerodromeCLFactory.js'
 import { aerodromeCLPoolAbi } from '../abi/aerodromeCLPool.js'
+import { aeroNFPMAbi } from '../abi/aeroNFPM.js'
 import { erc20Abi } from '../abi/erc20.js'
 import { nonfungiblePositionManagerAbi } from '../abi/nonfungiblePositionManager.js'
 import { slipstreamNFPMAbi } from '../abi/slipstreamNFPM.js'
@@ -14,8 +16,10 @@ import type { ChainAddresses } from '../addresses.js'
 import { bitmapPosition, wordOfTick } from '../internal/ticks.js'
 import type { Fixture, FixtureLog } from '../transport/fixture.js'
 import { addLogs, type BlockRef, makeLog, registerCall } from './builders.js'
+import { registerAeroSlipstreamHook } from './syntheticAero.js'
 import { registerSlipstreamGauge } from './syntheticGauges.js'
 import {
+  AERO_SLIPSTREAM_FACTORY_INDEX,
   SLIPSTREAM_INITIAL_FACTORY_INDEX,
   type SyntheticConcentratedPool,
   type SyntheticWorld,
@@ -177,7 +181,7 @@ function registerNfpmPositions(
   world: SyntheticWorld,
   pool: SyntheticConcentratedPool,
   nfpm: Address,
-  abi: typeof nonfungiblePositionManagerAbi | typeof slipstreamNFPMAbi,
+  abi: typeof nonfungiblePositionManagerAbi | typeof slipstreamNFPMAbi | typeof aeroNFPMAbi,
   keyValue: number,
 ): void {
   const logs: FixtureLog[] = []
@@ -226,11 +230,14 @@ function registerNfpmPositions(
         address: nfpm,
         abi,
         eventName: 'IncreaseLiquidity',
+        // The ticks are read by the Aero NFPM's 6-field event only.
         args: {
           tokenId: p.tokenId,
           liquidity: p.liquidity,
           amount0: p.amount0,
           amount1: p.amount1,
+          tickLower: p.tickLower,
+          tickUpper: p.tickUpper,
         },
         blockNumber,
         logIndex: 1,
@@ -294,6 +301,22 @@ export function registerConcentratedPool(
       const initial = addresses.aerodromeSlipstream[SLIPSTREAM_INITIAL_FACTORY_INDEX]
       if (initial)
         registerNfpmPositions(fixture, world, pool, initial.positionManager, slipstreamNFPMAbi, ts)
+      registerSlipstreamGauge(fixture, world, pool, addresses)
+      return
+    }
+    case 'aero-slipstream': {
+      registerSlipstreamState(fixture, pool, blocks)
+      registerAeroSlipstreamHook(fixture, pool, addresses, blocks)
+      const aero = addresses.aeroSlipstream[AERO_SLIPSTREAM_FACTORY_INDEX]
+      if (aero)
+        registerNfpmPositions(
+          fixture,
+          world,
+          pool,
+          aero.positionManager,
+          aeroNFPMAbi,
+          pool.meta.tickSpacing ?? 0,
+        )
       registerSlipstreamGauge(fixture, world, pool, addresses)
       return
     }

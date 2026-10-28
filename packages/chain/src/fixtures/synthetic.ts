@@ -16,10 +16,13 @@ import { uniswapV3FactoryAbi } from '../abi/uniswapV3Factory.js'
 import { v4PoolManagerAbi } from '../abi/v4PoolManager.js'
 import { slipstreamPoolId } from '../adapters/aerodromeSlipstream.js'
 import { aerodromeV2PoolId } from '../adapters/aerodromeV2.js'
+import { aeroSlipstreamPoolId } from '../adapters/aeroSlipstream.js'
+import { aeroV2PoolId } from '../adapters/aeroV2.js'
 import { uniswapV3PoolId } from '../adapters/uniswapV3.js'
 import { BASE_ADDRESSES, type ChainAddresses } from '../addresses.js'
 import { createFixture, type Fixture, type FixtureLog } from '../transport/fixture.js'
 import { addLogs, type BlockRef, makeLog, registerCall, setClock } from './builders.js'
+import { aeroCreationLog, registerAeroV2Fee } from './syntheticAero.js'
 import { registerConcentratedPool } from './syntheticConcentrated.js'
 import { registerV2LpHoldings } from './syntheticGauges.js'
 import { positionHistoryLogs, swapHistoryLogs } from './syntheticHistory.js'
@@ -36,6 +39,12 @@ import {
 } from './syntheticTypes.js'
 import { syntheticWorld } from './syntheticWorld.js'
 
+export {
+  aeroHookFeeAt,
+  SYNTHETIC_AERO_HOOK_CONFIG,
+  SYNTHETIC_AERO_START_OFFSET,
+  syntheticAddresses,
+} from './syntheticAero.js'
 export {
   aeroMarketMakerOut,
   priceFactor as syntheticPriceFactor,
@@ -81,6 +90,10 @@ export const SYNTHETIC_POOL_IDS: Readonly<
   usdcUsdbcV2: aerodromeV2PoolId(syntheticPoolAddress(SYNTHETIC_POOL_LABELS.usdcUsdbcV2)),
   wethUsdcSlipstream: slipstreamPoolId(
     syntheticPoolAddress(SYNTHETIC_POOL_LABELS.wethUsdcSlipstream),
+  ),
+  aeroUsdcAeroV2: aeroV2PoolId(syntheticPoolAddress(SYNTHETIC_POOL_LABELS.aeroUsdcAeroV2)),
+  wethUsdcAeroSlipstream: aeroSlipstreamPoolId(
+    syntheticPoolAddress(SYNTHETIC_POOL_LABELS.wethUsdcAeroSlipstream),
   ),
 })
 
@@ -183,6 +196,9 @@ function creationLog(pool: SyntheticPool, addresses: ChainAddresses): FixtureLog
         logIndex: 0,
       })
     }
+    case 'aero-v2':
+    case 'aero-slipstream':
+      return aeroCreationLog(meta, addresses)
   }
 }
 
@@ -204,13 +220,6 @@ function registerV2Pool(
   registerCall(fixture, {
     to,
     abi: aerodromePoolAbi,
-    functionName: 'stable',
-    result: pool.meta.stable,
-    blocks,
-  })
-  registerCall(fixture, {
-    to,
-    abi: aerodromePoolAbi,
     functionName: 'token0',
     result: pool.meta.token0.address,
     blocks,
@@ -220,6 +229,17 @@ function registerV2Pool(
     abi: aerodromePoolAbi,
     functionName: 'token1',
     result: pool.meta.token1.address,
+    blocks,
+  })
+  if (pool.meta.dex === 'aero-v2') {
+    registerAeroV2Fee(fixture, pool, addresses, blocks)
+    return
+  }
+  registerCall(fixture, {
+    to,
+    abi: aerodromePoolAbi,
+    functionName: 'stable',
+    result: pool.meta.stable,
     blocks,
   })
   registerCall(fixture, {

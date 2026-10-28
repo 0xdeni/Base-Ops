@@ -68,6 +68,8 @@ const POOL_KEY_HEX_DIGITS: Readonly<Record<Dex, number>> = Object.freeze({
   'uniswap-v4': 64,
   'aerodrome-v2': 40,
   'aerodrome-slipstream': 40,
+  'aero-v2': 40,
+  'aero-slipstream': 40,
 })
 
 function isRecord(value: unknown): value is Record<string, unknown> {

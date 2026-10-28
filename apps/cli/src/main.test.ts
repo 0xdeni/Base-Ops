@@ -179,7 +179,7 @@ describe('main', () => {
       expect(result.stderr).toEqual([])
       expect(result.stdout).toHaveLength(1)
       expect(result.stdout[0]).toMatch(
-        /^exported demo bundle to .*bundle\.json: 6 pools, 2 scorecards/,
+        /^exported demo bundle to .*bundle\.json: 8 pools, 2 scorecards/,
       )
       const bundle = JSON.parse(readFileSync(out, 'utf8')) as { v: number; source: string }
       expect(bundle).toMatchObject({ v: 1, source: 'demo' })

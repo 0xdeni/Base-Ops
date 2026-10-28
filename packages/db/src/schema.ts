@@ -19,6 +19,9 @@
  * "Stale quotes"), NULL in the rows stored before it; reads and sorts use it as stored.
  * Version 6 clears `snapshots.owner_top1_share` where the stored owners do not describe the pool
  * (summary.ts, `ownerTop1Share`), so stored rows and new ones mean the same.
+ * Version 7 adds `snapshots.fee_pips`: the LP fee each snapshot's depth and spread used
+ * (`PoolSnapshot.feePips`), NULL in the rows stored before it. It also marks the first build that
+ * knows the Aero DEX ids, so an older build refuses the file before any step meets them.
  *
  * Several processes may open one file at once: a database at the current version is read without
  * a write lock; otherwise `BEGIN IMMEDIATE` comes first and `schema_version` is created and read
@@ -209,6 +212,12 @@ export const MIGRATIONS: readonly string[] = [
       COALESCE(json_extract(concentration_json, '$.owners.count'), 0) > 0
       AND COALESCE(json_extract(concentration_json, '$.owners.coverage'), 0) >= 0.9
     );
+  `,
+  // Version 7: the LP fee each snapshot's depth and spread used (`PoolSnapshot.feePips`); NULL for
+  // rows stored before. Slipstream fees change from block to block, so the pool's fee alone does
+  // not say which one a stored snapshot was computed with.
+  `
+  ALTER TABLE snapshots ADD COLUMN fee_pips INTEGER;
   `,
 ]
 

@@ -70,6 +70,7 @@ export function buildHistoryPoints(
       spread10kBps: snapshot.spread10kBps,
       tvlUsd: snapshot.tvlUsd,
       health: health.total,
+      feePips: snapshot.feePips,
     })
   }
   return points

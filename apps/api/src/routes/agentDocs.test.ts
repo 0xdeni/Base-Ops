@@ -12,6 +12,7 @@ import { type Database, IN_MEMORY, openDatabase } from '@depthwatch/db'
 import type { Hono } from 'hono'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createApp } from '../app.js'
+import { seedAeroTokens } from '../testing/aero.js'
 import { collectRefs, resolvePointer, type Schema, validate } from '../testing/schema.js'
 import {
   createSeededDatabase,
@@ -195,6 +196,28 @@ describe('agent documents', () => {
         paths.push(`/api/mm/${id}`, `/api/mm/${id}/samples?window=30d`)
       }
       for (const path of paths) expect(await conforms(api, path, 200), path).toEqual([])
+    })
+
+    it('the Aero venues beside the seed: both AEROs labelled, per-snapshot fees', async () => {
+      const { db: both, seed: world } = createSeededDatabase()
+      try {
+        const aero = seedAeroTokens(both, world)
+        const served = createApp(both, { now: () => world.now })
+        const paths = [
+          '/api/stats',
+          '/api/pools?dex=aero-v2',
+          '/api/pools?dex=aero-slipstream',
+          '/api/gaps?minVolume=0',
+          `/api/tokens/${aero.token.address}`,
+          `/api/tokens/${world.tokens.AERO.address}`,
+          `/api/pools/${aero.aeroUsdcAeroV2.id}`,
+          `/api/pools/${aero.wethUsdcAeroSlip.id}`,
+          `/api/pools/${aero.wethUsdcAeroSlip.id}/history`,
+        ]
+        for (const path of paths) expect(await conforms(served, path, 200), path).toEqual([])
+      } finally {
+        both.close()
+      }
     })
 
     it('a newest snapshot stored before owner coverage was recorded', async () => {

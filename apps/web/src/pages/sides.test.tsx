@@ -83,7 +83,7 @@ describe('sides agree across pages (UX2-02)', () => {
     const table = screen.getByRole('table', { name: `Depth within 2${NB}% by pool` })
     const row = within(table)
       .getAllByRole('row')
-      .find((tr) => tr.textContent?.startsWith(`USDC / AERO ${dexShort(pool.dex)}`))
+      .find((tr) => tr.textContent?.startsWith(`USDC / AERO (Aerodrome) ${dexShort(pool.dex)}`))
     const cells = [...(row?.querySelectorAll('td') ?? [])].map((td) => td.textContent)
     expect(cells.slice(1, 3)).toEqual([sell, buy])
     cleanup()

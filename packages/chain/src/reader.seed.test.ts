@@ -1,4 +1,4 @@
-import { type Address, NATIVE_ETH, type PoolMeta, type TokenInfo } from '@depthwatch/core'
+import { type Address, DEXES, NATIVE_ETH, type PoolMeta, type TokenInfo } from '@depthwatch/core'
 import { encodeAbiParameters, keccak256 } from 'viem'
 import { describe, expect, it } from 'vitest'
 import { aerodromeCLFactoryAbi } from './abi/aerodromeCLFactory.js'
@@ -176,20 +176,19 @@ describe('seedPools', () => {
     const { r, counts } = reader(fixture)
     const seeded = await r.seedPools()
     expect(seeded.blockNumber).toBe(HEAD)
-    // 3 ERC-20 pairs: v3 × 7 enabled tiers, v2 × 2, Slipstream × 3 factories × 5 spacings; v4: 6 × 4.
+    // 3 ERC-20 pairs: v3 × 7 enabled tiers, v2 × 2, Slipstream × 3 factories × 5 spacings; v4: 6 × 4;
+    // Aero v2 × 2 factories, Aero Slipstream × 7 spacings (reader.aeroSeed.test.ts finds pools).
     expect(seeded.dexes).toEqual([
       { dex: 'uniswap-v3', candidates: 21, found: 2, searched: 2 },
       { dex: 'uniswap-v4', candidates: 24, found: 2, searched: 2 },
       { dex: 'aerodrome-v2', candidates: 6, found: 1, searched: 1 },
       { dex: 'aerodrome-slipstream', candidates: 45, found: 1, searched: 1 },
+      { dex: 'aero-v2', candidates: 6, found: 0, searched: 0 },
+      { dex: 'aero-slipstream', candidates: 21, found: 0, searched: 0 },
     ])
     expect(seeded.failed).toEqual([])
     const discovered = (
-      await Promise.all(
-        (['uniswap-v3', 'uniswap-v4', 'aerodrome-v2', 'aerodrome-slipstream'] as const).map((dex) =>
-          r.discoverPools(dex, 0n, HEAD),
-        ),
-      )
+      await Promise.all(DEXES.map((dex) => r.discoverPools(dex, 0n, HEAD)))
     ).flat()
     expect(discovered).toHaveLength(6)
     expect(byId(seeded.pools)).toEqual(byId(discovered))
