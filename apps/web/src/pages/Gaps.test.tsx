@@ -133,7 +133,7 @@ describe('Gaps: the ranked rows', () => {
     const list = await gapList()
     expect(list.tagName).toBe('OL')
     const rows = within(list).getAllByRole('listitem')
-    expect(rows).toHaveLength(11)
+    expect(rows).toHaveLength(13)
     const first = rows[0] as HTMLElement
     const link = within(first).getByRole('link')
     expect(link.getAttribute('href')).toBe(`/pools/${encodeURIComponent(top.pool.pool.id)}`)
@@ -220,7 +220,7 @@ describe('Gaps: the table view (L2)', () => {
       'Health',
       'TVL',
     ])
-    expect(within(table).getAllByRole('row')).toHaveLength(16)
+    expect(within(table).getAllByRole('row')).toHaveLength(18)
     const turnover = within(table).getByRole('columnheader', { name: 'Turnover' })
     expect(turnover.getAttribute('aria-sort')).toBe('descending')
   })

@@ -3,7 +3,7 @@
  * and §7). The web formats and draws only; metrics come from `@depthwatch/core`.
  * Units are glued with a no-break space (U+00A0), minus is U+2212, unknown is "—" (D6).
  */
-import { DEXES, type Dex, type HealthGrade, type TokenInfo } from '@depthwatch/core'
+import { DEXES, type Dex, type HealthGrade, hasDynamicFee, type TokenInfo } from '@depthwatch/core'
 import { groupDigits, rawToDecimal } from './raw.js'
 
 /** No-break space: between a number and its unit or % (N7). */
@@ -207,6 +207,14 @@ export function fee(feePips: number): string {
   return `${text}${NB}%`
 }
 
+/**
+ * A pool's fee where it names the pool: "0.3 %", or "0.0465 % dynamic" for a DEX whose fee can
+ * change every block (core `hasDynamicFee`: both Slipstreams), where it is the latest snapshot's.
+ */
+export function feeText(pool: { dex: string; feePips: number }): string {
+  return `${fee(pool.feePips)}${hasDynamicFee(pool) ? ' dynamic' : ''}`
+}
+
 /** A count with grouping: "1,284". */
 export function count(v: Num): string {
   if (!isNum(v)) return DASH
@@ -328,12 +336,27 @@ export function poolDesc(
   pool: { dex: string; feePips: number; stable?: boolean },
   tieBreak?: string,
 ): string {
-  const desc = `${dexLabel(pool.dex)}, ${fee(pool.feePips)}${pool.stable ? ', stable pair' : ''}`
+  const desc = `${dexLabel(pool.dex)}, ${feeText(pool)}${pool.stable ? ', stable pair' : ''}`
   return tieBreak ? `${desc}, ${tieBreak}` : desc
 }
 
-export function pairLabel(token0: Pick<TokenInfo, 'symbol'>, token1: Pick<TokenInfo, 'symbol'>) {
-  return `${token0.symbol} / ${token1.symbol}`
+/** A token where it is named: what the API labels "AERO (Aerodrome)" beside another AERO. */
+export interface NamedToken {
+  symbol: string
+  /** The API's display label; a server older than labels sends none. */
+  label?: string
+}
+
+/**
+ * A token's name in titles and pairs: the API's `label`, which tells apart tokens sharing a
+ * symbol (Aerodrome's and Aero's AERO), else the symbol. Unit suffixes keep the bare symbol.
+ */
+export function tokenText(token: NamedToken): string {
+  return token.label ?? token.symbol
+}
+
+export function pairLabel(token0: NamedToken, token1: NamedToken) {
+  return `${tokenText(token0)} / ${tokenText(token1)}`
 }
 
 /** Grade bands (C4): A–B ok (circle), C warn (square), D–F bad (triangle). */

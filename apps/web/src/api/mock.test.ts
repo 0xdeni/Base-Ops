@@ -8,7 +8,7 @@ const client = createMockClient({ now: NOW })
 const WETH = '0x4200000000000000000000000000000000000006'
 
 describe('mock client', () => {
-  it('serves 10–20 pools across all four DEXes', async () => {
+  it('serves 10–20 pools across all six DEXes', async () => {
     const { items, total } = await client.pools({ limit: 100 })
     expect(total).toBeGreaterThanOrEqual(10)
     expect(total).toBeLessThanOrEqual(20)
@@ -263,6 +263,24 @@ describe('mock client', () => {
     const known = all.pools.filter((p) => p.depth2Usd !== null)
     const sum = known.reduce((total, p) => total + (p.depth2Usd ?? 0), 0)
     expect(byHealthAsc).toMatchObject({ depth2UsdTotal: sum, depthKnownPools: known.length })
+  })
+
+  it('labels the two AEROs apart the way the API does, and every other token by its symbol', async () => {
+    const { items } = await client.pools({ limit: 100 })
+    const labels = new Map<string, string>()
+    for (const { pool } of items) {
+      for (const token of [pool.token0, pool.token1]) labels.set(token.address, token.label ?? '')
+    }
+    expect(labels.get('0x940181a94a35a4569e4529a3cdfb74e38fd98631')).toBe('AERO (Aerodrome)')
+    expect(labels.get('0x3f5bf3edac59d650d8fdf9657a71f2f904a3a4ee')).toBe('AERO (Aero)')
+    for (const { pool } of items) {
+      for (const token of [pool.token0, pool.token1]) {
+        if (token.symbol !== 'AERO') expect(token.label).toBe(token.symbol)
+      }
+    }
+    const aero = await client.token('0x3f5bf3edac59d650d8fdf9657a71f2f904a3a4ee')
+    expect(aero.token).toMatchObject({ symbol: 'AERO', name: 'Aero', label: 'AERO (Aero)' })
+    expect(aero.pools.map((p) => p.pool.dex)).toEqual(['aero-v2'])
   })
 
   it('reports stats per dex in DEXES order plus totals, and a healthy /health', async () => {

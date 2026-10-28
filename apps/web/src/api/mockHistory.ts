@@ -36,6 +36,8 @@ export interface HistorySeed {
   health: number
   price: number
   tvlUsd: number | null
+  /** The LP fee every point used (the mock's fees do not move). */
+  feePips: number
   /** True when the pool has fewer than 3 snapshots: only the last two points are returned. */
   sparse: boolean
 }
@@ -71,7 +73,15 @@ export function buildHistory(
     const health = Math.min(100, Math.max(0, seed.health + 2.5 * drift + 1.5 * noise))
     const price = seed.price * (1 + 0.012 * Math.sin(i / 37 + 1) + 0.002 * noise)
     const tvlUsd = seed.tvlUsd === null ? null : seed.tvlUsd * (1 + 0.03 * drift + 0.01 * noise)
-    points.push({ timestamp, price, depth2Usd, spread10kBps, tvlUsd, health })
+    points.push({
+      timestamp,
+      price,
+      depth2Usd,
+      spread10kBps,
+      tvlUsd,
+      health,
+      feePips: seed.feePips,
+    })
   }
   return { window, from, to, points }
 }

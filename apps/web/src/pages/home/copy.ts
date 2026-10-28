@@ -41,13 +41,13 @@ export const ERROR_ANSWER = 'Liquidity on Base'
 export function homeLead(scored: number, rated: number): string {
   if (scored === 1) {
     const grading = rated > 0 ? 'and grades it A to F' : 'but it is too thin to grade'
-    return `Depthwatch measures what it costs to move the one Uniswap or Aerodrome pool it scores on Base, ${grading}.`
+    return `Depthwatch measures what it costs to move the one Uniswap, Aerodrome or Aero pool it scores on Base, ${grading}.`
   }
   let grading: string
   if (rated === 0) grading = 'but none is deep enough to grade yet'
   else if (rated === scored) grading = 'and grades each one A to F'
   else grading = 'and grades the ones deep enough to rate'
-  return `Depthwatch measures what it costs to move each Uniswap and Aerodrome pool it scores on Base, ${grading}.`
+  return `Depthwatch measures what it costs to move each Uniswap, Aerodrome and Aero pool it scores on Base, ${grading}.`
 }
 
 /** The lead while nothing is scored: what was found, and when scores appear. */
@@ -74,7 +74,7 @@ export function healthLabel(rated: number): string {
   return `median health of the ${count(rated)} rated pools`
 }
 
-/** "WETH / USDT, Slipstream: volume over depth" */
+/** "WETH / USDT, Aerodrome CL: volume over depth" */
 export function gapLabel(item: GapItem): string {
   const pool = item.pool.pool
   return `${pairLabel(pool.token0, pool.token1)}, ${dexShort(pool.dex)}: volume over depth`

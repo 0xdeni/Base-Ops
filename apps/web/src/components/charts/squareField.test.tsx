@@ -208,7 +208,9 @@ describe('SquareField', () => {
     const { container } = renderField()
     const field = screen.getByRole('group')
     fireEvent.keyDown(field, { key: 'ArrowRight' })
-    expect(readout(container)).toMatch(/^WETH \/ USDC, Slipstream.0\.05.%\$11\.2M within 2.%/)
+    expect(readout(container)).toMatch(
+      /^WETH \/ USDC, Aerodrome CL.0\.05.% dynamic\$11\.2M within 2.%/,
+    )
     expect(container.querySelector('.sq.hot')?.getAttribute('data-i')).toBe('0')
     fireEvent.keyDown(field, { key: 'ArrowRight' })
     expect(container.querySelector('.sq.hot')?.getAttribute('data-i')).toBe('1')

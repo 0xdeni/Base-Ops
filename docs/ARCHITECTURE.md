@@ -80,11 +80,11 @@ Each step reads what the previous one stored, so any step can be rerun on its ow
    (see [Seeded discovery](#seeded-discovery-factory-views-and-archive-state)); it records
    `seed:<dex>:lastBlock` and leaves the log cursors alone.
 2. **overview** (first half of `snapshot`). For every pool, read the cheap state in one pass:
-   `slot0` and `liquidity` for concentrated pools, `getReserves` for Aerodrome v2, `getSlot0` /
-   `getLiquidity` from StateView for v4, plus token balances for TVL. Calls are batched through
-   Multicall3, at most 500 calls per request.
+   `slot0` and `liquidity` for concentrated pools, `getReserves` for Aerodrome v2 and Aero v2,
+   `getSlot0` / `getLiquidity` from StateView for v4, plus token balances for TVL. Calls are batched
+   through Multicall3, at most 500 calls per request.
 3. **prices**. Every overview with a positive price and depth on both sides of it becomes a
-   `PriceEdge` (token0, token1, price, its ±2 % depth sides); a hooked Uniswap v4 pool is no edge.
+   `PriceEdge` (token0, token1, price, its ±2 % depth sides); a hooked pool is no edge.
    `derivePrices` runs a widest-path search from the anchors (USDC = 1, other stables = 1),
    weighing each edge in USD by its thinner side when it reaches it: the route chosen for a token
    is the one whose weakest pool is strongest, so a USD price comes through the deepest route and
@@ -138,7 +138,7 @@ for concentrated pools with an active mandate whether or not they are tracked ye
 Slipstream pool's gauge, whose staked positions count as uncovered rather than as one owner.
 Without it `concentration.owners` is null and the health score falls back to the structural range
 HHI, as it does when the indexed owners cover under 90 % of the in-band liquidity (an Aerodrome
-v2 pool scores the neutral 10).
+v2 or Aero v2 pool scores the neutral 10).
 
 ## Market-maker scorecards
 
@@ -172,13 +172,14 @@ delivered right after, and the API summarises the samples (once per mandate, new
      per mandate, and a mandate whose read fails is an attribution failure, never sampled with its
      staked liquidity missing); then `filterPositionsByOwners` → `buildMmConcentratedState`. No
      stored positions means attribution method `none` (a breach by rule 1);
-   - Aerodrome v2: `readLpHoldings` reads `balanceOf` / `totalSupply` on the LP token and
-     `Gauge.balanceOf` when `Voter.gauges(pool)` is set, at the snapshot block →
-     `buildMmReserveState`;
+   - Aerodrome v2 and Aero v2: `readLpHoldings` reads `balanceOf` / `totalSupply` on the LP token
+     and `Gauge.balanceOf` when the pool has a gauge (Aerodrome v2: `Voter.gauges(pool)`; Aero v2:
+     `FactoryRegistry.targetToGauge(pool)`, since Aero's Voter has no pool views), at the snapshot
+     block → `buildMmReserveState`;
    - then `computeMmAttribution` (depth at `bandPct`, spread at `spreadNotionalUsd`, on the
      market-maker-only state and on the whole pool) → `evaluateKpis` → the sample;
-   - a hooked Uniswap v4 pool is not modelled: each of its mandates is an attribution failure,
-     never a sample.
+   - a hooked pool (a Uniswap v4 hook, or an Aero Slipstream pool off its reviewed swap hook) is
+     not modelled: each of its mandates is an attribution failure, never a sample.
 3. **Storage.** The samples are inserted in the same transaction as the snapshots and the
    `prices` rebuild, so a snapshot and its samples share one block and either both exist or
    neither does. An attribution failure is logged per mandate and does not fail the snapshot.
@@ -205,8 +206,9 @@ the breach-after-N, recovery and failure-recorded paths.
 
 Sampling reuses the snapshot's state read, so a concentrated mandate adds no RPC calls unless
 Slipstream positions are gauge-staked: then one `stakedContains` call per gauge-owned position and
-registered address, multicall batched. An Aerodrome v2 mandate adds `totalSupply`, one `Voter.gauges`
-lookup and one or two `balanceOf` per address, in one multicall. The positions themselves come from
+registered address, multicall batched. An Aerodrome v2 or Aero v2 mandate adds `totalSupply`, one
+gauge lookup (`Voter.gauges` or `FactoryRegistry.targetToGauge`) and one or two `balanceOf` per
+address, in one multicall. The positions themselves come from
 the `positions` table, which `run` and `start` refresh for mandated pools (`run --with-positions`
 or a separate `depthwatch positions` schedule covers every tracked pool), so that is what keeps
 concentrated attribution current.
@@ -226,17 +228,19 @@ Log requests are only ever `discover`, `volume` and `positions`.
 ### Discovery: chunked `getLogs`
 
 One `eth_getLogs` per factory per chunk of `logChunkSize` blocks with the factory address and the
-creation topic; with the default addresses that is six factories (Uniswap v3, Uniswap v4,
-Aerodrome v2 and the three Slipstream deployments). The `depthwatch` CLI defaults to 2,000 blocks
-per chunk (`DEPTHWATCH_LOG_CHUNK` / `--log-chunk`; Base's public RPC rejects larger spans) and
-always passes its value to the reader, so 10,000 is only the library default of
-`createChainReader`. Incremental runs cover a day (43,200 blocks) in about 22 chunks per factory at
-2,000 blocks, or about 5 at 10,000. The first run starts at each factory's deployment block
-(`startBlock` in `addresses.ts`, or `--from-block`) and spans tens of millions of blocks: on the
-order of tens of thousands of requests per factory at the CLI default, a few thousand at 10,000, so
-raise `--log-chunk` for the backfill if the provider allows it. A scan of more than 100,000 chunks
-per factory logs a warning before it starts. The cursor advances every 50 chunks (100,000 blocks
-at the CLI default), so a failure costs at most one window on the next run. Token metadata is
+creation topic; with the default addresses that is eight filters: one per factory (Uniswap v3,
+Uniswap v4, Aerodrome v2, the three Aerodrome Slipstream deployments and the Aero Slipstream
+CLFactory) and one over Aero v2's volatile and stable factories, whose shared `PoolCreated` has no
+`stable` flag, so the factory that emitted a log gives the pool's kind. The `depthwatch` CLI
+defaults to 2,000 blocks per chunk (`DEPTHWATCH_LOG_CHUNK` / `--log-chunk`; Base's public RPC
+rejects larger spans) and always passes its value to the reader, so 10,000 is only the library
+default of `createChainReader`. Incremental runs cover a day (43,200 blocks) in about 22 chunks per
+factory at 2,000 blocks, or about 5 at 10,000. The first run starts at each factory's deployment
+block (`startBlock` in `addresses.ts`, or `--from-block`) and spans tens of millions of blocks: on
+the order of tens of thousands of requests per factory at the CLI default, a few thousand at 10,000,
+so raise `--log-chunk` for the backfill if the provider allows it. A scan of more than 100,000
+chunks per factory logs a warning before it starts. The cursor advances every 50 chunks (100,000
+blocks at the CLI default), so a failure costs at most one window on the next run. Token metadata is
 resolved once per token through multicall and cached in `tokens`.
 
 ### Seeded discovery: factory views and archive state
@@ -248,7 +252,12 @@ Multicall3 (at most 500 calls per request):
 - Uniswap v3: `feeAmountTickSpacing` for the candidate tiers (seven are enabled on Base: 100,
   200, 300, 400, 500, 3000, 10000), then `getPool(token0, token1, fee)` per pair and tier.
 - Aerodrome v2: `PoolFactory.getPool(token0, token1, stable)`, stable and volatile.
-- Slipstream: `tickSpacings()` of each CLFactory, then `getPool(token0, token1, tickSpacing)`.
+- Aero v2: `getPool(token0, token1)` (two arguments: its factories have no `stable` flag) on the
+  volatile and on the stable PoolFactory; the factory that answers gives the kind.
+- Slipstream, Aerodrome's three deployments and Aero's: `tickSpacings()` of each CLFactory, then
+  `getPool(token0, token1, tickSpacing)`. For an Aero Slipstream pool the builder also reads its
+  swap hook (`getPoolSwapHook`) and the hook's `dynamicFeeConfig`, for every pool it finds, new or
+  stored, so a rerun picks up a changed hook.
 - Uniswap v4: StateView `getSlot0` of the PoolKey id for (currency0, currency1, fee,
   tickSpacing, no hooks) over (100, 1), (500, 10), (3000, 60) and (10000, 200), native ETH as
   `address(0)`; a pool counts once its sqrtPriceX96 is not zero.
@@ -304,7 +313,20 @@ about ±953 ticks (ln 1.1 / ln 1.0001), so a pool with tick spacing 10 needs one
 a tick spacing 1 pool about eight. The words are read in one multicall; the set bits name the
 initialised ticks; `ticks()` for each of them goes in a second multicall (several hundred ticks
 fit in one request). Expect two to three round trips per pool and, for the default 200 tracked
-pools, around 500 multicalls per snapshot. Reserve pools need nothing beyond the overview.
+pools, around 500 multicalls per snapshot. Reserve pools need nothing beyond the overview and
+their fee.
+
+Aero pools carry checks in the multicall that reads their state, so they cost no extra request.
+An Aero v2 read sends `getBaseFee(pool, 0x0, 0, 0, 0, 0)` and `feeModule()` on the pool's own
+factory with `getReserves`; an Aero Slipstream read sends the CLFactory's `isPool` and
+`getPoolSwapHook` and the swap hook's `dynamicFeeConfig` with `slot0`, `liquidity`, `fee` and
+`tickSpacing`. A fee module other than the pinned one, another swap hook, or a hook that charges
+each block's first swap an initial fee throws `PoolConfigChangedError` (`fee module changed`,
+`swap hook changed`, `initial fee enabled`): the snapshot fails that pool instead of publishing
+depth modelled on a setup nobody reviewed, and `discover --seed` reads the hooks again once
+docs/research/base-contracts.md is updated ([DEPLOY.md](DEPLOY.md#upgrading)). Every Slipstream
+pool's `fee()`, Aerodrome's and Aero's, is a reading at the snapshot block, which the snapshot
+stores with it (`PoolSnapshot.feePips`) and writes back to the pool row.
 
 ### Volume: chunked `getLogs` on many addresses
 
@@ -346,8 +368,10 @@ range, then `positions(tokenId)` through multicall to learn each position's pool
 liquidity. This is the most expensive reader per block, so a default `run` pass reads it only for
 the concentrated pools of active mandates: opt in for every tracked pool with
 `run --with-positions`, or run `depthwatch positions` on its own schedule.
-Uniswap v4 uses the PositionManager; Aerodrome v2 pools have no positions (LP tokens are fungible)
-and return `[]`.
+Uniswap v4 uses the PositionManager; Aero Slipstream's NonfungiblePositionManager emits a six-field
+`IncreaseLiquidity` (with the position's range), read with its own ABI, since the four-field one
+of the other managers would miss its increases. Aerodrome v2 and Aero v2 pools have no positions
+(LP tokens are fungible) and return `[]`.
 
 A pool's first scan starts at its creation block, so on a fresh database every tracked pool would
 read its manager's whole history on its own range. `depthwatch start` runs positions in windows
@@ -530,10 +554,11 @@ default 200 tracked:
   shows them.
 - **The seed** costs about 350,000 units, once.
 
-The logs endpoint sees about 20 `eth_getLogs` an hour once discovery is current (six factories a
-pass, a few per event source for hourly volume), against the measured limit of about 5 requests a
-second per IP of Base's public RPC. A first full discovery is on the order of 100,000 requests,
-5 to 6 hours of requests at that rate; at 15 minutes a pass it completes in about half a day.
+The logs endpoint sees about 20 `eth_getLogs` an hour once discovery is current (eight discovery
+filters a pass, a few per event source for hourly volume), against the measured limit of about 5
+requests a second per IP of Base's public RPC. A first full discovery is on the order of 100,000
+requests, 5 to 6 hours of requests at that rate; at 15 minutes a pass it completes in about half a
+day.
 
 ## Storage model
 
@@ -654,12 +679,18 @@ dashboard is a Vite + React 19 app with TanStack Query; the dev server proxies `
    change is needed. A new invariant means a new `PoolState` variant plus a swap simulator, a
    `midPrice` case and tests in core; that is a change to `types.ts` and must be reflected in
    `DESIGN.md` first.
-2. **Add the `Dex` literal** to `DEXES` in `packages/core/src/types.ts` and to `DESIGN.md`.
+2. **Add the `Dex` literal** to `DEXES` in `packages/core/src/types.ts` (appended, so the stats
+   order and the swap-scan sources of the others stay) and to `DESIGN.md`. A new id rather than a
+   new factory under an existing one gets cursors of its own, so its history is scanned. The
+   type checker then lists every exhaustive site (`ADAPTERS`, `SEEDERS`, the web's `DEX_LABEL`
+   and `DEX_SHORT`, the mock's counts), and the doc tests fail until the openapi `Dex` enum and
+   pool-id pattern and the agent AGENTS.md name it.
 3. **Addresses and ABIs** in `packages/chain/src/addresses.ts` and the ABI module. Only the
    functions and events the readers use; keep them minimal and typed.
-4. **Discovery:** decode the factory's creation event into a `PoolMeta` whose `id` is
+4. **Discovery and seeding:** decode the factory's creation event into a `PoolMeta` whose `id` is
    `<dex>:<lowercase address>` (or `uniswap-v4:<poolId>`), with lowercase token addresses, the fee
-   in pips, tick spacing or null, and the `stable` flag.
+   in pips, tick spacing or null, and the `stable` flag; a seeder asks the factory's views for the
+   pools of the reference pairs and builds the same `PoolMeta`.
 5. **Overview:** the cheap per-pool reads (price, liquidity or reserves, balances) as multicall
    entries that produce a `PoolOverview`.
 6. **State:** produce a complete `PoolState`. For concentrated pools reuse the tick-bitmap walk

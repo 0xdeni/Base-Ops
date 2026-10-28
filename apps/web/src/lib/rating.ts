@@ -39,7 +39,7 @@ export function unratedDetail(reason: UnratedReason | null): string {
     case 'unpriced':
       return `${SHORT.unpriced}: a token in this pool has no price in dollars.`
     case 'hooked':
-      return `${SHORT.hooked}: its v4 hook runs its own swap code, so depth is not modelled.`
+      return `${SHORT.hooked}: it runs a swap hook Depthwatch does not model; depth is not computed.`
     case null:
       return 'Not rated yet: the score is being refreshed.'
   }

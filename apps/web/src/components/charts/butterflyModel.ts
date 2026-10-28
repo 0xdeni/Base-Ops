@@ -9,19 +9,26 @@
  * row, but its depth is measured at a price nobody trades, so it stays out of the totals, the
  * segments, the shares and the scale, as it does in the API's depth sums.
  */
+import type { Dex } from '@depthwatch/core'
 import type { PoolSummary } from '../../api/types.js'
-import { dexLabel, fee, NB, pairLabel, shareOf, usd } from '../../lib/format.js'
+import { dexLabel, feeText, NB, pairLabel, shareOf, usd } from '../../lib/format.js'
 import { ticks } from '../../lib/scale.js'
 
-/** The DEX in a row label (Slipstream is long enough on its own). */
-export const DEX_SHORT: Readonly<Record<string, string>> = {
+/**
+ * The DEX in a row label: the concentrated venues are "CL", since "Slipstream" alone no longer
+ * says whose (Aerodrome's or Aero's).
+ */
+export const DEX_SHORT: Readonly<Record<Dex, string>> = {
   'uniswap-v3': 'Uniswap v3',
   'uniswap-v4': 'Uniswap v4',
   'aerodrome-v2': 'Aerodrome v2',
-  'aerodrome-slipstream': 'Slipstream',
+  'aerodrome-slipstream': 'Aerodrome CL',
+  'aero-v2': 'Aero v2',
+  'aero-slipstream': 'Aero CL',
 }
 
-export const dexShort = (dex: string): string => DEX_SHORT[dex] ?? dexLabel(dex)
+export const dexShort = (dex: string): string =>
+  (DEX_SHORT as Readonly<Record<string, string>>)[dex] ?? dexLabel(dex)
 
 /** At most this many rows (CH4): the 7 deepest plus the largest gap. */
 export const BUTTERFLY_ROWS = 8
@@ -107,9 +114,9 @@ export interface ButterflyModel {
 
 const sum = (xs: readonly (number | null)[]) => xs.reduce<number>((s, v) => s + (v ?? 0), 0)
 
-/** "Uniswap v3 0.3 %" */
+/** "Uniswap v3 0.3 %", "Aero CL 0.0465 % dynamic" */
 export function venueOf(p: PoolSummary): string {
-  return `${dexShort(p.pool.dex)}${NB}${fee(p.pool.feePips)}`
+  return `${dexShort(p.pool.dex)}${NB}${feeText(p.pool)}`
 }
 
 export function butterflyModel(
@@ -173,7 +180,7 @@ export function butterflyModel(
             id: top.pool.id,
             pair: pairLabel(top.pool.token0, top.pool.token1),
             dex: dexLabel(top.pool.dex),
-            venue: `${dexLabel(top.pool.dex)} ${fee(top.pool.feePips)}`,
+            venue: `${dexLabel(top.pool.dex)} ${feeText(top.pool)}`,
             share: shareOfAll(top),
             sellW: frac(top.depth2DownUsd),
             buyW: frac(top.depth2UpUsd),

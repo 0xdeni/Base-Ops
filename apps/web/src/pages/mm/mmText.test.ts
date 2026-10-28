@@ -12,6 +12,7 @@ import {
   maxSpreadWords,
   midAddress,
   minDepthWords,
+  poolDexFee,
   poolWords,
   readWindow,
   sampleWords,
@@ -246,6 +247,23 @@ describe('labels and lines', () => {
       pair: '0x6cdc…971d',
       dex: 'Aerodrome v2',
     })
+  })
+
+  it('names an Aero pool by its token labels and marks a Slipstream fee dynamic', () => {
+    const meta = {
+      token0: { symbol: 'WETH', label: 'WETH' },
+      token1: { symbol: 'AERO', label: 'AERO (Aero)' },
+      dex: 'aero-slipstream',
+      feePips: 2055,
+    }
+    expect(mandateWhere({ marketMaker: 'Alice', poolId: 'aero-slipstream:0xabc' }, meta)).toBe(
+      `Alice on WETH / AERO (Aero), Aero Slipstream 0.2055${NB}% dynamic`,
+    )
+    expect(poolDexFee(meta)).toBe(`Aero Slipstream, 0.2055${NB}% dynamic`)
+    expect(poolDexFee({ dex: 'aero-v2', feePips: 3000 })).toBe(`Aero v2, 0.3${NB}%`)
+    expect(poolWords('aero-v2:0x6cdcb1c4a4d1c3c6d054b27ac5b77e89eafb971d', null).dex).toBe(
+      'Aero v2',
+    )
   })
 })
 

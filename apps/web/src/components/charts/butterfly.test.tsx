@@ -80,7 +80,7 @@ describe('butterfly model (CH4, visual-v4 §5.9.1)', () => {
     expect(m.bracket?.sellW).toBe(m.segments.sell[0]?.w)
     expect(m.bracket?.buyW).toBe(m.segments.buy[0]?.w)
     expect(bracketText(m.bracket!)).toBe(
-      `${Math.round(share * 100)}${NB}% of it sits in one pool: WETH / USDC, Aerodrome Slipstream 0.05${NB}%`,
+      `${Math.round(share * 100)}${NB}% of it sits in one pool: WETH / USDC, Aerodrome Slipstream 0.05${NB}% dynamic`,
     )
     expect(butterflyModel(DEMO_POOLS.slice(0, 1), DEMO_POOLS.slice(0, 1)).bracket).toBeNull()
   })
@@ -209,7 +209,7 @@ describe('DepthButterfly', () => {
     expect(total.querySelectorAll('.bf-h--s .bf-seg')).toHaveLength(8)
     expect(total.querySelectorAll('.bf-seg.is-rest')).toHaveLength(2)
     expect(container.querySelector('.bf-call-t')?.textContent).toMatch(
-      /^\d+.% of it sits in one pool: WETH \/ USDC, Aerodrome Slipstream 0\.05.%$/,
+      /^\d+.% of it sits in one pool: WETH \/ USDC, Aerodrome Slipstream 0\.05.% dynamic$/,
     )
     expect(container.querySelector('.bf-foot')?.textContent).toContain(
       'One scale for every pool. The other 5 pools.',

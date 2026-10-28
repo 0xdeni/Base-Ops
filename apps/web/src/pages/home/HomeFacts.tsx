@@ -5,7 +5,7 @@
  *   (core's turnover of the totals), and two bars on one track width: Traded and Depth ±2 %.
  * - Health: the median with its grade, "median health of the 50 rated pools", and a bar of the
  *   grade distribution sized by count, each segment in its status colour with "A 7" under it.
- * - Biggest gap: "205×", "WETH / USDT, Slipstream: volume over depth", and two nested squares to
+ * - Biggest gap: "205×", "WETH / USDT, Aerodrome CL: volume over depth", and two nested squares to
  *   scale: the outline is a day's volume, the solid square the depth within 2 %.
  * On phones the three become rows of one ink block and the micro-visuals are dropped (home.css).
  * Without a meaningful gap the third fact is the highest turnover; with no gap feed it is left out.

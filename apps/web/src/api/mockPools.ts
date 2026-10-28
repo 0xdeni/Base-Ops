@@ -17,17 +17,21 @@ import type {
   TokenInfo,
 } from '@depthwatch/core'
 import {
+  buildSharedSymbols,
   computeGap,
   computeHealthScore,
   isStaleQuote,
   poolOwnerTop1Share,
   priceDeviationBps,
+  tokenLabel,
 } from '@depthwatch/core'
 import poolsJson from '../mock/pools.json'
 import tokensJson from '../mock/tokens.json'
-import type { DepthLevelDto, PoolMetaDto, PoolSnapshotDto, PoolSummary } from './types.js'
+import type { DepthLevelDto, PoolMetaDto, PoolSnapshotDto, PoolSummary, TokenDto } from './types.js'
 
 export interface TokenSeed {
+  /** The token's symbol when its key is not: two tokens can share one ("AERO"). */
+  symbol?: string
   address: string
   name: string
   decimals: number
@@ -68,15 +72,26 @@ const DEPTH_PCTS = [1, 2, 5] as const
 const SPREAD_NOTIONALS = [1_000, 10_000, 100_000] as const
 export const LATEST_BLOCK = '36123456'
 
-export function tokenInfo(symbol: string): TokenInfo {
-  const seed = TOKENS[symbol]
-  if (!seed) throw new Error(`mock: unknown token ${symbol}`)
+function rawToken(key: string): TokenInfo {
+  const seed = TOKENS[key]
+  if (!seed) throw new Error(`mock: unknown token ${key}`)
   return {
     address: seed.address as Address,
-    symbol,
+    symbol: seed.symbol ?? key,
     name: seed.name,
     decimals: seed.decimals,
   }
+}
+
+/** As the API's: the tokens of the scored pools (every mock pool is scored). */
+const SHARED = buildSharedSymbols(
+  SEEDS.flatMap((seed) => [rawToken(seed.token0), rawToken(seed.token1)]),
+)
+
+/** The token of a `mock/tokens.json` key, labelled the way the API labels it (core `tokenLabel`). */
+export function tokenInfo(key: string): TokenDto {
+  const token = rawToken(key)
+  return { ...token, label: tokenLabel(token, SHARED) }
 }
 
 /** The token's USD price; null when it has none (an unpriced token seeds `usd: 0`). */

@@ -30,12 +30,12 @@ describe('Home copy', () => {
 
   it('keeps numbers out of the lead and says which pools are graded', () => {
     expect(homeLead(492, 50)).toBe(
-      'Depthwatch measures what it costs to move each Uniswap and Aerodrome pool it scores on Base, and grades the ones deep enough to rate.',
+      'Depthwatch measures what it costs to move each Uniswap, Aerodrome and Aero pool it scores on Base, and grades the ones deep enough to rate.',
     )
     expect(homeLead(5, 5)).toMatch(/, and grades each one A to F\.$/)
     expect(homeLead(492, 0)).toMatch(/, but none is deep enough to grade yet\.$/)
     expect(homeLead(1, 1)).toMatch(
-      /the one Uniswap or Aerodrome pool it scores on Base, and grades it A to F\.$/,
+      /the one Uniswap, Aerodrome or Aero pool it scores on Base, and grades it A to F\.$/,
     )
     expect(homeLead(1, 0)).toMatch(/, but it is too thin to grade\.$/)
     for (const lead of [homeLead(492, 50), homeLead(5, 5), homeLead(492, 0)])

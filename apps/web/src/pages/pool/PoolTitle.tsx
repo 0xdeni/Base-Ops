@@ -16,7 +16,7 @@ import { BackLink } from '../../components/ui/BackLink.js'
 import { IconButton } from '../../components/ui/Button.js'
 import { StaleQuoteChip } from '../../components/ui/PoolCells.js'
 import { TextChange } from '../../components/ui/TextChange.js'
-import { dexLabel, fee, NB, price, tokenHref } from '../../lib/format.js'
+import { dexLabel, feeText, NB, price, tokenHref, tokenText } from '../../lib/format.js'
 import { isKeyboardClick } from '../../lib/motion.js'
 import { baseQuote } from '../../lib/orient.js'
 
@@ -27,8 +27,8 @@ function priceLine(base: string, quote: string, v: number): string {
 function PriceLine({ pool, spot }: { pool: PoolMetaDto; spot: number | null }) {
   const [inverse, setInverse] = useState(false)
   const [animate, setAnimate] = useState(true)
-  const t0 = pool.token0.symbol
-  const t1 = pool.token1.symbol
+  const t0 = tokenText(pool.token0)
+  const t1 = tokenText(pool.token1)
   // The default line reads from the base token; ⇄ shows the other direction.
   const { inverted } = baseQuote(pool, spot)
   const flip = inverse !== inverted
@@ -68,7 +68,7 @@ export function PoolTitle({
         <BackLink to="/pools" label="Pools" />
       </div>
       <p className="eyebrow eb-row pool-eb" data-in="">
-        <span>{dexLabel(pool.dex)}</span> <span>{fee(pool.feePips)} fee</span>
+        <span>{dexLabel(pool.dex)}</span> <span>{feeText(pool)} fee</span>
         {pool.stable ? (
           <>
             {' '}
@@ -86,11 +86,11 @@ export function PoolTitle({
         <div className="pool-ttl-main">
           <h1 className="title pool-title" id="pool-title" data-rise="">
             <Link className="pool-tok" to={tokenHref(pool.token0.address)}>
-              {pool.token0.symbol}
+              {tokenText(pool.token0)}
             </Link>
             {`${NB}/ `}
             <Link className="pool-tok" to={tokenHref(pool.token1.address)}>
-              {pool.token1.symbol}
+              {tokenText(pool.token1)}
             </Link>
           </h1>
           <PriceLine pool={pool} spot={spot} />

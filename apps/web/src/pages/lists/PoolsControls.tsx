@@ -36,8 +36,11 @@ export const RATING_OPTIONS: ReadonlyArray<{ value: RatingValue; label: string }
   { value: 'rated', label: 'Rated only' },
 ]
 
-/** The phone filter button's label: the DEX's short name ("Slipstream"), or "All DEXes". */
-const SHORT: Partial<Record<Dex, string>> = { 'aerodrome-slipstream': 'Slipstream' }
+/** The phone filter button's label: the DEX's short name ("Aerodrome CL"), or "All DEXes". */
+const SHORT: Partial<Record<Dex, string>> = {
+  'aerodrome-slipstream': 'Aerodrome CL',
+  'aero-slipstream': 'Aero CL',
+}
 export function dexShort(dex: Dex | ''): string {
   if (!dex) return 'All DEXes'
   return SHORT[dex] ?? dexLabel(dex)

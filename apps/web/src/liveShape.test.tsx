@@ -205,6 +205,17 @@ describe('the sweep', () => {
   })
 })
 
+describe('a bundle from a server older than token labels', () => {
+  it('names tokens by their symbols where a newer server sends labels', async () => {
+    const { pool } = SHAPES.rated
+    expect('label' in pool.token0 || 'label' in pool.token1).toBe(false)
+    await boot(poolRoute(SHAPES.rated))
+    const heading = await screen.findByRole('heading', { level: 1 })
+    expect(heading.textContent).toBe(`${pool.token0.symbol}\u00a0/ ${pool.token1.symbol}`)
+    expect(document.querySelector('main')?.textContent).not.toMatch(/undefined/)
+  })
+})
+
 describe('every route on live-shaped data', () => {
   it.each(ROUTES)('%s keeps the number, link-name and unknown-value rules', async (route) => {
     await boot(route)

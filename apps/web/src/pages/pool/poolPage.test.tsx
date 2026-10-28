@@ -34,7 +34,12 @@ describe('Pool page: stored sides, price from the base token (N2, UX2-02)', () =
   }
 
   it.each([
-    [USDC_AERO, 'AERO', /^1\sAERO = 1\.32\sUSDC$/, /^1\sUSDC = 0\.7576\sAERO$/],
+    [
+      USDC_AERO,
+      'AERO (Aerodrome)',
+      /^1\sAERO \(Aerodrome\) = 1\.32\sUSDC$/,
+      /^1\sUSDC = 0\.7576\sAERO \(Aerodrome\)$/,
+    ],
     [USDC_CBBTC, 'cbBTC', /^1\scbBTC = 98,522\.17\sUSDC$/, /^1\sUSDC = 0\.00001015\scbBTC$/],
   ])('%s keeps USDC’s sides and prices %s in USDC', async (id, base, line, flipped) => {
     const { up, down } = await stored(id)
@@ -102,6 +107,35 @@ describe('Pool page: About this pool (L3)', () => {
   })
 })
 
+describe('Pool page: an Aero Slipstream pool', () => {
+  const AERO_CL = 'aero-slipstream:0x9e2b4d6f8a1c3e5b7d9f0a2c4e6b8d1f3a5c7e92'
+  const AERO_V2 = 'aero-v2:0x5d1e3f7a9b2c4e6a8d0f1b3c5e7a9d2f4b6c8e01'
+  const aboutRow = (term: string) =>
+    [...document.querySelectorAll('.about dt')].find((dt) => dt.textContent === term)
+      ?.nextElementSibling?.textContent
+
+  it('says its fee is dynamic, read at the latest snapshot, in the eyebrow and About', async () => {
+    renderPool(AERO_CL)
+    await loaded()
+    expect(document.querySelector('.pool-eb')?.textContent).toBe(
+      `Aero Slipstream 0.0465${NB}% dynamic fee`,
+    )
+    expect(aboutRow('Fee')).toBe(`0.0465${NB}%, dynamic (read at the latest snapshot)`)
+  })
+
+  it('names Aero’s AERO apart from Aerodrome’s in the title and the About tokens', async () => {
+    renderPool(AERO_V2)
+    const h1 = await screen.findByRole('heading', { level: 1, name: /^AERO \(Aero\) \/ USDC$/ })
+    expect(
+      within(h1)
+        .getAllByRole('link')
+        .map((a) => a.textContent),
+    ).toEqual(['AERO (Aero)', 'USDC'])
+    expect(aboutRow('Fee')).toBe(`0.3${NB}%`)
+    expect(aboutRow('Tokens')).toBe('AERO (Aero)andUSDC')
+  })
+})
+
 describe('Pool page: a pool with no grade', () => {
   const THIN = 'aerodrome-v2:0x2b6f9a1c4d8e3f7a0b5c6d9e1f2a3b4c5d6e7f80'
   const ONE_SIDED = 'uniswap-v3:0x61d4c2e8a3f90b7d5c1e6a4f2b8d3c09e7a5b1f4'
@@ -114,7 +148,7 @@ describe('Pool page: a pool with no grade', () => {
 
   it('says "Not rated" instead of a letter, and why, for a pool that is too thin', async () => {
     renderPool(THIN)
-    await screen.findByRole('heading', { level: 1, name: /AERO \/ DEGEN/ })
+    await screen.findByRole('heading', { level: 1, name: /AERO \(Aerodrome\) \/ DEGEN/ })
     expect(within(facts()).queryByRole('img', { name: /^Grade/ })).toBeNull()
     const chip = within(facts()).getByRole('button', { name: 'Not rated' })
     fireEvent.focus(chip)
