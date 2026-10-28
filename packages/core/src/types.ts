@@ -58,8 +58,9 @@ export interface PoolMeta {
   /** Aerodrome v2 and Aero v2 stable (x³y + xy³) pools. */
   stable: boolean
   /**
-   * Uniswap v4: the hooks address. Aero Slipstream: the pool's swap hook when it is not the reviewed
-   * one or charges each block's first swap an initial fee. Otherwise null; non-null is `hooked`.
+   * Uniswap v4: the hooks address (zero without a hook). Aero Slipstream: the pool's swap hook when
+   * not the reviewed one or charging each block's first swap an initial fee, else null. Only a
+   * non-zero address is `hooked` (`isHookedPool`): null and the zero address mean no hook.
    */
   hooks: Address | null
   createdAtBlock: bigint

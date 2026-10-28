@@ -4,7 +4,7 @@
  * object a response carries (DESIGN.md "API (apps/api)").
  */
 import { DEXES } from '@depthwatch/core'
-import type { Database } from '@depthwatch/db'
+import { type Database, fixtureAddress, fixturePool, openDatabase } from '@depthwatch/db'
 import type { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from '../app.js'
@@ -130,6 +130,30 @@ describe('Aero venues and token labels', () => {
     expect(token.token.label).toBe('AERO (Aero)')
     expect(token.total).toBe(0)
     expect(token.poolCount).toBe(1)
+  })
+
+  it('names the two AEROs of an unscored AERO/AERO pool on a database with no scores', async () => {
+    const fresh = openDatabase(':memory:')
+    const pair = fixturePool({
+      dex: 'aero-v2',
+      kind: 'stable-swap',
+      address: fixtureAddress(0x2003),
+      token0: SEED_AERO_NEW,
+      token1: seed.tokens.AERO,
+      feePips: 500,
+      tickSpacing: null,
+      stable: true,
+    })
+    fresh.pools.upsertMany([pair])
+    try {
+      const res = await createApp(fresh, { now: () => seed.now }).request(`/api/pools/${pair.id}`)
+      const detail = (await res.json()) as PoolDetail
+      expect(detail.score).toBeNull()
+      expect(detail.pool.token0.label).toBe('AERO (Aero)')
+      expect(detail.pool.token1.label).toBe('AERO (Aerodrome)')
+    } finally {
+      fresh.close()
+    }
   })
 
   it('names copycats with the same symbol and name by a short address', async () => {

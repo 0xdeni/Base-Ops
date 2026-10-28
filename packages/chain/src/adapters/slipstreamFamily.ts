@@ -82,6 +82,12 @@ export interface SlipstreamFamily<D extends SlipstreamDeployment> {
     deployment: D,
     records: readonly SlipstreamPoolRecord[],
   ): Promise<PoolMeta[]>
+  /**
+   * Stored pools' PoolMeta built again by `poolMetas`, each by the deployment whose factory
+   * reports it (`getPool(token0, token1, tickSpacing)`, one multicall for all), from the stored
+   * tokens, tick spacing and creation block; a pool no deployment reports is left out.
+   */
+  refreshMetas(ctx: ReaderContext, pools: readonly PoolMeta[]): Promise<PoolMeta[]>
   readonly adapter: DexAdapter
 }
 
@@ -264,6 +270,45 @@ export function slipstreamFamily<D extends SlipstreamDeployment>(
     })
   }
 
+  async function refreshMetas(ctx: ReaderContext, pools: readonly PoolMeta[]): Promise<PoolMeta[]> {
+    const own = pools.filter((p) => p.dex === dex && p.address !== null && p.tickSpacing !== null)
+    if (own.length === 0) return []
+    const deployments = spec.deployments(ctx)
+    const results = await multicallBatched(
+      ctx,
+      own.flatMap((pool) =>
+        deployments.map((d) => ({
+          address: d.factory,
+          abi: aerodromeCLFactoryAbi,
+          functionName: 'getPool',
+          args: [pool.token0.address, pool.token1.address, pool.tickSpacing ?? 0],
+        })),
+      ),
+    )
+    const perDeployment = await Promise.all(
+      deployments.map((deployment, j) =>
+        poolMetas(
+          ctx,
+          deployment,
+          own.flatMap((pool, i): SlipstreamPoolRecord[] => {
+            const found = optionalResult(results[i * deployments.length + j])
+            if (typeof found !== 'string' || lowercase(found) !== pool.address) return []
+            return [
+              {
+                pool: requireAddress(pool),
+                token0: pool.token0.address,
+                token1: pool.token1.address,
+                tickSpacing: pool.tickSpacing ?? 0,
+                blockNumber: pool.createdAtBlock,
+              },
+            ]
+          }),
+        ),
+      ),
+    )
+    return perDeployment.flat()
+  }
+
   async function positions(
     ctx: ReaderContext,
     pool: PoolMeta,
@@ -293,9 +338,12 @@ export function slipstreamFamily<D extends SlipstreamDeployment>(
     deployments: spec.deployments,
     poolId,
     poolMetas,
+    refreshMetas,
     adapter: {
       dex,
       discover,
+      // Only a pool with checks holds a reading that changes after discovery (Aero: `hooks`).
+      ...(checks === undefined ? {} : { refreshMetas }),
       overview: (ctx, pools, blockNumber) =>
         overviewAddressKeyed(ctx, pools, blockNumber, aerodromeCLPoolAbi),
       state: (ctx, pool, opts) =>

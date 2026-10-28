@@ -75,10 +75,12 @@ as a different pool, not as a change to the old one.
   (`0x940181a94a35a4569e4529a3cdfb74e38fd98631`) and Aero's AERO
   (`0x3f5bf3edac59d650d8fdf9657a71f2f904a3a4ee`) both answer `AERO`, and copycats reuse any symbol.
   Every token object (`pool.token0`, `pool.token1`, `token`) carries `label` for display: the
-  symbol when no other token of a scored pool shares it, else `SYMBOL (name)` (`AERO (Aerodrome)`,
-  `AERO (Aero)`), else `SYMBOL (0x3f5b…a4ee)` when the name is shared too. A label can change as
-  pools are scored; match tokens by address, never by symbol or label. The two AEROs are priced
-  separately from their own pools: there is no peg between them.
+  symbol when no other token of a scored pool (nor, on a pool, the pool's other token) shares it,
+  else `SYMBOL (name)` (`AERO (Aerodrome)`, `AERO (Aero)`), else `SYMBOL (0x3f5b…a4ee)` when the
+  name is shared too. A label can change as pools are scored; match tokens by address, never by
+  symbol or label. There is no peg between the two AEROs and no synthetic edge ties their USD
+  prices; a pool that pairs them (Aero v2's stable AERO/AERO pool) is an ordinary price route,
+  used only when it is the widest one for a token (`via` on the token says which pools priced it).
 - **Price orientation**: `price` is always token1 per token0, decimal adjusted. Read
   `pool.token0` and `pool.token1` before interpreting it: in a WETH/USDC pool where WETH is
   token0, `price` is USDC per WETH.
@@ -127,8 +129,9 @@ as a different pool, not as a change to the old one.
   **Dynamic fees**: a Slipstream pool's fee (`dex` `aerodrome-slipstream` or `aero-slipstream`) can
   change every block: Aerodrome's fee module and Aero's swap hook set it (Aero's up to its cap,
   at most 5 %). Depth and spread use the fee read at the snapshot's block; `pool.feePips` is the
-  latest snapshot's reading, `latest.feePips` and each history point's `feePips` the fee that
-  snapshot used (`null` before it was stored). A trade a block later can pay another fee, so on
+  latest snapshot's reading (for a pool never snapshotted, the reading at discovery),
+  `latest.feePips` and each history point's `feePips` the fee that snapshot used (`null` before
+  it was stored). A trade a block later can pay another fee, so on
   these pools check the fee on chain before sizing a trade. The dashboard marks them "dynamic".
   Aero v2 pools charge the factory's base fee in bps (× 100 here); MEV taxes and per-caller fee
   discounts are not modelled.
@@ -157,10 +160,12 @@ as a different pool, not as a change to the old one.
   A ≥ 80, B ≥ 65, C ≥ 50, D ≥ 35, else F. The others have `grade: null`, keep their `total`, and say
   why in `unratedReason`: `thin` (neither side holds $5,000), `one-sided` (the deeper side does, the
   thinner does not), `unpriced` (a side has no USD price) or `hooked` (a pool with a swap hook
-  Depthwatch does not model, `pool.hooks` non-null: a Uniswap v4 pool with a hook, or an Aero
-  Slipstream pool off the reviewed swap hook or charging each block's first swap an initial fee; its
-  swaps the pool's state does not describe, so no depth, spread or concentration is computed, those
-  are empty or `null`, and the pool is not used to price tokens).
+  Depthwatch does not model, `pool.hooks` a non-zero address: a Uniswap v4 pool with a hook, or an
+  Aero Slipstream pool off the reviewed swap hook or charging each block's first swap an initial
+  fee; its swaps the pool's state does not describe, so no depth, spread or concentration is
+  computed, those are empty or `null`, and the pool is not used to price tokens). `null` and the
+  zero address `0x0000000000000000000000000000000000000000`, which every Uniswap v4 pool without a
+  hook stores, mean no hook: such a pool is modelled and rated like any other.
 - **Gap score**: `turnoverRatio = volume24hUsd / depth2Usd`;
   `gapScore = 100 × clamp(log10(turnoverRatio) / 2, 0, 1)`: 0 at a turnover of 1× or less, 50 at
   10×, 100 at 100× or more. A high gap score means a day's volume is large next to the ±2 %

@@ -665,7 +665,7 @@
           "token1": { "$ref": "#/components/schemas/TokenInfo" },
           "feePips": {
             "type": "integer",
-            "description": "LP fee in millionths: 500 = 0.05 %, as last read (at discovery, then by every snapshot). Slipstream pools (aerodrome-slipstream, aero-slipstream) have a dynamic fee that can change every block: this is the latest snapshot's reading. Uniswap v4 swaps (and so v4 depth and spread) also pay the slot0 protocol fee, which this value does not include."
+            "description": "LP fee in millionths: 500 = 0.05 %, as last read: the latest snapshot's reading, or for a pool never snapshotted the reading at discovery. Slipstream pools (aerodrome-slipstream, aero-slipstream) have a dynamic fee that can change every block; latest.feePips is the fee the latest snapshot used. Uniswap v4 swaps (and so v4 depth and spread) also pay the slot0 protocol fee, which this value does not include."
           },
           "tickSpacing": { "type": ["integer", "null"], "description": "Concentrated pools only." },
           "stable": {
@@ -674,7 +674,7 @@
           },
           "hooks": {
             "anyOf": [{ "$ref": "#/components/schemas/Address" }, { "type": "null" }],
-            "description": "Uniswap v4: the hooks address. Aero Slipstream: the pool's swap hook when it is not the reviewed one or charges each block's first swap an initial fee. Null otherwise; a non-null hooks makes the pool unrated with reason hooked."
+            "description": "Uniswap v4: the hooks address, 0x0000000000000000000000000000000000000000 for every pool without a hook. Aero Slipstream: the pool's swap hook when it is not the reviewed one or charges each block's first swap an initial fee, else null. Null or the zero address means no hook; any other address makes the pool unrated with reason hooked."
           },
           "createdAtBlock": { "$ref": "#/components/schemas/DecimalString" }
         }

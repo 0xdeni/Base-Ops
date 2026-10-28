@@ -72,7 +72,7 @@ export const SECTIONS: readonly MetricSection[] = [
           {`Effective spread is what a round trip costs: buy N dollars of the first token, sell N dollars of it back, and compare the two average prices with the mid price. The swap fee and price impact are both included (the LP fee, plus on Uniswap v4 the protocol fee, which the fee shown for a pool does not include), so even an infinitely deep pool shows about twice its swap fee. It is measured at ${notionals('and')}, because the cheapest pool for a small trade is often not the cheapest for a large one; the spread at $10K is the headline. If either leg cannot be filled from known liquidity, or one leg pays more than half of its value in price impact, the pool can’t absorb that trade and shows no spread. A spread that is shown is therefore never above 10,000 bps.`}
         </p>
         <p>
-          {`The fee of every Slipstream pool, Aerodrome or Aero, is read at each snapshot: it can change from one block to the next, and an Aero Slipstream pool’s swap hook sets it every block, up to its cap. The fee shown and used is the one read at the latest snapshot, marked “dynamic”, so a spread can move with the fee alone.`}
+          {`The fee of every Slipstream pool, Aerodrome or Aero, is read at each snapshot: it can change from one block to the next, and an Aero Slipstream pool’s swap hook sets it every block, up to its cap. The fee shown and used is the one read at the latest snapshot (for a pool not snapshotted yet, the one read at discovery), marked “dynamic”, so a spread can move with the fee alone.`}
         </p>
       </>
     ),

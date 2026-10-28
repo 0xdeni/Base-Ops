@@ -23,7 +23,7 @@ import {
   useState,
 } from 'react'
 import type { PoolSnapshotDto } from '../../api/types.js'
-import { MINUS, NB, pct, usd, usdTick } from '../../lib/format.js'
+import { MINUS, NB, pct, tokenText, usd, usdTick } from '../../lib/format.js'
 import { useIsPhone } from '../../lib/useMediaQuery.js'
 import { ChartTooltip } from './ChartTooltip.js'
 import {
@@ -48,6 +48,8 @@ import './curve.css'
 
 interface Token {
   symbol: string
+  /** The API's display label (`tokenText`). */
+  label?: string
   decimals: number
 }
 
@@ -179,7 +181,8 @@ export function DepthCurve({ snapshot, token0, token1, heading, children }: Dept
       <div className="cv-wrap" data-chart="">
         {head}
         <p className="cv-empty">
-          Neither {token0.symbol} nor {token1.symbol} has a USD price, so depth is not drawn.
+          Neither {tokenText(token0)} nor {tokenText(token1)} has a USD price, so depth is not
+          drawn.
         </p>
       </div>
     )
@@ -287,7 +290,7 @@ export function DepthCurve({ snapshot, token0, token1, heading, children }: Dept
                 y={(top + base) / 2}
                 textAnchor="middle"
               >
-                {(s === 'sell' ? token0 : token1).symbol} has no USD price
+                {tokenText(s === 'sell' ? token0 : token1)} has no USD price
               </text>
             ))}
           </g>
