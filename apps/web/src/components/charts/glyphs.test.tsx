@@ -123,6 +123,35 @@ describe('SpreadLollipop (visual-v4 §5.9.8)', () => {
     expect(lollipopLabel(spreads)).not.toMatch(/\d{5,}/)
     expect(lollipopAxis(spreads).max).toBe(15) // the axis ignores it
   })
+
+  it('draws the $1M point as a fourth row, a ring at 0 when the pool cannot absorb it', () => {
+    const oneM = {
+      notionalUsd: 1_000_000,
+      spreadBps: null,
+      feasible: false,
+      buyAvgPrice: null,
+      sellAvgPrice: null,
+    }
+    const spreads = [...SNAPSHOT.spreads, oneM]
+    const { container } = render(
+      <MemoryRouter>
+        <SpreadLollipop spreads={spreads} />
+      </MemoryRouter>,
+    )
+    const rows = [...container.querySelectorAll('.dots .dot-r')]
+    expect(rows.map((r) => r.querySelector('.k')?.textContent)).toEqual([
+      '$1K',
+      '$10K',
+      '$100K',
+      '$1M',
+    ])
+    expect(rows[3]?.querySelector('.dot-d.ring')).toBeTruthy()
+    expect(screen.getByText('Can’t absorb $1M')).toBeTruthy()
+    expect(lollipopLabel(spreads)).toBe(
+      `Effective spread: $1K costs 10.0${NB}bps, $10K costs 10.4${NB}bps, $100K costs 13.8${NB}bps, $1M can’t be absorbed.`,
+    )
+    expect(lollipopAxis(spreads).max).toBe(15)
+  })
 })
 
 describe('HealthBar (CH8)', () => {
