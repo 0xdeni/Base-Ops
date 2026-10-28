@@ -1,369 +1,309 @@
-/* Depth butterfly (CH4, docs/design/visual-v3.md §5.9, §3.7 part 2, §4 rows 1–5). Widths are
-   fractions of one shared scale (--w);
-   the total row is the field of light, a halftone of the side colour anchored at the spine. */
+/* Depth butterfly on the band (docs/design/visual-v4.md §5.9.1): hard geometry, one shared scale.
+   Sell marks are white and buy marks Yellow on Blue; value labels are white text. Each side's
+   track runs from its outer lane to the spine; widths are percentages of that track. */
 
-.bfly {
-  --labelw: 168px;
-  --vallane: 64px;
-  --rowh: 40px;
-  --barh: 14px;
-  --toth: 20px;
-  --w: 0;
-  --o: 0;
-  --i: 0;
+.bf {
+  --lane: 8px;
+  --t-bf-total: 1.0625rem; /* the "All of …" label, 17 px */
   position: relative;
-  margin: 0;
+  margin: 32px 0 0;
+  color: var(--on-band);
 }
-/* Lens dims and reveals: opacity only, 150 ms; a keyboard lens is instant (M2). */
-.bf-bar,
-.bf-label,
-.bf-val,
-.bf-gap,
-.tot-field,
-.tot-sep,
-.tot-cap,
-.tot-lens,
-.bfly-row {
-  transition:
-    opacity 150ms ease,
-    background-color 150ms ease,
-    color 150ms ease;
-}
-.bf-pair {
-  transition:
-    color var(--dur-hover) ease,
-    text-decoration-color var(--dur-hover) ease;
-}
-.bfly-head,
-.bfly-row,
-.bfly-axis,
-.bf-total {
+
+/* ---------- Head: readout, legends and the two totals, meeting at the spine ---------- */
+.bf-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--labelw) minmax(0, 1fr);
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
+  padding-bottom: 12px;
 }
-/* The head keeps the body's line height (pool rows start at y 391, visual-v3.md §6.1). */
-.bfly-head {
+.bf-head > .s,
+.bf-head > .b {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.bf-head > .s {
+  justify-items: end;
+  text-align: right;
+  padding-right: 16px;
+}
+.bf-head > .b {
+  padding-left: 16px;
+}
+.bf-head .meta {
   font-size: var(--t-small);
-  color: var(--text-2);
-  padding-bottom: var(--s3);
+  line-height: 1.35;
+  font-weight: 500;
+  color: var(--on-band-2);
+  white-space: nowrap;
 }
-.bfly-head .lh-sell {
-  justify-self: end;
-  padding-right: var(--s4);
+.bf-who {
+  grid-column: 1 / -1;
+  min-height: 18px;
+  margin: 0 0 8px;
+  text-align: center;
+  font-size: var(--t-small);
+  line-height: 1.35;
+  font-weight: 650;
+  color: var(--on-band-2);
 }
-.bfly-head .lh-buy {
-  justify-self: start;
-  padding-left: var(--s4);
+.bf-who b {
+  font-weight: 750;
+  color: var(--on-band);
 }
-.bfly-head .lh-mid {
-  justify-self: center;
-  color: var(--text-3);
+.bf-open {
+  margin-left: 10px;
+  color: var(--on-band);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
 }
-.bfly-rows {
+.bf-tot {
+  font-size: var(--t-figure);
+  font-weight: 820;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------- Plot: the spine, the total row, the bracket and the rows ---------- */
+.bf-plot {
   position: relative;
+}
+.bf-plot::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  bottom: -6px;
+  left: calc(50% - 1px);
+  width: 2px;
+  z-index: 2;
+  background: var(--on-band);
+  pointer-events: none;
+}
+.bf-pools {
   list-style: none;
   margin: 0;
   padding: 0;
 }
-.bfly-rows::before,
-.bfly-rows::after {
-  content: "";
-  position: absolute;
-  top: 4px;
-  bottom: 4px;
-  width: 1px;
-  background: var(--border-subtle);
-  pointer-events: none;
-}
-.bfly-rows::before {
-  left: calc(50% - var(--labelw) / 2);
-}
-.bfly-rows::after {
-  left: calc(50% + var(--labelw) / 2 - 1px);
-}
-.bfly-row {
+.bf-r {
   position: relative;
-  height: var(--rowh);
-  border-radius: var(--r-ctl);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
 }
-.bf-side {
-  display: block;
-  min-width: 0;
-}
-.bf-track {
-  display: block;
+.bf-h {
   position: relative;
-  height: var(--barh);
+  grid-row: 1;
+  height: 100%;
 }
-.bf-side.sell .bf-track {
-  margin-left: var(--vallane);
+.bf-h--s {
+  grid-column: 1;
 }
-.bf-side.buy .bf-track {
-  margin-right: var(--vallane);
+.bf-h--b {
+  grid-column: 2;
 }
-.bf-bar {
+.bf-t {
   position: absolute;
   top: 0;
-  height: 100%;
-  width: calc(var(--w) * 100%);
-  min-width: 2px;
+  bottom: 0;
 }
-.bf-bar.is-zero {
-  min-width: 0;
-}
-.bf-side.sell .bf-bar {
+.bf-h--s .bf-t {
+  left: var(--lane);
   right: 0;
-  background: var(--sell);
-  border-radius: 2px 0 0 2px;
   transform-origin: 100% 50%;
 }
-.bf-side.buy .bf-bar {
+.bf-h--b .bf-t {
   left: 0;
-  background: var(--buy);
-  border-radius: 0 2px 2px 0;
+  right: var(--lane);
   transform-origin: 0 50%;
 }
-.bf-val {
+.bf-b {
   position: absolute;
-  top: 50%;
-  translate: 0 -50%;
-  font-size: var(--t-small);
-  line-height: 1;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-1);
-  white-space: nowrap;
-  opacity: 0;
+  top: 0;
+  bottom: 0;
 }
-.bf-side.sell .bf-val {
-  right: calc(var(--w) * 100% + 10px);
+.bf-h--s .bf-b {
+  right: 0;
+  transform-origin: 100% 50%;
+  background: var(--sell-band);
 }
-.bf-side.buy .bf-val {
-  left: calc(var(--w) * 100% + 10px);
+.bf-h--b .bf-b {
+  left: 0;
+  transform-origin: 0 50%;
+  background: var(--buy-band);
 }
-.bf-label {
+
+/* The total row: the deepest pools as solid segments split by a 2 px band gap, then the rest
+   hatched in 3 px stripes on a 7 px pitch. */
+.bf-total {
+  height: 52px;
+}
+.bf-total .bf-h {
+  height: 44px;
+}
+.bf-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.bf-h--s .bf-seg {
+  background: var(--sell-band);
+  box-shadow: inset 2px 0 0 var(--band);
+}
+.bf-h--b .bf-seg {
+  background: var(--buy-band);
+  box-shadow: inset -2px 0 0 var(--band);
+}
+.bf-h--s .bf-seg.is-rest {
+  background: repeating-linear-gradient(135deg, var(--sell-band) 0 3px, transparent 3px 7px);
+}
+.bf-h--b .bf-seg.is-rest {
+  background: repeating-linear-gradient(135deg, var(--buy-band) 0 3px, transparent 3px 7px);
+}
+
+/* The bracket under the deepest pool's two segments, and its sentence on a band patch. */
+.bf-call {
+  position: relative;
   display: grid;
-  justify-items: center;
-  text-align: center;
-  line-height: 1.2;
-  padding-inline: var(--s2);
-  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  height: 44px;
 }
-.bf-pair {
+.bf-call .bf-h {
+  grid-row: 1;
+}
+.bf-call-in {
+  position: absolute;
+  top: 4px;
+  height: 12px;
+  border: 2px solid var(--on-band);
+  border-top: 0;
+}
+.bf-call-in.s {
+  right: 0;
+  border-right: 0;
+}
+.bf-call-in.b {
+  left: 0;
+  border-left: 0;
+}
+.bf-call-t {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  z-index: 3;
+  margin: 0;
+  padding: 0 12px;
+  translate: -50% 0;
+  background: var(--band);
+  white-space: nowrap;
   font-size: var(--t-data);
-  font-weight: 500;
-  color: var(--text-1);
-  white-space: nowrap;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
 }
-.bf-pair::after {
-  content: "";
+
+/* Pool rows: 28 px with 12 px bars; the label sits 12 px left of the row's sell bar. */
+.bf-pools .bf-r {
+  height: 28px;
+}
+.bf-pools .bf-h {
+  height: 12px;
+}
+.bf-lab {
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  z-index: 0;
-}
-.bf-dex {
-  font-size: var(--t-caption);
-  color: var(--text-3);
-  white-space: nowrap;
-  letter-spacing: 0.005em;
-}
-/* The Gap marker: a dotted leader, then the word "Gap", the only part that is a link. */
-.bf-gap {
-  position: absolute;
-  z-index: 1;
   top: 50%;
+  right: calc(50% + (50% - var(--lane)) * var(--ws, 0) + 12px);
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   translate: 0 -50%;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 24px;
-  font-size: var(--t-caption);
-  font-weight: 500;
-  color: var(--text-2);
   white-space: nowrap;
   pointer-events: none;
 }
-.bf-gap-link {
+.bf-lab b {
+  font-size: var(--t-data);
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+.bf-lab .meta {
+  font-size: var(--t-small);
+  font-weight: 500;
+  color: var(--on-band-2);
+}
+.bf-total .bf-lab b {
+  font-size: var(--t-bf-total);
+  font-weight: 800;
+}
+/* The stretched row link: the whole row reads and opens its pool. */
+.bf-link {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: 4px;
+}
+/* The gap row: a 24 px dotted leader and "Gap", above the row link (desktop only). */
+.bf-gap {
+  position: absolute;
+  top: 50%;
+  z-index: 4;
   display: inline-flex;
   align-items: center;
+  gap: 8px;
   min-height: 24px;
-  color: inherit;
-  pointer-events: auto;
+  translate: 0 -50%;
+  font-size: var(--t-small);
+  font-weight: 700;
+  color: var(--on-band);
+  white-space: nowrap;
 }
 .bf-gap::before {
   content: "";
-  width: 44px;
-  height: 0;
-  border-top: 1px dotted var(--text-3);
+  width: 24px;
+  border-top: 2px dotted currentColor;
 }
-.bfly-row.is-on .bf-gap::before {
-  opacity: 0;
+
+/* ---------- Axis and foot ---------- */
+.bf-axis {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  margin-top: 12px;
 }
-.bfly-row.is-on .bf-gap {
-  margin-left: var(--s2);
-}
-/* The gap row fills the scale (butterflyModel `gapMarkerTight`): a 12 px leader keeps the marker
-   in the value lane. While that row is lensed its value label takes the lane, so the marker steps
-   back; pointing at it ends the lens, and focusing it hides the value label instead. */
-.bf-gap.is-tight::before {
-  width: 12px;
-}
-.bfly-row.is-on .bf-gap.is-tight,
-.bfly-row:focus-within .bf-gap.is-tight {
-  margin-left: 0;
-  opacity: 0;
-}
-.bfly-row .bf-gap.is-tight:has(.bf-gap-link:focus-visible) {
-  opacity: 1;
-}
-.bf-track:has(.bf-gap.is-tight .bf-gap-link:focus-visible) .bf-val {
-  opacity: 0;
-}
-/* On touch a tap there while it is hidden ends the lens rather than following the link. */
-@media (pointer: coarse) {
-  .bfly-row.is-on .bf-gap.is-tight .bf-gap-link {
-    pointer-events: none;
-  }
-}
-.bfly-axis {
-  margin-top: var(--s3);
+.bf-ticks {
+  position: relative;
   height: 16px;
   font-size: var(--t-caption);
   line-height: 16px;
   font-weight: 500;
-  letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
-  color: var(--text-3);
+  color: var(--on-band-2);
 }
-.bfly-axis .ax {
-  display: block;
-  position: relative;
-  height: 16px;
+.bf-ticks.s {
+  margin-left: var(--lane);
 }
-.bfly-axis .ax.sell {
-  margin-left: var(--vallane);
+.bf-ticks.b {
+  margin-right: var(--lane);
 }
-.bfly-axis .ax.buy {
-  margin-right: var(--vallane);
-}
-.bfly-axis .tk {
+.bf-ticks span {
   position: absolute;
   top: 0;
   translate: -50% 0;
   white-space: nowrap;
 }
-.bfly-axis .ax-mid {
-  justify-self: center;
-  white-space: nowrap;
-}
-.bfly-more {
-  margin-top: var(--s4);
+.bf-more {
+  margin-top: 16px;
   text-align: center;
 }
-.bfly-foot {
-  margin-top: var(--s2);
+.bf-foot {
+  margin-top: 12px;
 }
 
-/* The "All of …" total: strata of the pools above, stacked outward from the spine, drawn as the
-   field of light with a canvas gap at each pool boundary and a 2 px solid cap at the end. */
-.bf-total {
-  position: relative;
-  height: calc(var(--rowh) + 12px);
-  margin-top: var(--s2);
-}
-.bf-total::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 1px;
-  background: var(--border-subtle);
-}
-.bf-total .bf-track.tot-track {
-  height: var(--toth);
-}
-.tot-field,
-.tot-cap,
-.tot-lens {
-  position: absolute;
-  top: 0;
-  height: 100%;
-}
-.tot-field {
-  width: calc(var(--w) * 100%);
-  background-size: var(--ht-pitch) var(--ht-pitch);
-}
-.bf-side.sell .tot-field {
-  right: 0;
-  background-image: radial-gradient(
-    circle,
-    var(--sell) var(--ht-r),
-    transparent calc(var(--ht-r) + 0.4px)
-  );
-  background-position: right center;
-}
-.bf-side.buy .tot-field {
-  left: 0;
-  background-image: radial-gradient(
-    circle,
-    var(--buy) var(--ht-r),
-    transparent calc(var(--ht-r) + 0.4px)
-  );
-  background-position: left center;
-}
-.tot-cap {
-  width: 2px;
-}
-.bf-side.sell .tot-cap {
-  right: calc(var(--w) * 100% - 2px);
-  background: var(--sell);
-}
-.bf-side.buy .tot-cap {
-  left: calc(var(--w) * 100% - 2px);
-  background: var(--buy);
-}
-.tot-sep {
-  position: absolute;
-  top: -1px;
-  bottom: -1px;
-  width: calc(var(--ht-pitch) + 1px);
-  background: var(--canvas);
-}
-.bf-side.sell .tot-sep {
-  right: calc(var(--o) * 100% - var(--ht-pitch) / 2);
-}
-.bf-side.buy .tot-sep {
-  left: calc(var(--o) * 100% - var(--ht-pitch) / 2);
-}
-.tot-lens {
-  width: calc(var(--w) * 100%);
-  min-width: 2px;
-  opacity: 0;
-}
-.tot-lens.on {
-  opacity: 1;
-}
-.bf-side.sell .tot-lens {
-  right: 0;
-  background: var(--sell);
-  border-radius: 2px 0 0 2px;
-}
-.bf-side.buy .tot-lens {
-  left: 0;
-  background: var(--buy);
-  border-radius: 0 2px 2px 0;
-}
-.bf-total .bf-val.tot-val {
-  opacity: 1;
-  font-size: var(--t-data);
-}
-.tot-name {
-  font-weight: 500;
-}
-.bf-total .bf-label {
-  position: relative;
-  z-index: 1;
+@media (min-width: 52.5em) {
+  .bf {
+    --lane: 56px;
+  }
 }

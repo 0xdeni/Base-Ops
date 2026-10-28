@@ -34,6 +34,18 @@ export function niceStep(span: number, count: number): number {
   return tidy((m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p)
 }
 
+/**
+ * The smallest round step (1, 2, 2.5, 5 or 10 × 10ⁿ) at or above `span / count`: the depth
+ * curve's y step (docs/design/visual-v4.md §5.9.3), which never packs more than `count` steps.
+ */
+export function niceStepUp(span: number, count: number): number {
+  if (!(span > 0) || !Number.isFinite(span)) return 1
+  const raw = span / Math.max(1, count)
+  const p = 10 ** Math.floor(Math.log10(raw))
+  for (const m of [1, 2, 2.5, 5, 10]) if (tidy(m * p) >= raw) return tidy(m * p)
+  return tidy(10 * p)
+}
+
 /** The multiples of `niceStep(max − min, count)` inside [min, max]. */
 export function ticks(min: number, max: number, count: number): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) return []
@@ -141,6 +153,20 @@ export function timeTicks(domain: readonly [number, number], span: number): Time
   const weekly = span > 10 * DAY
   for (let t = Math.ceil(t0 / DAY) * DAY; t <= t1; t += weekly ? 7 * DAY : DAY)
     out.push({ t, label: weekly ? day(t) : weekday(t) })
+  return out
+}
+
+/**
+ * Time ticks for an axis fitted to its samples (docs/design/visual-v4.md §5.9.6): every 15
+ * minutes ("10:45") when the samples span 2 hours or less, else the landmarks of `timeTicks`.
+ */
+export function fittedTimeTicks(domain: readonly [number, number]): TimeTick[] {
+  const [t0, t1] = domain
+  if (!(t1 > t0)) return []
+  if (t1 - t0 > 2 * HOUR) return timeTicks(domain, t1 - t0)
+  const out: TimeTick[] = []
+  const q = 15 * 60
+  for (let t = Math.ceil(t0 / q) * q; t <= t1; t += q) out.push({ t, label: clockTime(t) })
   return out
 }
 

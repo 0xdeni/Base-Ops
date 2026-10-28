@@ -1,30 +1,30 @@
 /**
- * Cost to trade (docs/design/visual-v3.md §5.9 "Cost-to-trade lollipop"): the effective spread of
- * a $1K, $10K and $100K round trip as lollipops on one shared bps axis from 0, so each spread reads
- * as a length. A 3 px `text-1` stem, a 10 px dot and the value 14 px to its right (or to its left
- * on a canvas patch past 72 % of the axis). A notional the pool cannot absorb (infeasible, or a
- * stored spread of 10,000 bps or more) is a hollow ring at 0 labelled "Can’t absorb". Nice ticks;
- * the last carries the dotted "bps" glossary term.
+ * Cost to trade (docs/design/visual-v4.md §5.9.8): the effective spread of a $1K, $10K and $100K
+ * round trip as lollipops on one shared bps axis from 0, so each spread reads as a length. Rows of
+ * 40 px: the notional in a 56 px column, a 2 px `--line` track, a 4 px ink stem from 0 to the
+ * value, a 16 px rounded square dot and the value 16 px after it. A notional the pool cannot absorb
+ * (infeasible, or a stored spread of 10,000 bps or more) is a hollow ring at 0 labelled "Can’t
+ * absorb $100K". The axis reads 0 and three nice ticks, the last with the "bps" glossary term.
  */
 import type { ReactNode } from 'react'
 import type { SpreadPoint } from '../../api/types.js'
-import { bps, NB, SPREAD_UNABSORBED_BPS, usd } from '../../lib/format.js'
-import { niceTop, ticks } from '../../lib/scale.js'
+import { bps, cantAbsorb, NB, SPREAD_UNABSORBED_BPS, usd } from '../../lib/format.js'
+import { niceStepUp } from '../../lib/scale.js'
 import { Glossary } from '../ui/Glossary.js'
 import { ShowData } from './ShowData.js'
 import { vars } from './useChartWidth.js'
 import './charts.css'
 import './glyphs.css'
 
-/** The axis maximum and the ticks before it (the last tick is printed with its unit). */
-export function lollipopAxis(spreads: readonly SpreadPoint[]): { max: number; ticks: number[] } {
-  const top = Math.max(0, ...spreads.map((s) => (fillable(s) ? s.spreadBps : 0)))
-  const max = niceTop(top, 3)
-  return { max, ticks: ticks(0, max, 3).filter((v) => v < max) }
-}
-
 const fillable = (s: SpreadPoint): s is SpreadPoint & { spreadBps: number } =>
   s.feasible && s.spreadBps !== null && Math.round(Math.abs(s.spreadBps)) < SPREAD_UNABSORBED_BPS
+
+/** The axis: three equal round steps from 0 past the widest fillable spread. */
+export function lollipopAxis(spreads: readonly SpreadPoint[]): { max: number; ticks: number[] } {
+  const top = Math.max(0, ...spreads.map((s) => (fillable(s) ? s.spreadBps : 0)))
+  const step = niceStepUp(top > 0 ? top : 1, 3)
+  return { max: step * 3, ticks: [0, step, step * 2, step * 3].map((v) => Number(v.toPrecision(12))) }
+}
 
 export function lollipopLabel(spreads: readonly SpreadPoint[]): string {
   return `Effective spread: ${spreads
@@ -43,50 +43,52 @@ export function SpreadLollipop({
   children?: ReactNode
 }) {
   const axis = lollipopAxis(spreads)
-  // One root, so in a section's body grid the axis sits right under the rows, as in the figure.
   return (
     <div className="lolli">
-      <div className="dotplot" role="img" aria-label={lollipopLabel(spreads)}>
+      <div className="dots" role="img" aria-label={lollipopLabel(spreads)}>
         {spreads.map((s) => {
-          const x = fillable(s) ? Math.min(1, Math.max(0, s.spreadBps / axis.max)) : 0
+          const ok = fillable(s)
+          const x = ok ? Math.min(1, Math.max(0, s.spreadBps / axis.max)) : 0
           return (
-            <div className="dp-row" key={s.notionalUsd}>
+            <div className="dot-r" key={s.notionalUsd}>
               <span className="k num">{usd(s.notionalUsd)}</span>
-              <span className="dp-track" style={vars({ '--x': x })}>
-                {fillable(s) ? (
-                  <>
-                    <span className="dp-stem" />
-                    <span className="dp-dot" />
-                    <span className={`dp-val num${x > 0.72 ? ' to-left' : ''}`}>
-                      {bps(s.spreadBps)}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="dp-hollow" />
-                    <span className="dp-val faint">Can’t absorb</span>
-                  </>
-                )}
+              <span className="dot-t" style={vars({ '--x': x })}>
+                {ok ? <i className="dot-s" data-bar="" /> : null}
+                <i className={`dot-d${ok ? '' : ' ring'}`} />
+                <b className="num">{ok ? bps(s.spreadBps) : cantAbsorb(s.notionalUsd)}</b>
               </span>
             </div>
           )
         })}
       </div>
-      <div className="dp-axis">
-        {axis.ticks.map((v) => (
-          <span key={v} style={{ left: `${(v / axis.max) * 100}%` }} aria-hidden="true">
-            {v}
-          </span>
-        ))}
-        <span className="dp-last">
-          {axis.max}
-          {NB}
-          <Glossary
-            definition={`Basis points: hundredths of a percent. 10${NB}bps is 0.1${NB}%.`}
-            anchor="spread"
-          >
-            bps
-          </Glossary>
+      <div className="dot-r dot-ax">
+        <span />
+        <span className="dot-t">
+          {axis.ticks.map((v, i) => (
+            <span
+              key={v}
+              className={i === axis.ticks.length - 1 ? 'dp-last' : undefined}
+              style={vars({ '--x': v / axis.max })}
+              aria-hidden={i === axis.ticks.length - 1 ? undefined : true}
+            >
+              {i === 0 ? (
+                '0'
+              ) : i === axis.ticks.length - 1 ? (
+                <>
+                  {v}
+                  {NB}
+                  <Glossary
+                    definition={`Basis points: hundredths of a percent. 10${NB}bps is 0.1${NB}%.`}
+                    anchor="spread"
+                  >
+                    bps
+                  </Glossary>
+                </>
+              ) : (
+                `${v}${NB}bps`
+              )}
+            </span>
+          ))}
         </span>
       </div>
       <ShowData>{children}</ShowData>

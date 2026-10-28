@@ -1,7 +1,8 @@
 /**
- * The one stroke icon set (K9, docs/design/visual-v3.md §5.13): 16 px, viewBox 0 0 16 16, 1.5 px
- * stroke, round caps and joins, currentColor, aria-hidden. Every arrow in the product is one of
- * these, never a text glyph (Hanken has no ↑ or ⇄).
+ * The one stroke icon set (K9, docs/design/visual-v4.md §5.13): 16 px, viewBox 0 0 16 16, 1.5 px
+ * stroke, round caps and joins, currentColor, aria-hidden: chevrons, back, swap, search, check,
+ * copy, external, arrows, filter (three lines) and columns. Every arrow in the product is one of
+ * these, never a text glyph (Hanken has no ↑ or ⇄). No icon sits in a tinted square.
  */
 import type { ReactNode } from 'react'
 
@@ -33,7 +34,7 @@ const PATHS = {
       <circle cx="5" cy="11" r="1.5" />
     </>
   ),
-  sort: <path d="M5 3v10M2.5 10.5L5 13l2.5-2.5M11 13V3M8.5 5.5L11 3l2.5 2.5" />,
+  filter: <path d="M2.5 4.5h11M4.5 8h7M6.5 11.5h3" />,
   columns: (
     <>
       <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
@@ -74,7 +75,10 @@ export function Icon({
   )
 }
 
-/** Status shapes (C4): circle = A–B and within KPI, square = C, triangle = D–F and breached. */
+/**
+ * Status shapes (§5.5): circle = A–B and within KPI, square = C, triangle = D–F and breached; a
+ * ring for no data.
+ */
 export type ShapeName = 'circle' | 'square' | 'triangle' | 'ring'
 
 export function Shape({ shape, className }: { shape: ShapeName; className?: string }) {

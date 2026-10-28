@@ -1,0 +1,27 @@
+/* v3 token names that chart and page sheets not yet moved to v4 still read, mapped onto the v4
+   roles of docs/design/visual-v4.md §3.2. Nothing else in styles/ reads them; each line goes once
+   its last reader has moved (styles.test.ts lists the readers). */
+
+:root {
+  --text-3: var(--text-2);
+  --border-subtle: var(--line);
+  --border: var(--line);
+  --control: var(--line-2);
+  --well: var(--surface-2);
+  --raised: var(--surface);
+  --hover: var(--surface-2);
+  --bad-mark: var(--bad);
+  --band-op: var(--breach-op);
+  --t-prose: var(--t-body);
+  --dur-hover: var(--d-hover);
+  --dur-press: var(--d-press);
+  --stagger: 30ms;
+  --appbar-h: var(--chrome-h);
+  /* The field of light (v3 §3.7), retired with the halftone */
+  --dot: var(--line);
+  --ht-pitch: 3px;
+  --ht-r: 1px;
+  --field-top: 1;
+  --field-low: 0.12;
+  --field-under: 0.14;
+}

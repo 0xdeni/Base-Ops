@@ -1,17 +1,40 @@
 /**
- * A section (D4, docs/design/visual-v3.md §5.7): one heading that names the question, one takeaway,
- * one visual and an optional Details disclosure. The Details trigger sits in the heading (K10):
- * under the takeaway in the left column on desktop, at the right end of the heading line on
- * phones; its panel opens under the visual. The head is sticky beside long visuals from 840 px.
+ * The sections sheet (docs/design/visual-v4.md §5.7): Pool and Scorecard set their sections as the
+ * rows of one plane-1 block (`SectionsSheet`), split by 1 px rules; no block per section and no
+ * card grid. A row is the lowercase h2 that names the question, one finding sentence and the
+ * Details trigger in the head; the visual in the body, with the Details panel opening under it.
+ * From 1024 px the head takes 4 / 12 and the body 8 / 12; below, the trigger sits at the right of
+ * the heading's line and the sentence under both. At most one disclosure level (P5).
+ *
+ * The reference list (About this pool, Mandate) is `AboutSection`: a panel after the sheet, a
+ * two-column definition list from 840 px and a disclosure on phones.
  */
 import type { ReactNode } from 'react'
 import { Disclosure, DisclosurePanel, DisclosureTrigger, useDisclosure } from './Disclosure.js'
 
 export interface SectionDetails {
-  /** "Details" by default; "Show samples", "Show measured spread", "Show code", … */
+  /** "Details" by default; "Show samples", "Show code", … */
   label?: string
   openLabel?: string
   content: ReactNode
+}
+
+/** The one block that holds a page's sections as rows. */
+export function SectionsSheet({
+  label,
+  className,
+  children,
+}: {
+  /** The region's accessible name, when the page names it. */
+  label?: string
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <div className={`secs${className ? ` ${className}` : ''}`} role={label ? 'region' : undefined} aria-label={label}>
+      {children}
+    </div>
+  )
 }
 
 export function Section({
@@ -25,11 +48,12 @@ export function Section({
 }: {
   /** The heading's id; the section is labelled by it. */
   id: string
+  /** Lowercase words that name the question ("cost to trade"). */
   title: ReactNode
-  /** One sentence of at most 15 words (P8). */
+  /** One finding sentence of at most 40ch. */
   takeaway?: ReactNode
   details?: SectionDetails
-  /** Further controls after Details in the heading row (a window control, a link). */
+  /** Further controls after Details in the head (a window control, a link). */
   controls?: ReactNode
   className?: string
   /** The visual. */
@@ -65,8 +89,9 @@ export function Section({
 }
 
 /**
- * About and Mandate lists (L3, §5.7): a two-column definition list on desktop; on phones the
- * heading is visually hidden and the disclosure ("About this pool") is the section.
+ * About and Mandate lists: a panel after the sections sheet with its heading and a two-column
+ * definition list from 840 px; on phones the heading is visually hidden and the disclosure
+ * ("About this pool") is the section.
  */
 export function AboutSection({
   id,
@@ -83,17 +108,13 @@ export function AboutSection({
   children: ReactNode
 }) {
   return (
-    <section className="sec is-about" aria-labelledby={id}>
-      <div className="sec-head">
-        <h2 className="h2" id={id}>
-          {title}
-        </h2>
-      </div>
-      <div className="sec-body">
-        <Disclosure label={disclosureLabel ?? title} phoneOnly>
-          {children}
-        </Disclosure>
-      </div>
+    <section className="blk blk--panel sec-about is-about" aria-labelledby={id}>
+      <h2 className="h2" id={id}>
+        {title}
+      </h2>
+      <Disclosure label={disclosureLabel ?? title} phoneOnly>
+        {children}
+      </Disclosure>
     </section>
   )
 }

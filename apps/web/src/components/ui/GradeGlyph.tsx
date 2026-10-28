@@ -1,6 +1,8 @@
 /**
- * The grade glyph (C4, K5, docs/design/visual-v3.md §5.5): a fixed 28 × 20 tinted chip with the
- * band's shape and the letter, readable in greyscale. 32 × 24 in facts. The one chip per row (TB5).
+ * The grade glyph (docs/design/visual-v4.md §5.5): the status fill (Green A–B, Tan C, Red D–F),
+ * an 8 px shape (circle, square, triangle) and the letter in Gray 100; 26 px high and at least 40
+ * wide, radius 6. Large in facts: 36 × 56, 20 px, radius 9, a 10 px shape. The fill is never the
+ * only cue: the letter and the shape carry the grade. One chip per row (TB5).
  */
 import type { HealthGrade, UnratedReason } from '@depthwatch/core'
 import { gradeTone } from '../../lib/format.js'

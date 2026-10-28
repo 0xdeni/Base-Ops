@@ -1,5 +1,5 @@
 /**
- * The "Show data" tables of the focal charts (CH9, docs/design/visual-v3.md §5.9): the numbers
+ * The "Show data" tables of the focal charts (CH9, docs/design/visual-v4.md §5.9): the numbers
  * behind each figure, as dense tables (§5.8). Pages pass them to the charts as children. They read
  * the same stored values the charts draw; nothing is recomputed.
  */
@@ -10,7 +10,10 @@ import { TableScroll } from '../ui/TableScroll.js'
 import { butterflyModel, pickButterflyRows } from './butterflyModel.js'
 import { asymmetryNote } from './curveModel.js'
 
-/** Butterfly data: pool, sell and buy side within 2 %, share of the scope, and the total. */
+/**
+ * Butterfly data: each row's pool with both sides within 2 % and its share of the scope, then
+ * every other pool together, then the "All of …" total.
+ */
 export function ButterflyTable({
   pools,
   rows: rowsProp,
@@ -36,10 +39,10 @@ export function ButterflyTable({
           <tr>
             <th scope="col">Pool</th>
             <th scope="col" className="r">
-              Sell side ±2{NB}%
+              Sell ±2{NB}%
             </th>
             <th scope="col" className="r">
-              Buy side ±2{NB}%
+              Buy ±2{NB}%
             </th>
             <th scope="col" className="r">
               Share of {scope}
@@ -50,7 +53,7 @@ export function ButterflyTable({
           {m.rows.map((r) => (
             <tr key={r.id}>
               <td>
-                {r.pair} <span className="faint">{r.dexShort}</span>
+                {r.pair} <span className="faint">{r.venue}</span>
               </td>
               <td className="r num">{usd(r.sell)}</td>
               <td className="r num">{usd(r.buy)}</td>
@@ -60,7 +63,10 @@ export function ButterflyTable({
           {other > 0 ? (
             <tr>
               <td>
-                {other} other {other === 1 ? 'pool' : 'pools'}
+                Every other pool{' '}
+                <span className="faint">
+                  {other} {other === 1 ? 'pool' : 'pools'}
+                </span>
               </td>
               <td className="r num">{usd(otherSell)}</td>
               <td className="r num">{usd(otherBuy)}</td>
@@ -81,8 +87,9 @@ export function ButterflyTable({
 
 /**
  * Depth curve data: ±1/2/5 % per side in USD and in the token traded (sold on the sell side, spent
- * on the buy side), then the asymmetry. The token column stays even for a $1.00 token: a stable
- * a little off its peg spends a little more or less than the dollars, and the table keeps one shape.
+ * on the buy side), whether the price was reached, then the asymmetry. The token column stays even
+ * for a $1.00 token: a stable a little off its peg spends a little more or less than the dollars,
+ * and the table keeps one shape.
  */
 export function DepthCurveTable({
   snapshot,
@@ -114,12 +121,14 @@ export function DepthCurveTable({
               <th scope="col" className="r">
                 {token1.symbol} spent
               </th>
+              <th scope="col">Price</th>
             </tr>
           </thead>
           <tbody>
             {snapshot.depthUsd.map((row) => {
               const raw = snapshot.depth.find((d) => d.pct === row.pct)
               const out = (reached: boolean | undefined) => (reached === false ? ', runs out' : '')
+              const reached = raw ? raw.down.reached && raw.up.reached : null
               return (
                 <tr key={row.pct}>
                   <td>
@@ -136,6 +145,7 @@ export function DepthCurveTable({
                     {raw ? amount(raw.up.amountIn, token1.decimals) : '—'}
                     {out(raw?.up.reached)}
                   </td>
+                  <td>{reached === null ? '—' : reached ? 'Reached' : 'Liquidity runs out'}</td>
                 </tr>
               )
             })}

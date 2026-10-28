@@ -1,12 +1,12 @@
 /**
- * Copy (K8, docs/design/visual-v3.md §4 row 23): a secondary button whose label swaps to "Copied"
- * with a check for 2 s, announced politely. No toast, no animation. `iconOnly` is the 28 px icon
- * button beside a mono id or address (About lists, the Mandate list): its icon swaps to the check
- * and `label` is its accessible name; it sits on the text line without growing it.
+ * Copy (docs/design/visual-v4.md §4.4, §5.11): a small ghost button whose label swaps to "Copied"
+ * with a check for 2 s, announced politely; instant, no toast. `iconOnly` is the icon button
+ * beside a mono id or address (About lists, the Mandate list): its icon swaps to the check and
+ * `label` is its accessible name; it sits on the text line without growing it.
  */
 import { useEffect, useRef, useState } from 'react'
 import { DUR } from '../../lib/motion.js'
-import { Button, IconButton } from './Button.js'
+import { Button, type ButtonVariant, IconButton } from './Button.js'
 
 async function writeClipboard(text: string): Promise<void> {
   try {
@@ -30,13 +30,13 @@ async function writeClipboard(text: string): Promise<void> {
 export function CopyButton({
   text,
   label,
-  variant = 'secondary',
+  variant = 'ghost',
   iconOnly = false,
 }: {
   text: string
   /** "Copy HTML", "Copy Markdown", "Copy address"; the accessible name when `iconOnly`. */
   label: string
-  variant?: 'secondary' | 'quiet'
+  variant?: ButtonVariant
   iconOnly?: boolean
 }) {
   const [copied, setCopied] = useState(false)
@@ -59,7 +59,7 @@ export function CopyButton({
           onClick={copy}
         />
       ) : (
-        <Button variant={variant} icon={copied ? 'check' : 'copy'} onClick={copy}>
+        <Button variant={variant} size="sm" icon={copied ? 'check' : 'copy'} onClick={copy}>
           {copied ? 'Copied' : label}
         </Button>
       )}

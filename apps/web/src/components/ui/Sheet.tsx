@@ -1,9 +1,12 @@
 /**
- * The phone bottom sheet (PH4, docs/design/visual-v3.md §5.10, §4 row 22): Filter, Sort and the
- * column picker. In from `translateY(100%)` over 500 ms `--ease-drawer`, out over 300 ms; fade only
- * under reduced motion; instant when opened from the keyboard. Focus is trapped and returned,
- * Escape and the backdrop close it, the body cannot scroll behind it, and it drags down to dismiss
- * (faster than 0.4 px/ms or past 25 % of its height; otherwise it snaps back over 300 ms).
+ * The phone sheet (docs/design/visual-v4.md §5.10, §4.4): Filter pools and Sort pools. Fixed to
+ * the bottom, radius 24 at the top, a 44 × 5 grip in a 28 px drag area, a 24 px / 800 title,
+ * options of at least 52 px with a check on the selected one, and a full-width primary "Done".
+ * In from `translateY(100%)` over 500 ms `--ease-drawer` with the scrim over 300 ms; out over
+ * 260 ms `--ease-out`; a 200 ms fade under reduced motion; instant when opened from the keyboard.
+ * Focus is trapped and returned, Escape and the scrim close it, the body cannot scroll behind it,
+ * and it drags down to dismiss (faster than 0.4 px/ms or past 25 % of its height; otherwise it
+ * snaps back over 300 ms). It unmounts with its page, so a route change closes it.
  */
 import {
   type KeyboardEvent,
@@ -29,7 +32,7 @@ export interface SheetProps {
   onClose: () => void
   title: string
   children: ReactNode
-  /** Below the options: the Sort sheet's "Highest first / Lowest first" control. */
+  /** Below the options, above "Done": the Sort sheet's "Highest first / Lowest first" control. */
   foot?: ReactNode
   /** Opened or closed from the keyboard: no motion (M2). */
   instant?: boolean
@@ -54,16 +57,20 @@ export function Sheet({ open, onClose, title, children, foot, instant = false }:
     document.body.style.overflow = 'hidden'
     const sheet = sheetRef.current
     if (sheet && !instant) {
-      const reduced = prefersReducedMotion()
-      const opts = { duration: DUR.sheet, easing: EASE.drawer }
-      animate(
-        sheet,
-        reduced
-          ? [{ opacity: 0 }, { opacity: 1 }]
-          : [{ transform: 'translateY(100%)' }, { transform: 'translateY(0)' }],
-        opts,
-      )
-      animate(backRef.current, [{ opacity: 0 }, { opacity: 1 }], opts)
+      if (prefersReducedMotion()) {
+        const fade = { duration: DUR.fade, easing: 'linear' }
+        animate(sheet, [{ opacity: 0 }, { opacity: 1 }], fade)
+        animate(backRef.current, [{ opacity: 0 }, { opacity: 1 }], fade)
+      } else {
+        animate(sheet, [{ transform: 'translateY(100%)' }, { transform: 'translateY(0)' }], {
+          duration: DUR.sheet,
+          easing: EASE.drawer,
+        })
+        animate(backRef.current, [{ opacity: 0 }, { opacity: 1 }], {
+          duration: DUR.scrim,
+          easing: 'linear',
+        })
+      }
     }
     const first =
       sheet?.querySelector<HTMLElement>('[aria-checked="true"]') ??
@@ -83,7 +90,7 @@ export function Sheet({ open, onClose, title, children, foot, instant = false }:
     }
     const sheet = sheetRef.current
     if (instant || !sheet || prefersReducedMotion()) return done()
-    const opts = { duration: DUR.sheetOut, easing: EASE.drawer, fill: 'forwards' as const }
+    const opts = { duration: DUR.sheetOut, easing: EASE.out, fill: 'forwards' as const }
     const a = animate(
       sheet,
       [{ transform: `translateY(${dragFrom.current}px)` }, { transform: 'translateY(100%)' }],
@@ -143,7 +150,7 @@ export function Sheet({ open, onClose, title, children, foot, instant = false }:
       onClose()
     } else if (d.dy > 0) {
       animate(sheet, [{ transform: `translateY(${d.dy}px)` }, { transform: 'translateY(0)' }], {
-        duration: DUR.sheetOut,
+        duration: DUR.scrim,
         easing: EASE.drawer,
       })
     }
@@ -169,17 +176,17 @@ export function Sheet({ open, onClose, title, children, foot, instant = false }:
           onPointerCancel={onPointerUp}
         >
           <div className="sheet-grip" aria-hidden="true" />
-          <div className="sheet-head">
-            <h2 id={titleId} className="sheet-title">
-              {title}
-            </h2>
-            <Button variant="quiet" onClick={onClose}>
-              Done
-            </Button>
-          </div>
+          <h2 id={titleId} className="sheet-title">
+            {title}
+          </h2>
         </div>
         <div className="sheet-body">{children}</div>
         {foot ? <div className="sheet-foot">{foot}</div> : null}
+        <div className="sheet-done">
+          <Button variant="primary" onClick={onClose}>
+            Done
+          </Button>
+        </div>
       </div>
     </div>,
     document.body,
@@ -189,11 +196,16 @@ export function Sheet({ open, onClose, title, children, foot, instant = false }:
 export interface SheetOption<T extends string> {
   value: T
   label: ReactNode
+  /** A value on the right of the row, before the check ("83 %"). */
+  meta?: ReactNode
+  /** The option's accessible name when its label and meta are not enough. */
+  ariaLabel?: string
 }
 
 /**
- * The sheet's option rows (≥ 52 px, a check on the selected one) as a radio group: arrow keys
- * move and select, like every other radio group in the product.
+ * The sheet's option rows (at least 52 px, a check on the selected one) as a radio group: arrow
+ * keys move and select, like every other radio group in the product. An option may carry a meta
+ * value on its right (a DEX's share of the depth in the Filter sheet).
  */
 export function SheetOptions<T extends string>({
   label,
@@ -228,11 +240,13 @@ export function SheetOptions<T extends string>({
           role="radio"
           className="opt"
           aria-checked={o.value === value}
+          aria-label={o.ariaLabel}
           tabIndex={o.value === value ? 0 : -1}
           onClick={() => onChange(o.value)}
           onKeyDown={(e) => onKeyDown(e, i)}
         >
           <span>{o.label}</span>
+          {o.meta !== undefined ? <span className="opt-meta num">{o.meta}</span> : null}
           <Icon name="check" />
         </button>
       ))}

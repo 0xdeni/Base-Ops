@@ -1,225 +1,138 @@
-/* Depth butterfly states (docs/design/visual-v3.md §5.9, §4 rows 1–5): the lens, the empty
-   figure, the phone layout, the touch path and the first-view motion. Layout lives in
-   butterfly.css. */
+/* Depth butterfly states (docs/design/visual-v4.md §5.9.1, §4.3): the lens, focus, the empty
+   figure, stacked labels, the phone layout and the touch path. Layout lives in butterfly.css. */
 
-/* The lens (hover, focus and tap alike). */
-.bfly.is-lens .bfly-row:not(.is-on) .bf-bar,
-.bfly.is-lens .bfly-row:not(.is-on) .bf-label,
-.bfly.is-lens .bfly-row:not(.is-on) .bf-gap {
-  opacity: 0.38;
+/* The lens: everything but the lensed row dims to 0.32 over 150 ms; from the keyboard at once. */
+.bf-pools .bf-r,
+.bf-total,
+.bf-call {
+  transition: opacity 150ms ease;
 }
-.bfly-row.is-on .bf-val,
-.bfly-row:focus-within .bf-val {
-  opacity: 1;
+.bf.is-lens .bf-pools .bf-r:not(.is-on),
+.bf.is-lens .bf-total,
+.bf.is-lens .bf-call {
+  opacity: 0.32;
 }
-.bfly-row.is-on {
-  background: color-mix(in oklch, var(--hover) 60%, transparent);
-}
-.bfly.is-lens .tot-field,
-.bfly.is-lens .tot-sep,
-.bfly.is-lens .tot-cap {
-  opacity: 0.22;
-}
-.bfly.is-lens .bf-total .bf-val {
-  color: var(--text-3);
-}
-.bfly-row:has(.bf-pair:focus-visible) {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-.bf-pair:focus-visible {
-  outline: none;
-}
-
-/* Empty (§5.9): the spine hairline only, no fake bars. */
-.bfly.is-empty {
-  height: 240px;
-}
-.bfly-spine {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--border);
-}
-
-/* Phone: the label on its own line above a centred bar pair. */
-@media (max-width: 52.49em) {
-  .bfly {
-    --rowh: 56px;
-    --barh: 10px;
-    --vallane: 52px;
-  }
-  .bfly-rows::before,
-  .bfly-rows::after {
-    display: none;
-  }
-  .bfly-head,
-  .bfly-axis {
-    grid-template-columns: 1fr 1fr;
-  }
-  .bfly-head .lh-mid,
-  .bfly-axis .ax-mid {
-    display: none;
-  }
-  .bfly-head .lh-sell {
-    padding-right: var(--s3);
-  }
-  .bfly-head .lh-buy {
-    padding-left: var(--s3);
-  }
-  .bfly-row,
-  .bf-total {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto auto;
-    align-content: center;
-    row-gap: 6px;
-  }
-  .bfly-row .bf-label,
-  .bf-total .bf-label {
-    grid-column: 1 / -1;
-    grid-row: 1;
-    display: flex;
-    gap: var(--s2);
-    justify-content: center;
-    align-items: baseline;
-  }
-  .bf-side.sell {
-    grid-column: 1;
-    grid-row: 2;
-  }
-  .bf-side.buy {
-    grid-column: 2;
-    grid-row: 2;
-  }
-  .bf-pair {
-    font-size: var(--t-small);
-  }
-  .bf-total {
-    --toth: 14px;
-    height: calc(var(--rowh) + 20px);
-    row-gap: var(--s2);
-  }
-  .bf-total .bf-val.tot-val {
-    font-size: var(--t-small);
-  }
-  .bfly-row {
-    cursor: pointer;
-  }
-}
-.bfly-head .lh-short {
-  display: none;
-}
-/* Below 360 px the legends shorten to "Sell side" and "Buy side" on one line each (the figure's
-   aria-label keeps the full wording). */
-@media (max-width: 22.49em) {
-  .bfly-head .lh-long {
-    display: none;
-  }
-  .bfly-head .lh-short {
-    display: inline;
-  }
-  .bfly-head .lh-sell,
-  .bfly-head .lh-buy {
-    white-space: nowrap;
-  }
-}
-/* On touch the pair name is the link (≥ 24 px); the bars toggle the lens. */
-@media (pointer: coarse) {
-  .bf-pair::after {
-    display: none;
-  }
-  .bf-pair {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    min-height: 24px;
-  }
-}
-
-/* A keyboard lens is instant (M2). */
-.bfly.is-instant *,
-.bfly.is-instant .bfly-row {
+.bf.is-instant .bf-pools .bf-r,
+.bf.is-instant .bf-total,
+.bf.is-instant .bf-call {
   transition: none;
 }
-@media (hover: hover) and (pointer: fine) {
-  .bf-gap-link:hover {
-    color: var(--text-1);
+.bf-pools .bf-r.is-on {
+  background: rgb(255 255 255 / 0.1);
+}
+
+/* Focus on the band is Yellow (§2.4). */
+.bf :focus-visible {
+  outline: 2px solid var(--focus-band);
+  outline-offset: 2px;
+}
+
+/* Empty: the spine only, never fake bars. */
+.bf.is-empty {
+  height: 240px;
+}
+.bf-spine {
+  position: absolute;
+  left: calc(50% - 1px);
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--on-band);
+}
+
+/* A row whose label would not fit left of its sell bar puts it on its own line, centred. */
+.bf-pools .bf-r.is-stacked {
+  height: auto;
+  grid-template-rows: auto 12px;
+  row-gap: 4px;
+  padding-block: 4px;
+}
+.bf-pools .bf-r.is-stacked .bf-lab {
+  position: relative;
+  top: auto;
+  right: auto;
+  z-index: 3;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  justify-self: center;
+  translate: none;
+  padding: 0 8px;
+  background: var(--band);
+}
+.bf-pools .bf-r.is-stacked .bf-h {
+  grid-row: 2;
+}
+
+/* Phones: legends drop "price down / up", labels take their own centred line over 10 px bars. */
+@media (max-width: 52.49em) {
+  .bf {
+    margin-top: 24px;
+  }
+  .bf-head .long {
+    display: none;
+  }
+  .bf-pools .bf-r {
+    height: auto;
+    grid-template-rows: auto 10px;
+    row-gap: 4px;
+    padding-block: 5px;
+  }
+  .bf-pools .bf-lab {
+    position: relative;
+    top: auto;
+    right: auto;
+    z-index: 3;
+    grid-column: 1 / -1;
+    grid-row: 1;
+    justify-self: center;
+    translate: none;
+    padding: 0 8px;
+    background: var(--band);
+  }
+  .bf-pools .bf-h {
+    grid-row: 2;
+    height: 10px;
+  }
+  .bf-total {
+    height: 44px;
+  }
+  .bf-total .bf-h {
+    height: 36px;
+  }
+  .bf-call {
+    height: 64px;
+  }
+  .bf-call-t {
+    width: 250px;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.3;
+  }
+  .bf-gap {
+    display: none;
   }
 }
 
-/* The first view (M6): bars grow from the spine, the total field is revealed from it, and the
-   labels, caps, strata gaps and Gap marker arrive once the marks are nearly there. */
-@media (prefers-reduced-motion: no-preference) {
-  .bf-gap-link {
-    transition:
-      transform var(--dur-press) var(--ease-out),
-      color var(--dur-hover) ease;
+/* Touch: a row's link takes taps only once the row is lensed, so the first tap reads the row
+   and the second opens the pool. Every row is at least 28 px high and spans the figure. */
+@media (pointer: coarse) {
+  .bf-pools .bf-r:not(.is-on) > .bf-link {
+    pointer-events: none;
   }
-  .bf-gap-link:active {
-    transform: scale(var(--press-scale));
+  .bf-pools .bf-r {
+    min-height: 44px;
   }
-  .bfly.grow .bf-bar {
-    animation: bf-grow 300ms var(--ease-out) both;
-    animation-delay: calc(var(--i) * var(--stagger));
-  }
-  .bfly.grow .bf-side.sell .tot-field {
-    animation: bf-reveal-l 300ms var(--ease-out) both;
-    animation-delay: calc(var(--i) * var(--stagger));
-  }
-  .bfly.grow .bf-side.buy .tot-field {
-    animation: bf-reveal-r 300ms var(--ease-out) both;
-    animation-delay: calc(var(--i) * var(--stagger));
-  }
-  .bfly.grow .tot-val,
-  .bfly.grow .tot-cap,
-  .bfly.grow .tot-sep,
-  .bfly.grow .bf-gap {
-    animation: fade-in 150ms var(--ease-out) both;
-    animation-delay: 300ms;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .bfly.grow .bf-bar,
-  .bfly.grow .tot-field,
-  .bfly.grow .tot-val,
-  .bfly.grow .tot-cap,
-  .bfly.grow .tot-sep,
-  .bfly.grow .bf-gap {
-    animation: fade-in 200ms ease both;
-  }
-}
-@keyframes bf-grow {
-  from {
-    transform: scaleX(0.001);
-  }
-  to {
-    transform: scaleX(1);
-  }
-}
-@keyframes bf-reveal-l {
-  from {
-    clip-path: inset(0 0 0 100%);
-  }
-  to {
-    clip-path: inset(0);
-  }
-}
-@keyframes bf-reveal-r {
-  from {
-    clip-path: inset(0 100% 0 0);
-  }
-  to {
-    clip-path: inset(0);
+  .bf-open {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
   }
 }
 
 @media (forced-colors: active) {
-  .bf-bar,
-  .tot-field,
-  .tot-cap,
-  .tot-lens {
+  .bf-b,
+  .bf-seg,
+  .bf-call-in {
     forced-color-adjust: none;
   }
 }

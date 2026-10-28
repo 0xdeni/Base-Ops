@@ -1,23 +1,25 @@
-/* States (docs/design/visual-v3.md §5.12, ST1–ST7): static skeletons in well blocks at the final
-   heights, the refetch dim and 2 px bar, empty, section error and not found. */
+/* States (docs/design/visual-v4.md §5.12): static skeletons at the final sizes (white 14 % on the
+   band, `--surface-2` off it), the refetch dim and 2 px bar, empty, a section error and not
+   found. No shimmer. */
 
-.skel {
-  display: block;
-  background: var(--well);
-  border-radius: 2px;
-}
+.skel,
 .skel-text {
   display: block;
+  background: var(--surface-2);
+  border-radius: 4px;
+}
+.skel-text {
   height: 13px;
-  border-radius: 2px;
-  background: var(--well);
+}
+.band :is(.skel, .skel-text) {
+  background: rgb(255 255 255 / 0.14);
 }
 .skel-stack {
   display: grid;
   gap: var(--s2);
 }
 
-/* Refetch (M10): keep the content, dim it after 150 ms, show a 2 px bar at the section top. */
+/* Refetch (M10): keep the content, dim it to 0.6 after 150 ms, a 2 px bar at the section top. */
 .refetch {
   position: relative;
 }
@@ -46,37 +48,63 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: 30%;
-  background: var(--text-3);
+  background: var(--text-1);
+}
+.band .refetch-bar i {
+  background: var(--on-band);
 }
 
-/* Empty (ST2): one sentence and at most one secondary action. */
+/* Empty: one sentence and at most one action. */
 .empty {
-  padding: var(--s7) 0;
-  color: var(--text-2);
   display: grid;
   gap: var(--s3);
   justify-items: start;
+  padding: var(--s7) 0;
+  color: var(--text-2);
+}
+.band .empty {
+  color: var(--on-band);
 }
 
-/* Error inside a section (ST3). */
+/* A failure inside a section: the rest of the page stays usable. */
 .sec-error {
   display: grid;
   gap: var(--s3);
   justify-items: start;
   font-size: var(--t-data);
-  line-height: 1.43;
+  line-height: 1.4;
   color: var(--text-2);
 }
+.band .sec-error {
+  color: var(--on-band);
+}
 
-/* Not found (ST4): h1, one sentence, the id in mono 16 px below, two ways on 32 px below. */
-.not-found .nf-id {
+/* Not found: the eyebrow, a lowercase display title, one sentence, the id in mono, two ways on. */
+.not-found {
+  padding-bottom: var(--s7);
+}
+.not-found .display {
   margin-top: var(--s4);
+  max-width: 20ch;
+}
+.not-found .nf-say {
+  margin-top: var(--s4);
+}
+.not-found .nf-id {
+  margin-top: var(--s2);
   color: var(--text-2);
   overflow-wrap: anywhere;
 }
 .not-found .actions,
 .service-down .actions {
-  margin-top: var(--s6);
+  margin-top: var(--s5);
+}
+.service-down {
+  padding-block: var(--s6) var(--s7);
+}
+.service-down .answer {
+  margin-top: var(--s5);
+  max-width: 36ch;
 }
 
 /* Boot messages rendered before the shell exists (main.tsx, staticBoot.tsx). */
@@ -89,13 +117,8 @@
   padding: var(--s7) var(--gutter);
   color: var(--text-2);
   font-size: var(--t-data);
-  line-height: 1.43;
+  line-height: 1.4;
 }
 #root > .container > .state-error {
   color: var(--text-1);
-}
-
-/* Unknown values (D6): the dash in text-3. */
-.unknown {
-  color: var(--text-3);
 }

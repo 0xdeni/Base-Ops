@@ -1,9 +1,9 @@
 /**
- * The pools table's controls (docs/design/visual-v3.md §5.8, PH4, TB7), shared by Pools and Token.
- * Desktop: a quiet "Columns" button whose popover holds the optional columns' checkboxes (`cols`).
- * Phones: "Sort: health" with the direction arrow opens the Sort sheet, which is also the column
- * picker, because the row's value is always the sort metric; its foot holds the Highest first /
- * Lowest first control. A keyboard open is instant (M2).
+ * The pools table's controls (docs/design/visual-v4.md §5.8, §6.3), shared by Pools and Token.
+ * Desktop: the small ghost "Columns" button (white on the band) whose popover holds the optional
+ * columns' checkboxes (`cols`). Phones: "Sort: health" with the direction arrow opens the Sort
+ * sheet, which is also the column picker, because the row's value is always the sort metric; its
+ * foot holds the Highest first / Lowest first control. A keyboard open is instant.
  */
 import { useState } from 'react'
 import type { SortDir } from '../../api/types.js'
@@ -16,7 +16,7 @@ import {
   SORT_LABEL,
   SORT_SHORT,
 } from '../../lib/poolsTable.js'
-import { Button } from './Button.js'
+import { Button, buttonClass } from './Button.js'
 import { Icon } from './Icon.js'
 import { Checkbox } from './Inputs.js'
 import { Popover } from './Popover.js'
@@ -36,7 +36,7 @@ export function ColumnsMenu({
   return (
     <Popover
       label="Columns"
-      triggerClassName={`btn quiet${className ? ` ${className}` : ''}`}
+      triggerClassName={buttonClass('ghost', 'sm', className)}
       trigger={
         <>
           <Icon name="columns" />

@@ -1,0 +1,139 @@
+/* The square field on the Pools band (docs/design/visual-v4.md §5.9.2). Squares are placed with
+   a transform from --x and --y (px from the field's top left), sized by --s, radius --r. */
+
+.field-wrap {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  min-width: 0;
+  color: var(--on-band);
+}
+.field {
+  position: relative;
+  height: 420px;
+  outline-offset: 6px;
+  border-radius: 4px;
+}
+.field:focus-visible {
+  outline: 2px solid var(--focus-band);
+}
+.field-sqs {
+  position: absolute;
+  inset: 0;
+}
+.field .sq {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  width: var(--s);
+  height: var(--s);
+  transform: translate(var(--x), var(--y));
+  border-radius: var(--r);
+  background: var(--on-band);
+  color: var(--blue);
+  transition: opacity 150ms ease;
+}
+.field .sq.unrated {
+  background: rgb(255 255 255 / 0.2);
+  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.85);
+  color: var(--on-band);
+}
+.field .sq.merged {
+  background: repeating-linear-gradient(135deg, var(--on-band) 0 2px, transparent 2px 5px);
+}
+.field .sq.hot {
+  z-index: 2;
+  box-shadow:
+    0 0 0 2px var(--blue),
+    0 0 0 4px var(--yellow);
+}
+.field .sq.dim {
+  opacity: 0.22;
+}
+.field .sq .lab {
+  position: absolute;
+  left: 10px;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  gap: 2px;
+  pointer-events: none;
+}
+.field .sq .lab b {
+  font-weight: 820;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.field .sq .lab span {
+  font-size: var(--t-small);
+  font-weight: 650;
+  line-height: 1.2;
+}
+.field .sq .lab .v {
+  margin-top: 6px;
+  font-weight: 850;
+  letter-spacing: -0.05em;
+  line-height: 0.95;
+}
+
+/* The readout: 48 px reserved, so reading a square never moves the caption. */
+.lens {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  min-height: 48px;
+  margin: 0;
+  font-size: var(--t-data);
+  line-height: 1.4;
+}
+.lens b {
+  font-weight: 800;
+}
+.lens .t2 {
+  color: var(--on-band-2);
+}
+.lens .grade {
+  align-self: center;
+}
+.lens-open {
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+.field-cap {
+  max-width: 70ch;
+  font-size: var(--t-small);
+  line-height: 1.4;
+  color: var(--on-band-2);
+}
+.field-cap .hatch {
+  color: var(--on-band);
+}
+
+@media (max-width: 52.49em) {
+  .field {
+    height: 260px;
+  }
+}
+
+/* Touch: a square takes taps only once it is read, so the first tap reads it (the field hit-tests
+   the tap) and the second opens the pool. */
+@media (pointer: coarse) {
+  .field a.sq:not(.hot) {
+    pointer-events: none;
+  }
+  .lens-open {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
+@media (forced-colors: active) {
+  .field .sq {
+    forced-color-adjust: none;
+  }
+}

@@ -1,8 +1,8 @@
 /**
- * Motion primitives (docs/design/visual-v3.md §3.8, §4): the three easings as JS functions, the
- * interruptible tween clock every JS-driven morph goes through, and the rules shared by every
- * animation: keyboard-initiated actions never animate (M2) and reduced motion swaps movement for an
- * instant change plus an opacity settle (M9).
+ * Motion primitives (docs/design/visual-v4.md §3.8, §4): the three easings as JS functions and CSS
+ * strings, the durations, the interruptible tween clock every JS-driven morph goes through, and
+ * the rules shared by every animation: keyboard-initiated actions never animate and reduced motion
+ * swaps movement for an instant change plus an opacity settle.
  */
 import { useMediaQuery } from './useMediaQuery.js'
 
@@ -34,37 +34,43 @@ export function bezier(x1: number, y1: number, x2: number, y2: number): Ease {
   }
 }
 
-/** On-screen movement: thumb, indicator, morphs, lens. */
-export const easeInOut = bezier(0.77, 0, 0.175, 1)
-/** Enter, exit, press, popovers, intro. */
-export const easeOut = bezier(0.23, 1, 0.32, 1)
+/** On-screen movement: indicator, thumb, morphs (`--ease-in-out`). */
+export const easeInOut = bezier(0.65, 0, 0.35, 1)
+/** Entrances, exits, press, popovers, sheets out, the first view (`--ease-out`). */
+export const easeOut = bezier(0.16, 1, 0.3, 1)
 
 /** The same curves as CSS strings, for the Web Animations API. */
 export const EASE = {
-  out: 'cubic-bezier(0.23, 1, 0.32, 1)',
-  inOut: 'cubic-bezier(0.77, 0, 0.175, 1)',
+  out: 'cubic-bezier(0.16, 1, 0.3, 1)',
+  inOut: 'cubic-bezier(0.65, 0, 0.35, 1)',
   drawer: 'cubic-bezier(0.32, 0.72, 0, 1)',
 } as const
 
-/** Durations in ms (the `--dur-*` tokens, plus the close and settle times of §4). */
+/** Durations in ms (the `--d-*` tokens of §3.8, plus the delays and settle times of §4). */
 export const DUR = {
-  press: 160,
-  hover: 120,
+  press: 120,
+  hover: 160,
   tooltip: 140,
   popover: 180,
+  /** A popover closing. */
   exit: 100,
   disclosure: 200,
-  disclosureClose: 150,
-  dialog: 240,
+  routeOut: 100,
   route: 180,
+  indicator: 200,
   morph: 280,
   sheet: 500,
-  sheetOut: 300,
-  stagger: 30,
+  sheetOut: 260,
+  /** The scrim fading in, and a dragged sheet snapping back. */
+  scrim: 300,
+  /** The reduced-motion fade of sheets and the first view. */
+  fade: 200,
   settle: 150,
   tooltipDelay: 600,
   tooltipWarm: 400,
   copied: 2000,
+  /** The ceiling of the first view: every step of it ends by then. */
+  first: 450,
 } as const
 
 let clock: HTMLElement | null = null

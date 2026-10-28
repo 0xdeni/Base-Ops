@@ -1,9 +1,10 @@
 /**
- * Popover (docs/design/visual-v3.md §5.10, §4 row 19): a `role="dialog"` layer in a portal outside
- * <main>, 8 px below its trigger, aligned to its nearer edge and 8 px from the viewport edge. In
- * from `translateY(4px) scale(0.97)` over 180 ms, out over 100 ms, origin at the trigger; opacity
- * only under reduced motion; a keyboard open is instant. Closes on an outside pointer-down, on
- * Escape (focus returns to the trigger) and when focus leaves it.
+ * Popover (docs/design/visual-v4.md §5.10, §4.4): a `role="dialog"` layer (plane 3: radius 16,
+ * padding 18, `--sh-3`) in a portal outside <main>, 8 px under its trigger, right-aligned to it and
+ * at least 16 px from the viewport edge. In from `translateY(4px) scale(0.97)` over 180 ms and out
+ * over 100 ms, `--ease-out`, origin at the trigger; opacity only under reduced motion; a keyboard
+ * open is instant. Closes on an outside pointer-down, on Escape (focus returns to the trigger)
+ * and when focus leaves it.
  */
 import {
   type ReactNode,
@@ -32,15 +33,19 @@ export interface PopoverProps {
   className?: string
 }
 
-/** Left edge and transform origin for a popover of width `pw` under the trigger rect `r`. */
+/** The popover keeps this far from the viewport's edges (px). */
+export const POPOVER_EDGE = 16
+
+/**
+ * Left edge and transform origin for a popover of width `pw` under the trigger rect `r`:
+ * right-aligned to the trigger, 8 px under it, at least 16 px inside the viewport.
+ */
 export function placePopover(
   r: { left: number; right: number; bottom: number; width: number },
   pw: number,
   viewport: number,
 ): { left: number; top: number; origin: string } {
-  let left = Math.min(Math.max(8, r.right - pw), viewport - pw - 8)
-  if (r.left + pw < viewport - 8 && r.left < viewport / 2) left = Math.max(8, r.left)
-  left = Math.max(8, left)
+  const left = Math.max(POPOVER_EDGE, Math.min(r.right - pw, viewport - pw - POPOVER_EDGE))
   return { left, top: r.bottom + 8, origin: `${r.left + r.width / 2 - left}px top` }
 }
 

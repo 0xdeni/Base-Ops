@@ -1,139 +1,200 @@
-/* Depthwatch v3 design tokens: docs/design/visual-v3.md §3 (colour §3.1, type §3.3,
-   space and chrome §3.4, radii §3.5, elevation §3.6, the field of light §3.7, motion §3.8).
-   The product follows the system appearance (PH2); [data-theme] exists only for screenshots and tests.
-   The dark block is repeated verbatim under :root[data-theme="dark"] (styles.test.ts keeps them equal). */
+/* Depthwatch design tokens: docs/design/visual-v4.md §3 (colour §3.1, type §3.4, space and chrome
+   §3.5, radii §3.6, elevation §3.7, motion §3.8). Base brand kit v1.0 values, locked: never
+   interpolated, only given an alpha. The product follows the system appearance (PH2);
+   [data-theme] exists only for screenshots and tests, and the dark block is repeated verbatim
+   under :root[data-theme="dark"] (styles.test.ts keeps them equal). */
 
 :root {
   color-scheme: light;
-  --canvas: oklch(0.982 0.004 271); /* #f8f9fc */
-  --well: oklch(0.965 0.005 275); /* #f2f3f7 */
-  --raised: oklch(1 0 0); /* #ffffff */
-  --overlay: oklch(1 0 0); /* #ffffff, with --shadow-pop */
-  --hover: oklch(0.949 0.007 269); /* #eceef3 */
-  --border-subtle: oklch(0.93 0.007 261); /* #e5e8ed */
-  --border: oklch(0.891 0.009 265); /* #d8dbe1 */
-  --control: oklch(0.639 0.016 264); /* #878c96, 3.21:1 */
-  --text-1: oklch(0.221 0.017 260); /* #161b23, 16.4:1 */
-  --text-2: oklch(0.449 0.021 268); /* #505561, 7.09:1 */
-  --text-3: oklch(0.53 0.019 263); /* #666c77, 5.01:1 */
-  --focus: oklch(0.52 0.199 262); /* #1f5ed9 */
-  --sell: oklch(0.52 0.12 245); /* #196ea9, 5.18:1 */
-  --buy: oklch(0.621 0.15 55); /* #c9690c, 3.62:1 */
-  --ok: oklch(0.449 0.109 155); /* #036639 */
-  --ok-bg: oklch(0.95 0.04 155); /* #daf7e3 */
-  --warn: oklch(0.501 0.1 70); /* #875814 */
-  --warn-bg: oklch(0.958 0.05 88); /* #fff0cc */
-  --bad: oklch(0.501 0.17 25); /* #b02a2d, 6.2:1 */
-  --bad-bg: oklch(0.947 0.027 23); /* #ffe7e5 */
-  --bad-mark: oklch(0.585 0.12 25); /* #b85c57, 4.22:1: breach bands and strip cells */
-  --band-op: 0.06;
-  --dot: oklch(0.891 0.009 265 / 0.9); /* background lattice (E6) */
-  --scrim: rgb(14 19 28 / 0.32);
-  --shadow-pop:
-    0 0 0 1px var(--border-subtle), 0 1px 2px rgb(22 27 35 / 0.06), 0 6px 16px rgb(22 27 35 / 0.08);
-  --shadow-dialog:
-    0 0 0 1px var(--border-subtle), 0 2px 4px rgb(22 27 35 / 0.06), 0 16px 40px rgb(22 27 35 / 0.12);
-  --thumb-edge: drop-shadow(0 0 0.5px rgb(22 27 35 / 0.32))
-    drop-shadow(0 1px 1px rgb(22 27 35 / 0.06));
-  /* Field of light (§3.7) */
-  --ht-pitch: 3px;
-  --ht-r: 1px;
-  --field-top: 1;
-  --field-low: 0.12;
-  --field-under: 0.14;
+  /* Base brand kit v1.0, locked */
+  --blue: #0000ff;
+  --cerulean: #3c8aff;
+  --yellow: #ffd12f;
+  --green: #66c800;
+  --red: #fc401f;
+  --tan: #b8a581;
+  --g0: #ffffff;
+  --g10: #eef0f3;
+  --g15: #dee1e7;
+  --g30: #b1b7c3;
+  --g50: #717886;
+  --g60: #5b616e;
+  --g80: #32353d;
+  --g100: #0a0b0d;
+
+  /* Roles, light */
+  --canvas: var(--g0);
+  --surface: var(--g0); /* plane-1 blocks, table sheet, sections sheet */
+  --surface-2: var(--g10); /* wells, tracks, panels, row hover, segmented track */
+  --line: var(--g15); /* row rules, block edges */
+  --line-2: var(--g30); /* control outlines, hollow cells */
+  --text-1: var(--g100); /* 19.7:1 */
+  --text-2: var(--g60); /* 6.2:1; 5.4:1 on --surface-2 */
+  --ink: var(--g100); /* the black block and the footer */
+  --on-ink: var(--g0);
+  --on-ink-2: var(--g30); /* 9.8:1 */
+  --ink-edge: transparent;
+  --band: var(--blue);
+  --on-band: #ffffff; /* 8.6:1 */
+  --on-band-2: rgb(255 255 255 / 0.8); /* 5.6:1 */
+  --sell: var(--cerulean); /* marks only: 3.4:1 on white, 5.9:1 on Gray 100 */
+  --buy: var(--yellow); /* marks only */
+  --buy-edge: var(--g100); /* 1 px edge on every Yellow mark on white */
+  --sell-band: #ffffff; /* sell marks on the band */
+  --buy-band: var(--yellow); /* buy marks on the band, 5.9:1 */
+  --ok: var(--green);
+  --warn: var(--tan);
+  --bad: var(--red);
+  --on-status: var(--g100); /* letters on status fills */
+  --breach-op: 0.14; /* Red breach bands behind series */
+  --focus: var(--blue);
+  --focus-band: var(--yellow);
+  --nav-ind: var(--blue);
+  --scrim: rgb(10 11 13 / 0.5);
+  /* Panels and the snapshot line: Gray 10 in light; in dark the canvas with a Gray 80 edge */
+  --panel: var(--g10);
+  --panel-edge: none;
+  --note-bg: var(--g10);
+  --note-rule: none;
+
+  /* Elevation (§3.7): plane 1 blocks, plane 2 over the band or hovered, plane 3 layers */
+  --edge: 0 0 0 1px var(--g15);
+  --hl: inset 0 1px 0 rgb(255 255 255 / 0.9);
+  --hl-ink: inset 0 1px 0 rgb(255 255 255 / 0.14);
+  --sh-1:
+    0 1px 1px rgb(0 0 255 / 0.04), 0 4px 10px -4px rgb(0 0 255 / 0.1),
+    0 18px 32px -20px rgb(0 0 255 / 0.22);
+  --sh-2:
+    0 2px 4px rgb(0 0 255 / 0.06), 0 14px 28px -10px rgb(0 0 255 / 0.22),
+    0 36px 64px -28px rgb(0 0 255 / 0.32);
+  --sh-band:
+    0 2px 0 rgb(10 11 13 / 0.18), 0 22px 40px -12px rgb(10 11 13 / 0.5),
+    0 60px 90px -40px rgb(10 11 13 / 0.55);
+  --sh-3: 0 2px 6px rgb(10 11 13 / 0.12), 0 24px 56px -12px rgb(10 11 13 / 0.34);
+  /* The segmented thumb's edge and shadow, drawn after its clip (a filter, not a box-shadow). */
+  --thumb-edge: drop-shadow(0 0 0.5px rgb(10 11 13 / 0.4))
+    drop-shadow(0 4px 5px rgb(0 0 255 / 0.16));
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --canvas: oklch(0.186 0.02 262); /* #0e131c */
-    --well: oklch(0.213 0.021 264); /* #141923 */
-    --raised: oklch(0.243 0.021 264); /* #1b202a */
-    --overlay: oklch(0.272 0.02 264); /* #222731, with a 1 px --border ring, no shadow */
-    --hover: oklch(0.289 0.021 266); /* #262b36 */
-    --border-subtle: oklch(0.301 0.019 264); /* #292e38 */
-    --border: oklch(0.344 0.019 264); /* #343943 */
-    --control: oklch(0.53 0.02 264); /* #666c78, 3.53:1 */
-    --text-1: oklch(0.96 0.005 258); /* #f0f2f5, 16.6:1 */
-    --text-2: oklch(0.869 0.012 265); /* #d0d4dc, 12.5:1 */
-    --text-3: oklch(0.756 0.017 263); /* #aab0bb, 8.54:1 */
-    --focus: oklch(0.825 0.095 244); /* #8fcdff */
-    --sell: oklch(0.721 0.11 242); /* #61ade4, 7.63:1 */
-    --buy: oklch(0.781 0.14 68); /* #f2a548, 9.09:1 */
-    --ok: oklch(0.82 0.13 155); /* #79dd9f */
-    --ok-bg: oklch(0.3 0.049 156); /* #173523 */
-    --warn: oklch(0.86 0.12 85); /* #f5cb70 */
-    --warn-bg: oklch(0.31 0.05 85); /* #3c2e0f */
-    --bad: oklch(0.797 0.116 22); /* #ff9e9b */
-    --bad-bg: oklch(0.299 0.06 21); /* #472020 */
-    --bad-mark: oklch(0.68 0.09 22); /* #ca827f, 6.2:1 */
-    --band-op: 0.09;
-    --dot: oklch(0.344 0.019 264 / 0.75);
-    --shadow-pop: 0 0 0 1px var(--border);
-    --shadow-dialog: 0 0 0 1px var(--border);
-    --thumb-edge: drop-shadow(0 0 0.5px oklch(0.5 0.02 264));
-    --field-top: 1;
-    --field-low: 0.1;
-    --field-under: 0.12;
+    --canvas: var(--g100);
+    --surface: var(--g100); /* blocks are told apart by their Gray 80 edge */
+    --surface-2: var(--g80);
+    --line: var(--g80);
+    --line-2: var(--g60);
+    --text-1: var(--g10); /* 17.3:1; text is never pure white off the band */
+    --text-2: var(--g30); /* 9.8:1; 6.1:1 on --surface-2 */
+    --ink: var(--g100);
+    --on-ink: var(--g10);
+    --on-ink-2: var(--g30);
+    --ink-edge: var(--g80);
+    --sell: var(--cerulean);
+    --buy-edge: transparent;
+    --breach-op: 0.22;
+    --focus: var(--cerulean);
+    --nav-ind: var(--cerulean);
+    --scrim: rgb(10 11 13 / 0.6);
+    --panel: var(--g100);
+    --panel-edge: 0 0 0 1px var(--g80);
+    --note-bg: var(--g100);
+    --note-rule: inset 0 -1px 0 var(--g80);
+    --edge: 0 0 0 1px var(--g80);
+    --hl: inset 0 1px 0 rgb(255 255 255 / 0.08);
+    --hl-ink: inset 0 1px 0 rgb(255 255 255 / 0.08);
+    --sh-1: 0 1px 0 rgb(10 11 13 / 0.5);
+    --sh-2: 0 0 0 1px var(--g60), 0 24px 48px -20px rgb(10 11 13 / 0.9);
+    --sh-band:
+      0 2px 0 rgb(10 11 13 / 0.3), 0 22px 40px -12px rgb(10 11 13 / 0.6),
+      0 60px 90px -40px rgb(10 11 13 / 0.7);
+    --sh-3: 0 0 0 1px var(--g80), 0 24px 56px -12px rgb(10 11 13 / 0.8);
+    --thumb-edge: drop-shadow(0 0 0.75px var(--g60));
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: oklch(0.186 0.02 262); /* #0e131c */
-  --well: oklch(0.213 0.021 264); /* #141923 */
-  --raised: oklch(0.243 0.021 264); /* #1b202a */
-  --overlay: oklch(0.272 0.02 264); /* #222731, with a 1 px --border ring, no shadow */
-  --hover: oklch(0.289 0.021 266); /* #262b36 */
-  --border-subtle: oklch(0.301 0.019 264); /* #292e38 */
-  --border: oklch(0.344 0.019 264); /* #343943 */
-  --control: oklch(0.53 0.02 264); /* #666c78, 3.53:1 */
-  --text-1: oklch(0.96 0.005 258); /* #f0f2f5, 16.6:1 */
-  --text-2: oklch(0.869 0.012 265); /* #d0d4dc, 12.5:1 */
-  --text-3: oklch(0.756 0.017 263); /* #aab0bb, 8.54:1 */
-  --focus: oklch(0.825 0.095 244); /* #8fcdff */
-  --sell: oklch(0.721 0.11 242); /* #61ade4, 7.63:1 */
-  --buy: oklch(0.781 0.14 68); /* #f2a548, 9.09:1 */
-  --ok: oklch(0.82 0.13 155); /* #79dd9f */
-  --ok-bg: oklch(0.3 0.049 156); /* #173523 */
-  --warn: oklch(0.86 0.12 85); /* #f5cb70 */
-  --warn-bg: oklch(0.31 0.05 85); /* #3c2e0f */
-  --bad: oklch(0.797 0.116 22); /* #ff9e9b */
-  --bad-bg: oklch(0.299 0.06 21); /* #472020 */
-  --bad-mark: oklch(0.68 0.09 22); /* #ca827f, 6.2:1 */
-  --band-op: 0.09;
-  --dot: oklch(0.344 0.019 264 / 0.75);
-  --shadow-pop: 0 0 0 1px var(--border);
-  --shadow-dialog: 0 0 0 1px var(--border);
-  --thumb-edge: drop-shadow(0 0 0.5px oklch(0.5 0.02 264));
-  --field-top: 1;
-  --field-low: 0.1;
-  --field-under: 0.12;
+  --canvas: var(--g100);
+  --surface: var(--g100); /* blocks are told apart by their Gray 80 edge */
+  --surface-2: var(--g80);
+  --line: var(--g80);
+  --line-2: var(--g60);
+  --text-1: var(--g10); /* 17.3:1; text is never pure white off the band */
+  --text-2: var(--g30); /* 9.8:1; 6.1:1 on --surface-2 */
+  --ink: var(--g100);
+  --on-ink: var(--g10);
+  --on-ink-2: var(--g30);
+  --ink-edge: var(--g80);
+  --sell: var(--cerulean);
+  --buy-edge: transparent;
+  --breach-op: 0.22;
+  --focus: var(--cerulean);
+  --nav-ind: var(--cerulean);
+  --scrim: rgb(10 11 13 / 0.6);
+  --panel: var(--g100);
+  --panel-edge: 0 0 0 1px var(--g80);
+  --note-bg: var(--g100);
+  --note-rule: inset 0 -1px 0 var(--g80);
+  --edge: 0 0 0 1px var(--g80);
+  --hl: inset 0 1px 0 rgb(255 255 255 / 0.08);
+  --hl-ink: inset 0 1px 0 rgb(255 255 255 / 0.08);
+  --sh-1: 0 1px 0 rgb(10 11 13 / 0.5);
+  --sh-2: 0 0 0 1px var(--g60), 0 24px 48px -20px rgb(10 11 13 / 0.9);
+  --sh-band:
+    0 2px 0 rgb(10 11 13 / 0.3), 0 22px 40px -12px rgb(10 11 13 / 0.6),
+    0 60px 90px -40px rgb(10 11 13 / 0.7);
+  --sh-3: 0 0 0 1px var(--g80), 0 24px 56px -12px rgb(10 11 13 / 0.8);
+  --thumb-edge: drop-shadow(0 0 0.75px var(--g60));
 }
 
 @media (prefers-contrast: more) {
   :root {
-    --text-3: var(--text-2);
-    --border: var(--control);
-    --border-subtle: var(--control);
+    --text-2: var(--g80);
+    --line: var(--g50);
+  }
+  .band {
+    --on-band-2: #ffffff;
   }
 }
 
-/* Type (§3.3, T4): the only sizes. Line-heights and weights live with the roles in base.css. */
-:root {
-  --t-caption: 0.75rem; /* 12 / 16 */
-  --t-small: 0.8125rem; /* 13 / 18 */
-  --t-data: 0.875rem; /* 14 / 20 */
-  --t-body: 0.9375rem; /* 15 / 24, 16 below 600 */
-  --t-prose: 1rem; /* 16 / 26 */
-  --t-lead: 1.125rem; /* 18 / 28 */
-  --t-title: 1rem; /* 16 / 22 */
-  --t-h2: clamp(1.25rem, 1.152rem + 0.4348vw, 1.5rem); /* 20 -> 24 */
-  --t-h1: clamp(1.625rem, 1.429rem + 0.8696vw, 2.125rem); /* 26 -> 34 */
-  --t-kpi: clamp(1.75rem, 1.457rem + 1.304vw, 2.5rem); /* 28 -> 40 */
-  --t-display: clamp(2.25rem, 1.761rem + 2.174vw, 3.5rem); /* 36 -> 56 */
+/* Forced colours (A10): data marks, status fills and the freshness dot keep their colours. */
+@media (forced-colors: active) {
+  [data-bar],
+  .grade,
+  .status-chip,
+  .fresh-dot,
+  .dexf-bar i {
+    forced-color-adjust: none;
+  }
+}
 
-  /* Space (§3.4, S1). The only other lengths are 1 px hairlines and 2 px indicators. */
+/* Type (§3.4): the scale, then the component sizes §5 names. Every number is tabular; the floor
+   is 12 px. Weights, leading and tracking live with the roles in base.css. */
+:root {
+  --t-mega: clamp(6rem, 3.6rem + 9.6vw, 12.25rem); /* 96 → 196 */
+  --t-title: clamp(3.25rem, 2rem + 5.6vw, 7.5rem); /* 52 → 120 */
+  --t-display: clamp(2rem, 1.35rem + 2.75vw, 4rem); /* 32 → 64 */
+  --t-say: clamp(1.75rem, 1.2rem + 2vw, 3rem); /* 28 → 48 */
+  --t-answer: clamp(1.375rem, 1.1rem + 1.2vw, 2.25rem); /* 22 → 36 */
+  --t-h2: clamp(1.625rem, 1.35rem + 1.1vw, 2.5rem); /* 26 → 40 */
+  --t-kpi: clamp(2.25rem, 1.8rem + 1.8vw, 3.5rem); /* 36 → 56 */
+  --t-figure: clamp(1.5rem, 1.1rem + 1.6vw, 2.5rem); /* 24 → 40 */
+  --t-lead: 1.1875rem; /* 19 */
+  --t-body: 1rem; /* 16 */
+  --t-data: 0.9375rem; /* 15 */
+  --t-small: 0.8125rem; /* 13 */
+  --t-caption: 0.75rem; /* 12 */
+  /* Component sizes (§5): controls, the pool pair, the wordmarks, the large glyph, sheet titles */
+  --t-ui: 0.875rem; /* 14: segmented items, back link, small buttons, status words, popovers */
+  --t-pair: 1.0625rem; /* 17: the pair in a pool cell */
+  --t-glyph: 1.25rem; /* 20: the large grade glyph */
+  --t-mark: 1.3125rem; /* 21: the app bar wordmark */
+  --t-sheet: 1.5rem; /* 24: the phone sheet's title */
+  --t-mark-lg: 1.75rem; /* 28: the footer wordmark, phone fact values */
+
+  /* Space (§3.5): 4 … 128. Other lengths: 1 px hairlines and edges, 2 px rules and the spine,
+     4 px indicators. */
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
@@ -143,57 +204,71 @@
   --s7: 48px;
   --s8: 64px;
   --s9: 96px;
+  --s10: 128px;
   --gutter: max(16px, env(safe-area-inset-left));
-  --content: 1200px;
+  --content: 1312px;
+  /* The overlap of blocks over the band's lower edge: 48, 64 from 600 px, 72 from 1200. */
+  --overlap: 48px;
 
-  /* Chrome (§3.4): desktop app bar 56; phone 52 + a 44 px tab strip. */
-  --demo-h: 28px;
-  --appbar-h: 56px;
+  /* Chrome (§3.5): the snapshot or demo line 32; app bar 64 from 840 px; phones 56 + a 44 px
+     tab strip. */
+  --line-h: 32px;
+  --bar-h: 56px;
+  --strip-h: 44px;
+  --chrome-h: calc(var(--bar-h) + var(--strip-h));
 
-  /* Radii (§3.5) */
-  --r-chip: 4px;
-  --r-ctl: 6px;
-  --r-code: 8px;
-  --r-pop: 10px;
-  --r-sheet: 12px;
+  /* Radii (§3.6): no pills */
+  --r-unit: 18px; /* blocks, sheets of blocks, panels: the rounded square */
+  --r-sheet: 24px;
+  --r-pop: 16px;
+  --r-tip: 12px;
+  --r-ctl: 12px;
+  --r-item: 9px;
+  --r-code: 10px;
+  --r-chip: 6px;
 
-  /* Motion (§3.8). Springs: none. */
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1); /* enter, exit, press, popovers, intro */
-  --ease-in-out: cubic-bezier(
-    0.77,
-    0,
-    0.175,
-    1
-  ); /* on-screen movement: thumb, indicator, morphs, lens */
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); /* phone sheet */
-  --dur-press: 160ms;
-  --dur-hover: 120ms;
-  --dur-tooltip: 140ms;
-  --dur-popover: 180ms;
-  --dur-exit: 100ms;
-  --dur-disclosure: 200ms;
-  --dur-dialog: 240ms;
-  --dur-route: 180ms;
-  --dur-morph: 280ms;
-  --dur-sheet: 500ms;
-  --stagger: 30ms;
+  /* Motion (§3.8): three beziers, no springs */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* entrances, exits, press, popovers, sheets out */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* on-screen movement: indicator, thumb, morphs */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); /* phone sheet in */
+  --d-press: 120ms;
+  --d-hover: 160ms;
+  --d-tip: 140ms;
+  --d-pop: 180ms;
+  --d-pop-out: 100ms;
+  --d-disc: 200ms;
+  --d-route-out: 100ms;
+  --d-route-in: 180ms;
+  --d-indicator: 200ms;
+  --d-morph: 280ms;
+  --d-sheet: 500ms;
+  --d-sheet-out: 260ms;
+  --d-first: 450ms; /* the ceiling of the first view, not a duration */
   --press-scale: 0.97;
-  --enter-scale: 0.96;
+  --press-scale-block: 0.985;
 }
 
 @media (min-width: 37.5em) {
   :root {
-    --gutter: 24px;
+    --gutter: 32px;
+    --overlap: 64px;
+  }
+}
+@media (min-width: 52.5em) {
+  :root {
+    --bar-h: 64px;
+    --strip-h: 0px;
   }
 }
 @media (min-width: 75em) {
   :root {
-    --gutter: 32px;
+    --gutter: 64px;
+    --overlap: 72px;
   }
 }
-@media (max-width: 52.49em) {
+/* An installed app on a phone: the bottom dock replaces the tab strip (PH3). */
+@media (max-width: 52.49em) and (display-mode: standalone) {
   :root {
-    --appbar-h: 96px;
-    --ht-r: 0.9px;
+    --strip-h: 0px;
   }
 }

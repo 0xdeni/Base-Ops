@@ -1,0 +1,200 @@
+/* The KPI chart on the band (docs/design/visual-v4.md §5.9.4): two bars from a white spine on
+   one scale, ink values inside, dashed white KPI lines and the Red shortfall hatch. */
+
+.kpi-wrap {
+  --t-kpi-in: clamp(1.5rem, 1rem + 2.4vw, 3.25rem); /* the value inside a bar, 24 → 52 px */
+  min-width: 0;
+  color: var(--on-band);
+}
+.kpi-head {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: end;
+}
+.kpi-head > :last-child {
+  justify-self: end;
+}
+.kpi-head .meta {
+  font-size: var(--t-small);
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--on-band-2);
+  white-space: nowrap;
+}
+.kpi-mid {
+  text-align: center;
+  color: var(--on-band-2);
+}
+.kpi-fig {
+  position: relative;
+  margin: 64px 0 0;
+}
+.kpi-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.kpi-row::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -16px;
+  bottom: -16px;
+  z-index: 2;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--on-band);
+}
+.kpi-h {
+  position: relative;
+  height: clamp(112px, 11vw, 152px);
+}
+.kpi-h .kbar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.kpi-h.s .kbar {
+  right: 0;
+  background: var(--sell-band);
+  transform-origin: 100% 50%;
+}
+.kpi-h.b .kbar {
+  left: 0;
+  background: var(--buy-band);
+  transform-origin: 0 50%;
+}
+/* The shortfall: Red 4 px stripes on a 9 px pitch inside a 2 px Red edge. */
+.kpi-h .short {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(135deg, var(--bad) 0 4px, transparent 4px 9px);
+  box-shadow: inset 0 0 0 2px var(--bad);
+}
+.kpi-line {
+  position: absolute;
+  top: -24px;
+  bottom: -24px;
+  z-index: 3;
+  width: 0;
+  border-left: 3px dashed var(--on-band);
+}
+.kpi-h.s .kpi-line {
+  margin-right: -1.5px;
+}
+.kpi-h.b .kpi-line {
+  margin-left: -1.5px;
+}
+.kpi-lab {
+  position: absolute;
+  top: -48px;
+  font-size: var(--t-small);
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--on-band);
+  white-space: nowrap;
+}
+.kpi-h.s .kpi-lab {
+  translate: 50% 0;
+}
+.kpi-h.b .kpi-lab {
+  translate: -50% 0;
+}
+.kpi-in,
+.kpi-out {
+  font-size: var(--t-kpi-in);
+  font-weight: 820;
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.kpi-in {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  translate: 0 -50%;
+  color: var(--g100);
+}
+.kpi-in small,
+.kpi-out small {
+  display: block;
+  margin-bottom: 8px;
+  font-size: var(--t-small);
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+.kpi-h.s .kpi-in {
+  right: 20px;
+  text-align: right;
+}
+.kpi-h.b .kpi-in {
+  left: 20px;
+}
+/* A bar too short for its words reads them under the bars, in white, beside the spine. */
+.kpi-under {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  margin-top: 32px;
+}
+.kpi-under > :first-child {
+  text-align: right;
+  padding-right: 20px;
+}
+.kpi-under > :last-child {
+  padding-left: 20px;
+}
+.kpi-out {
+  display: inline-block;
+  color: var(--on-band);
+}
+.kpi-cap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  margin: 32px 0 0;
+  font-size: var(--t-small);
+  line-height: 1.35;
+  color: var(--on-band-2);
+}
+.hatch.is-short {
+  color: var(--bad);
+}
+
+@media (max-width: 52.49em) {
+  .kpi-mid {
+    display: none;
+  }
+  .kpi-head {
+    grid-template-columns: 1fr 1fr;
+  }
+  .kpi-wrap {
+    --t-kpi-in: 1.5rem;
+  }
+  .kpi-in .long,
+  .kpi-out .long {
+    display: none;
+  }
+  .kpi-h.s .kpi-in {
+    right: 10px;
+  }
+  .kpi-h.b .kpi-in {
+    left: 10px;
+  }
+  .kpi-under > :first-child {
+    padding-right: 10px;
+  }
+  .kpi-under > :last-child {
+    padding-left: 10px;
+  }
+}
+
+@media (forced-colors: active) {
+  .kpi-h .kbar,
+  .kpi-h .short {
+    forced-color-adjust: none;
+  }
+}
