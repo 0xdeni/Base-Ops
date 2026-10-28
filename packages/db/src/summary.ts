@@ -38,6 +38,8 @@ export interface SnapshotSummary extends SnapshotSummaryFields, SnapshotDepthSid
   updatedAt: number
   price: number
   tvlUsd: number | null
+  /** `PoolSnapshot.priceDeviationBps`: null when unknown (or stored before the column existed). */
+  priceDeviationBps: number | null
 }
 
 export const SUMMARY_DEPTH_PCT = 2
@@ -94,6 +96,7 @@ export function snapshotSummary(snapshot: PoolSnapshot): SnapshotSummary {
     updatedAt: snapshot.timestamp,
     price: snapshot.price,
     tvlUsd: snapshot.tvlUsd,
+    priceDeviationBps: snapshot.priceDeviationBps,
     ...snapshotSummaryFields(snapshot),
     ...snapshotDepthSides(snapshot),
   }

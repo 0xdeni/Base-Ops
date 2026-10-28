@@ -1,6 +1,7 @@
 import { mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { jsonStringify } from '@depthwatch/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { type Database, openDatabase } from './database.js'
 import {
@@ -8,6 +9,7 @@ import {
   fixtureMmAlert,
   fixtureMmSample,
   fixturePool,
+  fixtureSnapshot,
   fixtureToken,
 } from './fixtures.js'
 import { currentVersion, MIGRATIONS, SCHEMA_VERSION } from './schema.js'
@@ -74,8 +76,8 @@ describe('openDatabase', () => {
   it('creates the schema and records every migration once', () => {
     const db = memory()
     expect(db.migration).toEqual({ from: 0, to: SCHEMA_VERSION })
-    expect(MIGRATIONS.length).toBe(3)
-    expect(SCHEMA_VERSION).toBe(3)
+    expect(MIGRATIONS.length).toBe(4)
+    expect(SCHEMA_VERSION).toBe(4)
     expect(names(db, 'table')).toEqual(EXPECTED_TABLES)
     expect(names(db, 'index')).toEqual(EXPECTED_INDEXES)
     const versions = db.raw
@@ -144,6 +146,7 @@ describe('openDatabase', () => {
     const fresh = openDatabase(path, { now: () => NOW })
     fresh.tokens.upsertMany([fixtureToken()])
     fresh.raw.exec('DROP TABLE mm_alerts; DROP TABLE mm_samples; DROP TABLE mandates')
+    fresh.raw.exec('ALTER TABLE snapshots DROP COLUMN price_deviation_bps')
     fresh.raw.prepare('DELETE FROM schema_version WHERE version > 1').run()
     expect(currentVersion(fresh.raw)).toBe(1)
     expect(names(fresh, 'table')).not.toContain('mandates')
@@ -160,6 +163,7 @@ describe('openDatabase', () => {
       { version: 1, applied_at: NOW },
       { version: 2, applied_at: NOW + 5 },
       { version: 3, applied_at: NOW + 5 },
+      { version: 4, applied_at: NOW + 5 },
     ])
     expect(upgraded.tokens.get(fixtureToken().address)).toEqual(fixtureToken())
     upgraded.mandates.upsert(fixtureMandate())
@@ -183,13 +187,14 @@ describe('openDatabase', () => {
     fresh.mmSamples.insert(fixtureMmSample())
     fresh.mmAlerts.insert(fixtureMmAlert())
     fresh.raw.exec('DROP INDEX mm_samples_timestamp; DROP INDEX mm_alerts_timestamp')
+    fresh.raw.exec('ALTER TABLE snapshots DROP COLUMN price_deviation_bps')
     fresh.raw.prepare('DELETE FROM schema_version WHERE version > 2').run()
     expect(currentVersion(fresh.raw)).toBe(2)
     fresh.close()
 
     const upgraded = openDatabase(path, { now: () => NOW + 7 })
     open.push(upgraded)
-    expect(upgraded.migration).toEqual({ from: 2, to: 3 })
+    expect(upgraded.migration).toEqual({ from: 2, to: SCHEMA_VERSION })
     expect(names(upgraded, 'index')).toEqual(EXPECTED_INDEXES)
     expect(upgraded.mmSamples.latestFor(fixtureMandate().id)).toEqual(fixtureMmSample())
     expect(upgraded.mmAlerts.latestFor(fixtureMandate().id)).toEqual(fixtureMmAlert())
@@ -202,6 +207,50 @@ describe('openDatabase', () => {
         .join(' ')
       expect(plan).toContain(`SEARCH ${table} USING INDEX ${table}_timestamp`)
     }
+  })
+
+  it('upgrades a version-3 database: its snapshots read an unknown price deviation', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'depthwatch-db-'))
+    tempDirs.push(dir)
+    const path = join(dir, 'v3.sqlite')
+
+    // A version-3 file: a snapshot stored before `price_deviation_bps` existed.
+    const fresh = openDatabase(path, { now: () => NOW })
+    const snapshot = fixtureSnapshot()
+    fresh.raw.exec('ALTER TABLE snapshots DROP COLUMN price_deviation_bps')
+    fresh.raw.prepare('DELETE FROM schema_version WHERE version > 3').run()
+    fresh.raw
+      .prepare(
+        `INSERT INTO snapshots (pool_id, block_number, timestamp, price, token0_usd, token1_usd,
+          tvl_usd, active_liquidity, depth_json, depth_usd_json, spreads_json, concentration_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        snapshot.poolId,
+        String(snapshot.blockNumber),
+        snapshot.timestamp,
+        snapshot.price,
+        snapshot.token0Usd,
+        snapshot.token1Usd,
+        snapshot.tvlUsd,
+        String(snapshot.activeLiquidity),
+        jsonStringify(snapshot.depth),
+        JSON.stringify(snapshot.depthUsd),
+        JSON.stringify(snapshot.spreads),
+        JSON.stringify(snapshot.concentration),
+      )
+    fresh.close()
+
+    const upgraded = openDatabase(path, { now: () => NOW + 3 })
+    open.push(upgraded)
+    expect(upgraded.migration).toEqual({ from: 3, to: SCHEMA_VERSION })
+    expect(snapshot.priceDeviationBps).toBe(0)
+    expect(upgraded.snapshots.latestForPool(snapshot.poolId)).toEqual({
+      ...snapshot,
+      priceDeviationBps: null,
+    })
+    upgraded.snapshots.insert({ ...snapshot, timestamp: snapshot.timestamp + 1 })
+    expect(upgraded.snapshots.latestForPool(snapshot.poolId)?.priceDeviationBps).toBe(0)
   })
 
   it('refuses a database written by a newer schema', () => {

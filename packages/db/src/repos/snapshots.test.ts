@@ -59,6 +59,7 @@ describe('SnapshotsRepo', () => {
       ownerTop1Share: null,
       depth2UpUsd: null,
       depth2DownUsd: null,
+      priceDeviationBps: null,
     })
   })
 
@@ -80,6 +81,7 @@ describe('SnapshotsRepo', () => {
       ownerTop1Share: 0.33,
       depth2UpUsd: 2160.5,
       depth2DownUsd: 2160.5,
+      priceDeviationBps: 0,
     })
     const bare = fixtureSnapshot({ depthUsd: [], spreads: [], concentration: null })
     expect(snapshotSummaryFields(bare)).toEqual({

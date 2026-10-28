@@ -1,9 +1,13 @@
 /**
- * USD price derivation over the observed pool-price graph.
+ * USD price derivation over the observed pool-price graph (docs/METRICS.md, "USD prices").
  *
  * Widest-path (max-bottleneck) search from the anchors: among all routes from an anchor to a token,
  * pick the one whose weakest edge is strongest, so prices come through the deepest route. Edges
  * are traversed both ways (price inverted). Anchors keep their given price with infinite weight.
+ *
+ * A pool edge is weighed in USD when the search reaches it from a settled token: the thinner of its
+ * two ±2 % depth sides, the settled token's side at that token's USD price and the other side at
+ * the price the edge implies. One pass, and the weight does not depend on the tokens' units.
  */
 
 import type { Address, DerivedPrice, PriceEdge } from './types.js'
@@ -74,8 +78,24 @@ interface Adjacent {
   token: Address
   /** USD(neighbour) = USD(this) × factor. */
   factor: number
-  weight: number
+  /**
+   * Depth sides of a pool edge: `own` in this token's units, `other` in the neighbour's. Null for
+   * an edge with a fixed weight.
+   */
+  sides: { own: number; other: number } | null
+  /** Weight of an edge without sides. */
+  fixed: number
   source: string
+}
+
+function positiveFinite(x: number | undefined): x is number {
+  return x !== undefined && Number.isFinite(x) && x > 0
+}
+
+/** The edge's USD weight seen from a settled token worth `usd`, its neighbour worth `neighbourUsd`. */
+function weighAt(edge: Adjacent, usd: number, neighbourUsd: number): number {
+  if (edge.sides === null) return edge.fixed
+  return Math.min(edge.sides.own * usd, edge.sides.other * neighbourUsd)
 }
 
 function lower(address: string): Address {
@@ -85,30 +105,52 @@ function lower(address: string): Address {
 /**
  * Derives USD prices for every token reachable from an anchor. `anchors` maps lowercase token
  * addresses to USD prices. Result: token → { usd, via (edge sources from the anchor), weight
- * (bottleneck along the route, Infinity for anchors) }. Unreachable tokens are absent.
+ * (bottleneck along the route in USD, Infinity for anchors) }. Unreachable tokens are absent.
+ *
+ * An edge with sides (`upToken1`, `downToken0`) weighs `min(up × token1Usd, down × token0Usd)`
+ * when it is relaxed; a side that is missing, zero or not finite makes it no route. An edge
+ * without sides weighs its fixed `weight`.
  */
 export function derivePrices(
   edges: readonly PriceEdge[],
   anchors: Record<Address, number>,
 ): Map<Address, DerivedPrice> {
   const adjacency = new Map<Address, Adjacent[]>()
-  const link = (from: Address, to: Address, factor: number, weight: number, source: string) => {
+  const link = (from: Address, entry: Adjacent) => {
     let list = adjacency.get(from)
     if (list === undefined) {
       list = []
       adjacency.set(from, list)
     }
-    list.push({ token: to, factor, weight, source })
+    list.push(entry)
   }
   for (const edge of edges) {
-    if (!(edge.price > 0) || !Number.isFinite(edge.price)) continue
-    if (!(edge.weight > 0) || !Number.isFinite(edge.weight)) continue
+    if (!positiveFinite(edge.price)) continue
+    const sided = edge.upToken1 !== undefined || edge.downToken0 !== undefined
+    if (sided && !(positiveFinite(edge.upToken1) && positiveFinite(edge.downToken0))) continue
+    if (!sided && !positiveFinite(edge.weight)) continue
     const t0 = lower(edge.token0)
     const t1 = lower(edge.token1)
     if (t0 === t1) continue
-    // 1 token0 = price token1  ⇒  usd1 = usd0 / price, usd0 = usd1 × price
-    link(t0, t1, 1 / edge.price, edge.weight, edge.source)
-    link(t1, t0, edge.price, edge.weight, edge.source)
+    const up = edge.upToken1 ?? 0
+    const down = edge.downToken0 ?? 0
+    const fixed = edge.weight ?? 0
+    // 1 token0 = price token1  ⇒  usd1 = usd0 / price, usd0 = usd1 × price. Seen from token0 its
+    // own side is the down side (token0 in), from token1 the up side (token1 in).
+    link(t0, {
+      token: t1,
+      factor: 1 / edge.price,
+      sides: sided ? { own: down, other: up } : null,
+      fixed,
+      source: edge.source,
+    })
+    link(t1, {
+      token: t0,
+      factor: edge.price,
+      sides: sided ? { own: up, other: down } : null,
+      fixed,
+      source: edge.source,
+    })
   }
 
   const best = new Map<Address, DerivedPrice>()
@@ -131,11 +173,13 @@ export function derivePrices(
     settled.add(item.token)
     for (const edge of adjacency.get(item.token) ?? []) {
       if (settled.has(edge.token)) continue
-      const bottleneck = Math.min(current.weight, edge.weight)
+      const usd = current.usd * edge.factor
+      if (!positiveFinite(usd)) continue
+      const weight = weighAt(edge, current.usd, usd)
+      if (!(weight > 0)) continue
+      const bottleneck = Math.min(current.weight, weight)
       const known = best.get(edge.token)
       if (known !== undefined && known.weight >= bottleneck) continue
-      const usd = current.usd * edge.factor
-      if (!(usd > 0) || !Number.isFinite(usd)) continue
       best.set(edge.token, { usd, via: [...current.via, edge.source], weight: bottleneck })
       heap.push({ weight: bottleneck, seq: seq++, token: edge.token })
     }

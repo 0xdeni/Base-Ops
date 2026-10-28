@@ -7,6 +7,7 @@
  * `?window=7d`, mandates on this pool) and about this pool as a panel. Every number is read as the
  * API stored it and only formatted here.
  */
+import { isStaleQuote } from '@depthwatch/core'
 import { useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
@@ -54,6 +55,9 @@ function PoolView({
       <PoolTitle
         pool={pool}
         spot={latest?.price ?? null}
+        staleDeviationBps={
+          latest && isStaleQuote(latest.priceDeviationBps) ? latest.priceDeviationBps : undefined
+        }
         answer={
           <p className="answer pool-answer" data-rise="">
             {poolAnswer(detail)}

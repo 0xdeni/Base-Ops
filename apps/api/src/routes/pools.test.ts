@@ -63,6 +63,8 @@ describe('GET /api/pools', () => {
       depth2UpUsd: 500_000,
       depth2DownUsd: 500_000,
       spread10kBps: 8,
+      priceDeviationBps: 0,
+      staleQuote: false,
       health: { total: 85, grade: 'A', rated: true, unratedReason: null },
       gapScore: expect.closeTo(15.05, 2),
       volume24hUsd: 2_000_000,

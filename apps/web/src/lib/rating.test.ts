@@ -8,6 +8,7 @@ describe('why a pool has no grade, in plain words', () => {
     expect(unratedShort('thin')).toBe('Too thin to rate')
     expect(unratedShort('one-sided')).toBe('Too thin on one side')
     expect(unratedShort('unpriced')).toBe('No USD price')
+    expect(unratedShort('hooked')).toBe('Hooked pool')
     expect(unratedShort(null)).toBe('Not rated yet')
   })
 
@@ -19,14 +20,17 @@ describe('why a pool has no grade, in plain words', () => {
     expect(unratedDetail('unpriced')).toBe(
       'No USD price: a token in this pool has no price in dollars.',
     )
+    expect(unratedDetail('hooked')).toBe(
+      'Hooked pool: its v4 hook runs its own swap code, so depth is not modelled.',
+    )
     expect(unratedDetail(null)).toBe('Not rated yet: the score is being refreshed.')
-    for (const reason of ['thin', 'one-sided', 'unpriced'] as const) {
+    for (const reason of ['thin', 'one-sided', 'unpriced', 'hooked'] as const) {
       expect(unratedDetail(reason).startsWith(unratedShort(reason))).toBe(true)
     }
   })
 
   it('keeps each line within the 15 words of a section takeaway (CP10)', () => {
-    for (const reason of ['thin', 'one-sided', 'unpriced', null] as const) {
+    for (const reason of ['thin', 'one-sided', 'unpriced', 'hooked', null] as const) {
       expect(unratedDetail(reason).split(/\s+/).length).toBeLessThanOrEqual(15)
     }
   })

@@ -17,6 +17,7 @@ import { NotRatedChip } from '../../components/ui/GradeGlyph.js'
 import { Unknown } from '../../components/ui/Unknown.js'
 import { bps, cantAbsorb, score, usd } from '../../lib/format.js'
 import { tvlReason } from '../../lib/poolsTable.js'
+import { unratedDetail } from '../../lib/rating.js'
 import {
   gapCallout,
   healthFactSuffix,
@@ -52,8 +53,10 @@ export function PoolFacts({ detail }: { detail: PoolDetail }) {
   const { score: health, latest, pool, gap } = detail
   const spread10k = latest ? spreadAt(latest.spreads, 10_000) : null
   // No spread on a priced pool: it "can't absorb" the trade (null, or more than a trade can pay).
+  // A hooked pool has no spread at all: it is not modelled.
+  const hooked = health?.unratedReason === 'hooked'
   const spreadUnabsorbed =
-    latest !== null && health?.unratedReason !== 'unpriced' && spread10k === null
+    latest !== null && health?.unratedReason !== 'unpriced' && !hooked && spread10k === null
   const gapOn = gap?.turnoverRatio != null && gap.turnoverRatio >= MEANINGFUL_GAP_TURNOVER
   const depth2 = latest?.depthUsd.find((d) => d.pct === 2)?.totalUsd
   return (
@@ -94,7 +97,13 @@ export function PoolFacts({ detail }: { detail: PoolDetail }) {
             spreadUnabsorbed ? (
               <span className="fv-words">{cantAbsorb(10_000)}</span>
             ) : spread10k === null ? (
-              <Unknown reason="No spread: a token in this pool has no USD price." />
+              <Unknown
+                reason={
+                  hooked
+                    ? unratedDetail('hooked')
+                    : 'No spread: a token in this pool has no USD price.'
+                }
+              />
             ) : (
               bps(spread10k)
             )

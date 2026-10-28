@@ -208,9 +208,18 @@ describe('Methodology: sections', () => {
     renderAt('/methodology')
     const health = section('health').textContent ?? ''
     expect(health).toContain('Not rated')
-    expect(health).toContain('too thin to rate, too thin on one side, or no USD price')
+    expect(health).toContain(
+      'too thin to rate, too thin on one side, no USD price, or a hooked pool that is not modelled',
+    )
     expect(health).toContain('at least $5K')
     expect(health).toContain('median health on Home and in the stats counts rated pools only')
+  })
+
+  it('says which depth stays out of the totals: a stale price', () => {
+    renderAt('/methodology')
+    const depth = section('depth').textContent ?? ''
+    expect(depth).toContain('is marked “Stale price”')
+    expect(depth).toContain('so it stays out of the totals and sorts last by depth')
   })
 
   it('draws a schematic where it explains faster than prose, and none elsewhere', () => {

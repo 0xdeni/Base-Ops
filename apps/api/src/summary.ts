@@ -2,7 +2,7 @@
  * Mappers from repository rows to wire DTOs. Everything that leaves the API goes through
  * `toJsonSafe`, so bigints (block numbers, raw amounts) are decimal strings on the wire.
  */
-import { type GapMetrics, toJsonSafe } from '@depthwatch/core'
+import { type GapMetrics, isStaleQuote, toJsonSafe } from '@depthwatch/core'
 import type { DexStats, ScoredPoolRow } from '@depthwatch/db'
 import type { DexStatsDto, GapItem, PoolSummary } from './dto.js'
 
@@ -17,6 +17,8 @@ export function toPoolSummary(row: ScoredPoolRow): PoolSummary {
     depth2UpUsd: latest?.depth2UpUsd ?? null,
     depth2DownUsd: latest?.depth2DownUsd ?? null,
     spread10kBps: latest?.spread10kBps ?? null,
+    priceDeviationBps: latest?.priceDeviationBps ?? null,
+    staleQuote: isStaleQuote(latest?.priceDeviationBps ?? null),
     health: {
       total: score.health.total,
       grade: score.health.grade,

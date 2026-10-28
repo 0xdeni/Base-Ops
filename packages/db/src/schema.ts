@@ -14,6 +14,8 @@
  * Version 2 adds the market-maker scorecard tables (`mandates`, `mm_samples`, `mm_alerts`).
  * Version 3 adds `timestamp` indexes on `mm_samples` and `mm_alerts`, so retention deletes
  * (`pruneBefore`) seek instead of scanning the tables.
+ * Version 4 adds `snapshots.price_deviation_bps` (`PoolSnapshot.priceDeviationBps`, docs/METRICS.md
+ * "Stale quotes"), NULL in the rows stored before it; reads and sorts use it as stored.
  */
 import type { DatabaseSync } from 'node:sqlite'
 import { toCount } from './sql.js'
@@ -169,6 +171,10 @@ export const MIGRATIONS: readonly string[] = [
   `
   CREATE INDEX mm_samples_timestamp ON mm_samples(timestamp);
   CREATE INDEX mm_alerts_timestamp ON mm_alerts(timestamp);
+  `,
+  // Version 4: the stale-quote measure of every new snapshot.
+  `
+  ALTER TABLE snapshots ADD COLUMN price_deviation_bps REAL;
   `,
 ]
 
