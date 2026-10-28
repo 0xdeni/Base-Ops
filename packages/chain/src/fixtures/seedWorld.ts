@@ -3,14 +3,20 @@
  * tests: every factory / StateView candidate the seeders ask for answers "no pool" at every block,
  * except the given pools, which answer from their creation block on (contract code, `getPool`,
  * StateView `getSlot0` and the PoolManager slot0 word), so the creation-block search can be run
- * against them. Token metadata of the reference tokens, Aerodrome v2 `getFee` and Slipstream
- * `fee()` / `tickSpacingToFee` are registered at `latest`. The clock is the caller's.
+ * against them. The Aero v2 factories' `feeModule()` answers the pinned module at every block.
+ * Token metadata of the reference tokens, Aerodrome v2 `getFee`, Aero v2 `getBaseFee`, Slipstream
+ * `fee()` / `tickSpacingToFee` and Aero Slipstream `getPoolSwapHook` / `dynamicFeeConfig` (the
+ * reviewed hook, initial fee off unless a pool says otherwise) are registered at `latest`. The
+ * clock is the caller's.
  */
 import { type Address, type Dex, type Hex, NATIVE_ETH } from '@depthwatch/core'
 import { numberToHex } from 'viem'
+import { aeroCLFactoryAbi } from '../abi/aeroCLFactory.js'
 import { aerodromeCLFactoryAbi } from '../abi/aerodromeCLFactory.js'
 import { aerodromeCLPoolAbi } from '../abi/aerodromeCLPool.js'
 import { aerodromePoolFactoryAbi } from '../abi/aerodromePoolFactory.js'
+import { aeroPoolFactoryAbi } from '../abi/aeroPoolFactory.js'
+import { aeroSwapHookAbi } from '../abi/aeroSwapHook.js'
 import { erc20Abi } from '../abi/erc20.js'
 import { uniswapV3FactoryAbi } from '../abi/uniswapV3Factory.js'
 import { v4PoolManagerAbi } from '../abi/v4PoolManager.js'
@@ -34,15 +40,19 @@ export interface SeedWorldPool {
   fee?: number
   /** Slipstream and Uniswap v4. */
   tickSpacing?: number
-  /** Aerodrome v2. */
+  /** Aerodrome v2; Aero v2: created by the stable factory (default: the volatile one). */
   stable?: boolean
-  /** Slipstream: index into `addresses.aerodromeSlipstream` (default 0). */
+  /** Slipstream: index into `addresses.aerodromeSlipstream` / `aeroSlipstream` (default 0). */
   deployment?: number
   /** Contract pools (every DEX but Uniswap v4). */
   address?: Address
   createdAtBlock: bigint
-  /** Slipstream `fee()` in pips, Aerodrome v2 `getFee` in bps (defaults 3000 and 30). */
+  /** Slipstream `fee()` in pips, Aerodrome v2 `getFee` / Aero v2 `getBaseFee` in bps (3000, 30). */
   liveFee?: number
+  /** Aero Slipstream: `getPoolSwapHook` (default: the deployment's reviewed `swapHook`). */
+  swapHook?: Address
+  /** Aero Slipstream: `initialFeeEnabled` of the reviewed hook's config (default false). */
+  initialFeeEnabled?: boolean
   /** Uniswap v4 sqrtPriceX96 once initialized (default 2^96). */
   sqrtPriceX96?: bigint
 }
@@ -55,7 +65,14 @@ export interface SeedWorldOptions {
   v3TickSpacings?: Readonly<Record<number, number>>
   /** `tickSpacings()` per Slipstream deployment (default: the constructor's five). */
   slipstreamTickSpacings?: readonly (readonly number[])[]
+  /** `tickSpacings()` per Aero Slipstream deployment (default: the seven read on Base). */
+  aeroSlipstreamTickSpacings?: readonly (readonly number[])[]
 }
+
+/** The Aero CLFactory's `tickSpacings()` (docs/research/base-contracts.md, `## aero`). */
+export const SEED_WORLD_AERO_TICK_SPACINGS: readonly number[] = Object.freeze([
+  1, 10, 50, 100, 150, 200, 250,
+])
 
 /** `feeAmountTickSpacing` as read on Base (docs/research/base-contracts.md). */
 export const SEED_WORLD_V3_TICK_SPACINGS: Readonly<Record<number, number>> = Object.freeze({
@@ -98,9 +115,9 @@ function poolsByCandidate(pools: readonly SeedWorldPool[]): Map<string, SeedWorl
   for (const pool of pools) {
     const [t0, t1] = sortPair(pool.tokens)
     const extra =
-      pool.dex === 'aerodrome-v2'
+      pool.dex === 'aerodrome-v2' || pool.dex === 'aero-v2'
         ? String(pool.stable ?? false)
-        : pool.dex === 'aerodrome-slipstream'
+        : pool.dex === 'aerodrome-slipstream' || pool.dex === 'aero-slipstream'
           ? `${pool.deployment ?? 0}|${pool.tickSpacing}`
           : pool.dex === 'uniswap-v4'
             ? `${pool.fee}|${pool.tickSpacing}`
@@ -228,6 +245,8 @@ export function registerSeedWorld(fixture: Fixture, opts: SeedWorldOptions): voi
     }
   })
 
+  registerAeroCandidates(fixture, opts, byCandidate, erc20Pairs, answer)
+
   for (const [currency0, currency1] of sortedPairs(all))
     for (const { fee, tickSpacing } of UNISWAP_V4_STANDARD_KEYS) {
       const id = computePoolId({ currency0, currency1, fee, tickSpacing, hooks: ZERO })
@@ -256,4 +275,99 @@ export function registerSeedWorld(fixture: Fixture, opts: SeedWorldOptions): voi
         history: word,
       })
     }
+}
+
+/** The Aero v2 and Aero Slipstream candidates, answered as `registerSeedWorld` documents. */
+function registerAeroCandidates(
+  fixture: Fixture,
+  opts: SeedWorldOptions,
+  byCandidate: ReadonlyMap<string, SeedWorldPool>,
+  erc20Pairs: readonly (readonly [Address, Address])[],
+  answer: (key: string) => { fromBlock: bigint; result: unknown }[],
+): void {
+  const { aeroV2, aeroSlipstream } = opts.addresses
+  const v2Factories = [
+    { stable: false, address: aeroV2.volatileFactory, feeModule: aeroV2.volatileFeeModule },
+    { stable: true, address: aeroV2.stableFactory, feeModule: aeroV2.stableFeeModule },
+  ]
+  for (const factory of v2Factories) {
+    const abi = aeroPoolFactoryAbi
+    registerCallHistory(fixture, {
+      to: factory.address,
+      abi,
+      functionName: 'feeModule',
+      history: [{ fromBlock: 0n, result: factory.feeModule }],
+    })
+    for (const [t0, t1] of erc20Pairs) {
+      const key = candidateKey('aero-v2', t0, t1, String(factory.stable))
+      registerCallHistory(fixture, {
+        to: factory.address,
+        abi,
+        functionName: 'getPool',
+        args: [t0, t1],
+        history: answer(key),
+      })
+      const pool = byCandidate.get(key)
+      if (pool?.address !== undefined)
+        registerCall(fixture, {
+          to: factory.address,
+          abi,
+          functionName: 'getBaseFee',
+          args: [pool.address, ZERO, 0n, 0n, 0n, 0n],
+          result: BigInt(pool.liveFee ?? 30),
+        })
+    }
+  }
+
+  aeroSlipstream.forEach((deployment, i) => {
+    const spacings = opts.aeroSlipstreamTickSpacings?.[i] ?? SEED_WORLD_AERO_TICK_SPACINGS
+    const factory = deployment.factory
+    registerCallHistory(fixture, {
+      to: factory,
+      abi: aerodromeCLFactoryAbi,
+      functionName: 'tickSpacings',
+      history: [{ fromBlock: 0n, result: spacings }],
+    })
+    for (const tickSpacing of spacings) {
+      registerCall(fixture, {
+        to: factory,
+        abi: aerodromeCLFactoryAbi,
+        functionName: 'tickSpacingToFee',
+        args: [tickSpacing],
+        result: SLIPSTREAM_DEFAULT_FEES[tickSpacing] ?? 3_000,
+      })
+      for (const [t0, t1] of erc20Pairs) {
+        const key = candidateKey('aero-slipstream', t0, t1, `${i}|${tickSpacing}`)
+        registerCallHistory(fixture, {
+          to: factory,
+          abi: aerodromeCLFactoryAbi,
+          functionName: 'getPool',
+          args: [t0, t1, tickSpacing],
+          history: answer(key),
+        })
+        const pool = byCandidate.get(key)
+        if (pool?.address === undefined) continue
+        registerCall(fixture, {
+          to: pool.address,
+          abi: aerodromeCLPoolAbi,
+          functionName: 'fee',
+          result: pool.liveFee ?? 3_000,
+        })
+        registerCall(fixture, {
+          to: factory,
+          abi: aeroCLFactoryAbi,
+          functionName: 'getPoolSwapHook',
+          args: [pool.address],
+          result: pool.swapHook ?? deployment.swapHook,
+        })
+        registerCall(fixture, {
+          to: deployment.swapHook,
+          abi: aeroSwapHookAbi,
+          functionName: 'dynamicFeeConfig',
+          args: [pool.address],
+          result: [225, 5_000, 0n, pool.initialFeeEnabled ?? false, 0],
+        })
+      }
+    }
+  })
 }

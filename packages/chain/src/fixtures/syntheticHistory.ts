@@ -8,13 +8,15 @@
  *   (NFPM `IncreaseLiquidity` / `DecreaseLiquidity`, PoolManager `ModifyLiquidity` for v4). The
  *   rebalances add up exactly to each hour's liquidity, so `readPositions` over any block range
  *   sees every position whose liquidity changed in it.
- * - Swaps are built per pool and hour from `plannedSwaps` at that hour's prices.
+ * - Swaps are built per pool and hour from `plannedSwaps` at that hour's prices (and fee: the
+ *   Aero Slipstream pool's moves by the hour).
  *
  * A fixture takes what lies at or before its epoch block, so consecutive epochs read like one
  * chain. The cache keeps a few worlds per address book; it never changes what a fixture holds.
  */
 import type { Address, Hex } from '@depthwatch/core'
 import { numberToHex, pad } from 'viem'
+import { aeroNFPMAbi } from '../abi/aeroNFPM.js'
 import { nonfungiblePositionManagerAbi } from '../abi/nonfungiblePositionManager.js'
 import { slipstreamNFPMAbi } from '../abi/slipstreamNFPM.js'
 import { v4PoolManagerAbi } from '../abi/v4PoolManager.js'
@@ -32,6 +34,7 @@ import {
 } from './syntheticSwaps.js'
 import { blockAtOrAfter, HOUR_SECONDS, hourOf, SYNTHETIC_HISTORY } from './syntheticTime.js'
 import {
+  AERO_SLIPSTREAM_FACTORY_INDEX,
   SLIPSTREAM_INITIAL_FACTORY_INDEX,
   type SyntheticConcentratedPool,
   type SyntheticTimeline,
@@ -102,10 +105,10 @@ function hourPriceState(
 
 interface PositionLogTarget {
   pool: SyntheticConcentratedPool
-  /** The NFPM (v3 / Slipstream) or null for v4 (PoolManager `ModifyLiquidity`). */
+  /** The NFPM (v3 / Slipstream / Aero Slipstream) or null for v4 (PoolManager `ModifyLiquidity`). */
   nfpm: {
     address: Address
-    abi: typeof nonfungiblePositionManagerAbi | typeof slipstreamNFPMAbi
+    abi: typeof nonfungiblePositionManagerAbi | typeof slipstreamNFPMAbi | typeof aeroNFPMAbi
   } | null
   addresses: ChainAddresses
 }
@@ -138,11 +141,13 @@ function liquidityLog(
       logIndex,
     })
   const liquidity = delta < 0n ? -delta : delta
+  // The Aero NFPM's IncreaseLiquidity also carries the ticks; the 4-field events ignore them.
+  const ticks = { tickLower: p.tickLower, tickUpper: p.tickUpper }
   return makeLog({
     address: nfpm.address,
     abi: nfpm.abi,
     eventName: delta < 0n ? 'DecreaseLiquidity' : 'IncreaseLiquidity',
-    args: { tokenId: p.tokenId, liquidity, ...amounts },
+    args: { tokenId: p.tokenId, liquidity, ...amounts, ...ticks },
     blockNumber,
     logIndex,
   })
@@ -155,6 +160,11 @@ function nfpmOf(
   if (pool.variant === 'v4') return null
   if (pool.variant === 'v3')
     return { address: addresses.uniswapV3.positionManager, abi: nonfungiblePositionManagerAbi }
+  if (pool.variant === 'aero-slipstream') {
+    const aero = addresses.aeroSlipstream[AERO_SLIPSTREAM_FACTORY_INDEX]
+    if (aero === undefined) throw new Error('synthetic: no Aero Slipstream deployment configured')
+    return { address: aero.positionManager, abi: aeroNFPMAbi }
+  }
   const initial = addresses.aerodromeSlipstream[SLIPSTREAM_INITIAL_FACTORY_INDEX]
   if (initial === undefined) throw new Error('synthetic: no Slipstream deployment configured')
   return { address: initial.positionManager, abi: slipstreamNFPMAbi }
@@ -268,8 +278,14 @@ export function swapHistoryLogs(
       const price =
         entry.kind === 'concentrated' ? hourPriceState(timeline, poolIndex, entry.spec, hour) : null
       const usd = tokenUsdAt(timeline, entry.spec, hour)
+      // The hour's fee, not the epoch's: a cached hour reads the same in every fixture.
+      const hourFee =
+        entry.kind === 'concentrated'
+          ? concentratedFactorsAt(entry.spec, poolIndex, timeline, hour).feePips
+          : undefined
+      const meta = hourFee === undefined ? pool.meta : { ...pool.meta, feePips: hourFee }
       logs = plannedSwaps(timeline, poolIndex, entry.spec.activity, hour).map((swap) =>
-        swapLog(pool.meta, swapKind(pool), addresses, {
+        swapLog(meta, swapKind(pool), addresses, {
           usd: swap.usd,
           zeroForOne: swap.zeroForOne,
           ...usd,

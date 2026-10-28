@@ -18,6 +18,8 @@ import { uniswapV3PoolAbi } from '../abi/uniswapV3Pool.js'
 import { v4StateViewAbi } from '../abi/v4StateView.js'
 import { slipstreamPoolId } from '../adapters/aerodromeSlipstream.js'
 import { aerodromeV2PoolId } from '../adapters/aerodromeV2.js'
+import { aeroSlipstreamPoolId } from '../adapters/aeroSlipstream.js'
+import { aeroV2PoolId } from '../adapters/aeroV2.js'
 import { uniswapV3PoolId } from '../adapters/uniswapV3.js'
 import { computePoolId, uniswapV4PoolId } from '../adapters/uniswapV4.js'
 import { type BlockRef, registerCall, registerRevert, setClock } from '../fixtures/builders.js'
@@ -156,11 +158,11 @@ export function poolMeta(spec: PoolSpec): PoolMeta {
   }
   const address = spec.address
   if (!address) throw new Error('poolMeta: address required')
-  if (spec.dex === 'aerodrome-v2') {
+  if (spec.dex === 'aerodrome-v2' || spec.dex === 'aero-v2') {
     const stable = spec.stable ?? false
     return {
       ...common,
-      id: aerodromeV2PoolId(address),
+      id: spec.dex === 'aero-v2' ? aeroV2PoolId(address) : aerodromeV2PoolId(address),
       dex: spec.dex,
       kind: stable ? 'stable-swap' : 'constant-product',
       address,
@@ -170,16 +172,22 @@ export function poolMeta(spec: PoolSpec): PoolMeta {
       hooks: null,
     }
   }
+  const id =
+    spec.dex === 'uniswap-v3'
+      ? uniswapV3PoolId(address)
+      : spec.dex === 'aero-slipstream'
+        ? aeroSlipstreamPoolId(address)
+        : slipstreamPoolId(address)
   return {
     ...common,
-    id: spec.dex === 'uniswap-v3' ? uniswapV3PoolId(address) : slipstreamPoolId(address),
+    id,
     dex: spec.dex,
     kind: 'concentrated',
     address,
     poolId: null,
     tickSpacing: spec.tickSpacing ?? 60,
     stable: false,
-    hooks: null,
+    hooks: spec.hooks ?? null,
   }
 }
 
@@ -220,7 +228,7 @@ function registerBalances(
     })
 }
 
-/** v3 / Slipstream pool reads (ABI picked from `pool.dex`). */
+/** v3 / Slipstream (Aerodrome or Aero) pool reads (ABI picked from `pool.dex`). */
 export function registerConcentratedPool(
   fixture: Fixture,
   pool: PoolMeta,
@@ -228,7 +236,7 @@ export function registerConcentratedPool(
   blocks: BlockRef[] = ['latest'],
 ): void {
   const to = pool.address as Address
-  const slipstream = pool.dex === 'aerodrome-slipstream'
+  const slipstream = pool.dex === 'aerodrome-slipstream' || pool.dex === 'aero-slipstream'
   const abi = slipstream ? aerodromeCLPoolAbi : uniswapV3PoolAbi
   const slot0 = slipstream
     ? [spec.sqrtPriceX96, spec.tick, 0, 1, 1, true]
@@ -307,7 +315,7 @@ export function registerV4Pool(
     })
 }
 
-/** Aerodrome v2 pool reserves. */
+/** v2 pool reserves (Aerodrome or Aero). */
 export function registerV2Pool(
   fixture: Fixture,
   pool: PoolMeta,

@@ -11,7 +11,8 @@
  * `readPositions` is range based (positions *touched* in the block range, with their current
  * liquidity and owner), so the first run scans from the pool's creation block and later runs
  * continue from the cursor `positions:<pool>:lastBlock`, merging into the stored set. Positions
- * whose liquidity dropped to zero are removed. Aerodrome v2 pools have no positions.
+ * whose liquidity dropped to zero are removed. v2 pools (Aerodrome and Aero) have no positions;
+ * Aero Slipstream pools are read through their own NFPM like Aerodrome's.
  *
  * Windowed runs (`windowBlocks`, what `depthwatch start` uses) bound the work: pools less than a
  * window behind the head read from their cursors to the head, as above; pools further behind are
@@ -299,7 +300,7 @@ export async function positionsStep(
             if (isLogRangeLimitError(error)) unusable ??= error
             throw error
           })
-        // A Slipstream gauge holds the staked NFTs: recorded with the set it publishes.
+        // A Slipstream gauge (Aerodrome or Aero) holds the staked NFTs: recorded with the set.
         const custodians = publishes(plan, round.toBlock, head)
           ? await chain.readCustodians(plan.pool, round.toBlock)
           : []

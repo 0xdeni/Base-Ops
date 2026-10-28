@@ -1,8 +1,9 @@
 /**
- * Gauge side of the synthetic world (docs/design/scorecards.md §3): Voter → gauge lookups, LP-token
- * supply and balances of the Aerodrome v2 pools (pool `balanceOf`/`totalSupply`, v2 Gauge
- * `balanceOf`), and the Slipstream CLGauge (`CLPool.gauge()`, `stakedContains(depositor, tokenId)`
- * for every synthetic owner × position). Every synthetic owner is answerable, holders or not.
+ * Gauge side of the synthetic world (docs/design/scorecards.md §3): pool → gauge lookups (the
+ * Aerodrome Voter; the Aero FactoryRegistry, as the LeafVoter has no pool views), LP-token supply
+ * and balances of the v2 pools (pool `balanceOf`/`totalSupply`, v2 Gauge `balanceOf`), and the
+ * Slipstream CLGauges (`CLPool.gauge()`, `stakedContains(depositor, tokenId)` for every synthetic
+ * owner × position). Every synthetic owner is answerable, holders or not.
  */
 import type { Address } from '@depthwatch/core'
 import { aerodromeCLGaugeAbi } from '../abi/aerodromeCLGauge.js'
@@ -13,6 +14,7 @@ import { erc20Abi } from '../abi/erc20.js'
 import type { ChainAddresses } from '../addresses.js'
 import type { Fixture } from '../transport/fixture.js'
 import { type BlockRef, registerCall } from './builders.js'
+import { registerAeroV2Gauge } from './syntheticAero.js'
 import {
   SYNTHETIC_OWNERS,
   type SyntheticConcentratedPool,
@@ -57,7 +59,7 @@ function registerVoterGauge(
   })
 }
 
-/** LP token (= pool) supply and balances, the Voter's gauge and the gauge's staked balances. */
+/** LP token (= pool) supply and balances, the pool's gauge and the gauge's staked balances. */
 export function registerV2LpHoldings(
   fixture: Fixture,
   world: SyntheticWorld,
@@ -76,7 +78,8 @@ export function registerV2LpHoldings(
     result: pool.lpTotalSupply,
     blocks,
   })
-  registerVoterGauge(fixture, addresses, lpToken, pool.gauge, blocks)
+  if (pool.meta.dex === 'aero-v2') registerAeroV2Gauge(fixture, pool, addresses, blocks)
+  else registerVoterGauge(fixture, addresses, lpToken, pool.gauge, blocks)
   registerCall(fixture, {
     to: pool.gauge,
     abi: aerodromeGaugeAbi,
@@ -121,7 +124,10 @@ export function registerV2LpHoldings(
   }
 }
 
-/** `CLPool.gauge()`, the Voter's view of it, and `stakedContains` for every owner × position. */
+/**
+ * `CLPool.gauge()`, the Aerodrome Voter's view of it (Aero's LeafVoter has none), and
+ * `stakedContains` for every owner × position.
+ */
 export function registerSlipstreamGauge(
   fixture: Fixture,
   world: SyntheticWorld,
@@ -139,7 +145,8 @@ export function registerSlipstreamGauge(
     result: gauge,
     blocks,
   })
-  registerVoterGauge(fixture, addresses, address, gauge, blocks)
+  if (pool.meta.dex === 'aerodrome-slipstream')
+    registerVoterGauge(fixture, addresses, address, gauge, blocks)
   registerCall(fixture, {
     to: gauge,
     abi: aerodromeCLGaugeAbi,

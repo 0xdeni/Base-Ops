@@ -100,7 +100,7 @@ export interface DexAdapter {
     toBlock: bigint,
     observer?: LogScanObserver,
   ): Promise<SwapEvent[]>
-  /** LP-token holdings (wallet + gauge-staked) of `addresses`; only fungible-LP DEXes implement it. */
+  /** LP-token holdings (wallet + gauge-staked) of `addresses`; only v2 (fungible-LP) DEXes have it. */
   lpHoldings?(
     ctx: ReaderContext,
     pool: PoolMeta,

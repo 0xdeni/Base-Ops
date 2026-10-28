@@ -1,6 +1,8 @@
 export * from './abi/index.js'
 export { slipstreamPoolId } from './adapters/aerodromeSlipstream.js'
 export { aerodromeV2PoolId, bpsToPips } from './adapters/aerodromeV2.js'
+export { aeroSlipstreamPoolId } from './adapters/aeroSlipstream.js'
+export { aeroV2PoolId } from './adapters/aeroV2.js'
 export { ADAPTERS } from './adapters/index.js'
 export { uniswapV3PoolId } from './adapters/uniswapV3.js'
 export {
@@ -10,7 +12,6 @@ export {
   type PoolKey,
   uniswapV4PoolId,
 } from './adapters/uniswapV4.js'
-export { DexNotSupportedError } from './adapters/unsupported.js'
 export * from './addresses.js'
 export * from './fixtures/builders.js'
 export * from './fixtures/fakeRpc.js'
@@ -31,6 +32,11 @@ export {
   redactUrls,
   statedMaxLogRange,
 } from './internal/logErrors.js'
+export {
+  isPoolConfigChangedError,
+  type PoolConfigChange,
+  PoolConfigChangedError,
+} from './internal/poolErrors.js'
 export {
   bitmapPosition,
   coveragePct,

@@ -1,7 +1,7 @@
 /**
- * Types and constants of the synthetic Base world behind `createSyntheticFixture`: six pools with
- * realistic prices (ETH 2 500, cbBTC 65 000, AERO 1.2), a few LP positions each, reserves and
- * ~24 h of swaps. Everything is derived deterministically from `SyntheticOptions`.
+ * Types and constants of the synthetic Base world behind `createSyntheticFixture`: eight pools
+ * with realistic prices (ETH 2 500, cbBTC 65 000, both AEROs 1.2), a few LP positions each,
+ * reserves and ~24 h of swaps. Everything is derived deterministically from `SyntheticOptions`.
  *
  * Two flavours: the *static* world (no epoch: the state at `latestBlock`, as it always was) and
  * the *time-varying* world (`epochTimestamp` / `epochBlock` set: the state at that moment, with
@@ -59,13 +59,15 @@ export const ZERO_ADDRESS: Address = '0x0000000000000000000000000000000000000000
 
 /** Index into `ChainAddresses.aerodromeSlipstream` of the deployment that owns the synthetic pool. */
 export const SLIPSTREAM_INITIAL_FACTORY_INDEX = 0
+/** Index into `ChainAddresses.aeroSlipstream` of the deployment that owns the synthetic Aero pool. */
+export const AERO_SLIPSTREAM_FACTORY_INDEX = 0
 
 /** Deterministic fake address from a label. */
 export function fakeAddress(label: string): Address {
   return `0x${keccak256(stringToHex(`depthwatch-synthetic:${label}`)).slice(26)}` as Address
 }
 
-/** Labels of the six synthetic pools, in discovery order (see syntheticWorld.ts). */
+/** Labels of the eight synthetic pools, in discovery order (see syntheticWorld.ts). */
 export const SYNTHETIC_POOL_LABELS = Object.freeze({
   wethUsdcV3: 'weth-usdc-v3-500',
   cbbtcUsdcV3: 'cbbtc-usdc-v3-3000',
@@ -73,6 +75,8 @@ export const SYNTHETIC_POOL_LABELS = Object.freeze({
   usdcAeroV2: 'usdc-aero-v2-volatile',
   usdcUsdbcV2: 'usdc-usdbc-v2-stable',
   wethUsdcSlipstream: 'weth-usdc-slipstream-100',
+  aeroUsdcAeroV2: 'aero-usdc-aero-v2-volatile',
+  wethUsdcAeroSlipstream: 'weth-usdc-aero-slipstream-50',
 })
 
 /** Contract address of an address-keyed synthetic pool (not the v4 pool, which has a poolId). */
@@ -80,21 +84,32 @@ export function syntheticPoolAddress(label: string): Address {
   return fakeAddress(`pool:${label}`)
 }
 
-/** Gauge address of a synthetic pool (Aerodrome v2 Gauge or Slipstream CLGauge). */
+/** Gauge address of a synthetic pool (a v2 Gauge or a Slipstream CLGauge). */
 export function syntheticGaugeAddress(label: string): Address {
   return fakeAddress(`gauge:${label}`)
 }
 
 /**
- * Gauges of the synthetic world: the Aerodrome v2 Gauges of both v2 pools (registered in the
- * Voter) and the CLGauge of the Slipstream pool (`CLPool.gauge()` and `Voter.gauges(pool)`).
+ * Gauges of the synthetic world: the Aerodrome v2 Gauges of both Aerodrome v2 pools (registered in
+ * the Voter), the CLGauge of the Slipstream pool (`CLPool.gauge()` and `Voter.gauges(pool)`), the
+ * Aero v2 pool's gauge (`FactoryRegistry.targetToGauge`) and the Aero Slipstream pool's CLGauge
+ * (`CLPool.gauge()`).
  */
 export const SYNTHETIC_GAUGES: Readonly<
-  Record<'usdcAeroV2' | 'usdcUsdbcV2' | 'wethUsdcSlipstream', Address>
+  Record<
+    | 'usdcAeroV2'
+    | 'usdcUsdbcV2'
+    | 'wethUsdcSlipstream'
+    | 'aeroUsdcAeroV2'
+    | 'wethUsdcAeroSlipstream',
+    Address
+  >
 > = Object.freeze({
   usdcAeroV2: syntheticGaugeAddress(SYNTHETIC_POOL_LABELS.usdcAeroV2),
   usdcUsdbcV2: syntheticGaugeAddress(SYNTHETIC_POOL_LABELS.usdcUsdbcV2),
   wethUsdcSlipstream: syntheticGaugeAddress(SYNTHETIC_POOL_LABELS.wethUsdcSlipstream),
+  aeroUsdcAeroV2: syntheticGaugeAddress(SYNTHETIC_POOL_LABELS.aeroUsdcAeroV2),
+  wethUsdcAeroSlipstream: syntheticGaugeAddress(SYNTHETIC_POOL_LABELS.wethUsdcAeroSlipstream),
 })
 
 /** mulberry32 PRNG in [0, 1). */
@@ -143,16 +158,19 @@ export interface SyntheticActivity {
   token1Usd: number
 }
 
+/** Which concentrated DEX a synthetic pool belongs to. */
+export type SyntheticConcentratedVariant = 'v3' | 'slipstream' | 'v4' | 'aero-slipstream'
+
 export interface SyntheticConcentratedPool extends SyntheticActivity {
   kind: 'concentrated'
-  variant: 'v3' | 'slipstream' | 'v4'
+  variant: SyntheticConcentratedVariant
   meta: PoolMeta
   state: ConcentratedState
   positions: SyntheticPosition[]
   /** Token balances held by the pool (sum of position amounts). */
   reserve0: bigint
   reserve1: bigint
-  /** Slipstream: the pool's CLGauge (`CLPool.gauge()`); v3 / v4 pools have none. */
+  /** Slipstream (Aerodrome or Aero): the pool's CLGauge (`CLPool.gauge()`); v3 / v4: none. */
   gauge: Address | null
 }
 
@@ -171,7 +189,7 @@ export interface SyntheticV2Pool extends SyntheticActivity {
   feeBps: bigint
   /** LP-token total supply (√(reserve0·reserve1), as the first mint sets it). */
   lpTotalSupply: bigint
-  /** The pool's Aerodrome v2 Gauge, registered in the Voter. */
+  /** The pool's gauge: in the Voter (Aerodrome v2) or the FactoryRegistry (Aero v2). */
   gauge: Address
   /** Holders with a non-zero wallet or staked balance; everyone else holds nothing. */
   lpHoldings: SyntheticLpHolding[]

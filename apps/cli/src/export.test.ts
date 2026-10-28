@@ -59,8 +59,8 @@ describe('buildStaticBundle over the demo (short history)', () => {
     expect(bundle.health.ok).toBe(true)
     // The health section names the data source too, so the dashboard can tell demo from live.
     expect(bundle.health.source).toBe('demo')
-    expect(bundle.stats.totals.scored).toBe(6)
-    expect(bundle.pools).toHaveLength(6)
+    expect(bundle.stats.totals.scored).toBe(8)
+    expect(bundle.pools).toHaveLength(8)
     const ids = bundle.pools.map((p) => p.pool.id)
     expect(Object.keys(bundle.poolDetails)).toEqual(ids)
     expect(Object.keys(bundle.history)).toEqual(ids)
@@ -175,9 +175,9 @@ describe('exportCommand', () => {
     expect(written).toMatchObject({ source: 'demo', generatedAt: NOW })
     // No --note, no `note` key: a demo export is unchanged by the field.
     expect(Object.hasOwn(written, 'note')).toBe(false)
-    expect(written.pools).toHaveLength(6)
+    expect(written.pools).toHaveLength(8)
     expect(lines).toEqual([
-      `exported demo bundle to ${result.path}: 6 pools, 2 scorecards, ${result.bytes} bytes`,
+      `exported demo bundle to ${result.path}: 8 pools, 2 scorecards, ${result.bytes} bytes`,
     ])
   }, 30_000)
 

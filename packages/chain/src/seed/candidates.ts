@@ -5,8 +5,9 @@
  * - Uniswap v3: `feeAmountTickSpacing(fee)` for the candidate tiers (a tier answered with 0 is not
  *   enabled), then `getPool(token0, token1, fee)` for every pair and enabled tier.
  * - Aerodrome v2: `PoolFactory.getPool(token0, token1, stable)`, stable and volatile.
- * - Slipstream: per CLFactory, `tickSpacings()` (every spacing it enables), then
- *   `getPool(token0, token1, tickSpacing)`.
+ * - Aero v2 (./aero.ts): `getPool(token0, token1)` on the volatile and on the stable factory.
+ * - Slipstream (Aerodrome and Aero): per CLFactory, `tickSpacings()` (every spacing it enables),
+ *   then `getPool(token0, token1, tickSpacing)`.
  * - Uniswap v4: StateView `getSlot0` of the PoolKey id for (currency0, currency1, fee, tickSpacing,
  *   hooks = address(0)) over the standard tiers, currencies sorted, native ETH as address(0); a
  *   pool counts when its sqrtPriceX96 ≠ 0 (initialized).
@@ -19,11 +20,12 @@ import { aerodromeCLFactoryAbi } from '../abi/aerodromeCLFactory.js'
 import { aerodromePoolFactoryAbi } from '../abi/aerodromePoolFactory.js'
 import { uniswapV3FactoryAbi } from '../abi/uniswapV3Factory.js'
 import { v4StateViewAbi } from '../abi/v4StateView.js'
-import { slipstreamPoolId, slipstreamPoolMetas } from '../adapters/aerodromeSlipstream.js'
+import { aerodromeSlipstreamFamily } from '../adapters/aerodromeSlipstream.js'
 import { aerodromeV2PoolId, aerodromeV2PoolMetas } from '../adapters/aerodromeV2.js'
+import type { SlipstreamFamily } from '../adapters/slipstreamFamily.js'
 import { uniswapV3PoolId, uniswapV3PoolMetas } from '../adapters/uniswapV3.js'
 import { computePoolId, uniswapV4PoolId, uniswapV4PoolMetas } from '../adapters/uniswapV4Pools.js'
-import { DexNotSupportedError } from '../adapters/unsupported.js'
+import type { SlipstreamDeployment } from '../addresses.js'
 import { lowercase, type ReaderContext, ZERO_ADDRESS } from '../internal/context.js'
 import {
   asBigint,
@@ -79,15 +81,18 @@ export function sortedPairs(addresses: readonly Address[]): Array<readonly [Addr
   return out
 }
 
-const erc20s = (tokens: readonly Address[]) => tokens.filter((t) => lowercase(t) !== NATIVE_ETH)
+/** The tokens other than native ETH, which only Uniswap v4 pairs. */
+export const erc20s = (tokens: readonly Address[]) =>
+  tokens.filter((t) => lowercase(t) !== NATIVE_ETH)
 
-function poolAddress(result: CallResult | undefined, what: string): Address | undefined {
+/** A factory's `getPool` answer: the pool, or undefined for address(0); a failed call throws. */
+export function poolAddress(result: CallResult | undefined, what: string): Address | undefined {
   const value = lowercase(String(expectResult(result, what)))
   return value === ZERO_ADDRESS ? undefined : value
 }
 
 /** The records whose creation block `createdAt` has, with it as `blockNumber`. */
-function dated<R>(
+export function dated<R>(
   records: readonly R[],
   idOf: (record: R) => string,
   createdAt: ReadonlyMap<string, bigint>,
@@ -98,7 +103,8 @@ function dated<R>(
   })
 }
 
-const codeTarget = (id: string, address: Address, lowerBound: bigint): CreationTarget => ({
+/** A contract pool dated by `eth_getCode`, searched from its factory's start block. */
+export const codeTarget = (id: string, address: Address, lowerBound: bigint): CreationTarget => ({
   id,
   probe: { kind: 'code', address },
   lowerBound,
@@ -183,61 +189,69 @@ export const seedAerodromeV2: DexSeeder = async (ctx, block, tokens) => {
   }
 }
 
-export const seedSlipstream: DexSeeder = async (ctx, block, tokens) => {
-  const deployments = ctx.addresses.aerodromeSlipstream
-  const abi = aerodromeCLFactoryAbi
-  const enabled = await multicallBatched(
-    ctx,
-    deployments.map((d) => ({ address: d.factory, abi, functionName: 'tickSpacings' })),
-    block,
-  )
-  const pairs = sortedPairs(erc20s(tokens))
-  const keys = deployments.flatMap((deployment, i) => {
-    const what = `slipstream ${deployment.name} tickSpacings()`
-    const spacings = asTuple(expectResult(enabled[i], what), what).map((s) => asNumber(s, what))
-    return pairs.flatMap(([token0, token1]) =>
-      spacings.map((tickSpacing) => ({ deployment, token0, token1, tickSpacing })),
+/** The seeder of a Slipstream family: every deployment's enabled spacings, then `getPool`. */
+export function slipstreamSeeder<D extends SlipstreamDeployment>(
+  family: SlipstreamFamily<D>,
+): DexSeeder {
+  return async (ctx, block, tokens) => {
+    const deployments = family.deployments(ctx)
+    const abi = aerodromeCLFactoryAbi
+    const enabled = await multicallBatched(
+      ctx,
+      deployments.map((d) => ({ address: d.factory, abi, functionName: 'tickSpacings' })),
+      block,
     )
-  })
-  const results = await multicallBatched(
-    ctx,
-    keys.map((k) => ({
-      address: k.deployment.factory,
-      abi,
-      functionName: 'getPool',
-      args: [k.token0, k.token1, k.tickSpacing],
-    })),
-    block,
-  )
-  const records = keys.flatMap((k, i) => {
-    const what = `slipstream ${k.deployment.name} getPool(${k.token0}, ${k.token1}, ${k.tickSpacing})`
-    const pool = poolAddress(results[i], what)
-    return pool === undefined ? [] : [{ ...k, pool }]
-  })
-  return {
-    dex: 'aerodrome-slipstream',
-    candidates: keys.length,
-    targets: records.map((r) =>
-      codeTarget(slipstreamPoolId(r.pool), r.pool, r.deployment.startBlock),
-    ),
-    async build(createdAt) {
-      const perDeployment = await Promise.all(
-        deployments.map((deployment) =>
-          slipstreamPoolMetas(
-            ctx,
-            deployment,
-            dated(
-              records.filter((r) => r.deployment === deployment),
-              (r) => slipstreamPoolId(r.pool),
-              createdAt,
+    const pairs = sortedPairs(erc20s(tokens))
+    const keys = deployments.flatMap((deployment, i) => {
+      const what = `${family.dex} ${deployment.name} tickSpacings()`
+      const spacings = asTuple(expectResult(enabled[i], what), what).map((s) => asNumber(s, what))
+      return pairs.flatMap(([token0, token1]) =>
+        spacings.map((tickSpacing) => ({ deployment, token0, token1, tickSpacing })),
+      )
+    })
+    const results = await multicallBatched(
+      ctx,
+      keys.map((k) => ({
+        address: k.deployment.factory,
+        abi,
+        functionName: 'getPool',
+        args: [k.token0, k.token1, k.tickSpacing],
+      })),
+      block,
+    )
+    const records = keys.flatMap((k, i) => {
+      const what = `${family.dex} ${k.deployment.name} getPool(${k.token0}, ${k.token1}, ${k.tickSpacing})`
+      const pool = poolAddress(results[i], what)
+      return pool === undefined ? [] : [{ ...k, pool }]
+    })
+    return {
+      dex: family.dex,
+      candidates: keys.length,
+      targets: records.map((r) =>
+        codeTarget(family.poolId(r.pool), r.pool, r.deployment.startBlock),
+      ),
+      async build(createdAt) {
+        const perDeployment = await Promise.all(
+          deployments.map((deployment) =>
+            family.poolMetas(
+              ctx,
+              deployment,
+              dated(
+                records.filter((r) => r.deployment === deployment),
+                (r) => family.poolId(r.pool),
+                createdAt,
+              ),
             ),
           ),
-        ),
-      )
-      return perDeployment.flat()
-    },
+        )
+        return perDeployment.flat()
+      },
+    }
   }
 }
+
+/** Aerodrome Slipstream: the Slipstream seeder over `aerodromeSlipstream`'s deployments. */
+export const seedSlipstream: DexSeeder = slipstreamSeeder(aerodromeSlipstreamFamily)
 
 export const seedUniswapV4: DexSeeder = async (ctx, block, tokens) => {
   const { stateView, startBlock } = ctx.addresses.uniswapV4
@@ -291,19 +305,3 @@ export const seedUniswapV4: DexSeeder = async (ctx, block, tokens) => {
       ),
   }
 }
-
-/** A seeder for a DEX this package does not read yet: `seedPools` lists it in `failed`. */
-function unsupportedSeeder(dex: Dex): DexSeeder {
-  return async () => {
-    throw new DexNotSupportedError(dex, 'seeding')
-  }
-}
-
-export const SEEDERS: Readonly<Record<Dex, DexSeeder>> = Object.freeze({
-  'uniswap-v3': seedUniswapV3,
-  'uniswap-v4': seedUniswapV4,
-  'aerodrome-v2': seedAerodromeV2,
-  'aerodrome-slipstream': seedSlipstream,
-  'aero-v2': unsupportedSeeder('aero-v2'),
-  'aero-slipstream': unsupportedSeeder('aero-slipstream'),
-})
