@@ -13,12 +13,13 @@
     "build": "pnpm -r --filter ./apps/web build",
     "build:static": "tsx apps/cli/src/main.ts export --demo --out apps/web/static-data/bundle.json && pnpm --filter @depthwatch/web build:static",
     "dev": "pnpm --filter @depthwatch/cli dev",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
+    "lint": "biome check --error-on-warnings .",
+    "lint:fix": "biome check --write --error-on-warnings .",
     "typecheck": "pnpm -r --parallel typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "check:all": "pnpm check && pnpm build && pnpm build:static",
     "depthwatch": "tsx apps/cli/src/main.ts"
   },
   "devDependencies": {

@@ -399,10 +399,10 @@ for near-real-time depth.
 
 ## Contributing
 
-`pnpm check` runs lint (Biome), typecheck and tests, the same as CI. Rules that are not
-negotiable: no new dependencies without updating `DESIGN.md`, raw token amounts stay `bigint`,
-tests never touch the network, and every metric is defined in `docs/METRICS.md` before it is
-implemented. See [CONTRIBUTING.md](CONTRIBUTING.md).
+`pnpm check` runs lint (Biome), typecheck and tests; `pnpm check:all` adds both builds, the same
+steps as CI. Rules that are not negotiable: no new dependencies without updating `DESIGN.md`, raw
+token amounts stay `bigint`, tests never touch the network, and every metric is defined in
+`docs/METRICS.md` before it is implemented. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

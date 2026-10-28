@@ -22,16 +22,19 @@ dashboard is built (`pnpm build`), and only so that `depthwatch serve` can serve
 
 ## Checks
 
-CI runs exactly these, in this order, and a pull request must pass all of them:
+CI runs exactly these, in this order, on Node 22.13 and 24; a pull request must pass all of them:
 
 ```sh
-pnpm lint        # biome check .   (format + lint; `pnpm lint:fix` applies fixes)
-pnpm typecheck   # tsc --noEmit in every package
-pnpm test        # vitest run (node project for packages/api/cli, jsdom project for web)
-pnpm build       # vite build of apps/web
+pnpm lint          # biome check .   (format + lint, warnings fail; `pnpm lint:fix` applies fixes)
+pnpm typecheck     # tsc --noEmit in every package
+pnpm test          # vitest run (node project for packages/api/cli, jsdom project for web)
+pnpm build         # vite build of apps/web
+pnpm build:static  # export the demo bundle, then the static site build
 ```
 
-`pnpm check` runs the first three. To work on one package without waiting for the rest:
+`pnpm check` runs the first three and `pnpm check:all` all five. CI also runs `pnpm audit --prod`,
+which reports advisories in production dependencies without failing. To work on one package
+without waiting for the rest:
 
 ```sh
 npx biome check --write packages/core
