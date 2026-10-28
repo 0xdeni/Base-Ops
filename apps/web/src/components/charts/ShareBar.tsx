@@ -58,7 +58,7 @@ export function ShareBar(props: ShareBarProps) {
             role="img"
             aria-label={`Active range ${shareOf(a)} of the liquidity within ${band}`}
           >
-            <i className="sh s1" data-bar="" style={{ flexBasis: `max(6px, ${pctOf(a)})` }} />
+            <i className="sh s1" style={{ flexBasis: `max(6px, ${pctOf(a)})` }} />
             {a < 1 ? <i className="sh s3" /> : null}
           </div>
           <p className="legend" aria-hidden="true">
@@ -90,7 +90,7 @@ export function ShareBar(props: ShareBarProps) {
           role="img"
           aria-label={`${words.top}, ${words.next.toLowerCase()}, ${words.rest.toLowerCase()}`}
         >
-          <i className="sh s1" data-bar="" style={{ flexBasis: `max(6px, ${pctOf(p.top)})` }} />
+          <i className="sh s1" style={{ flexBasis: `max(6px, ${pctOf(p.top)})` }} />
           {p.next > 0 ? <i className="sh s2" style={{ flexBasis: pctOf(p.next) }} /> : null}
           {p.rest > 0 ? <i className="sh s3" /> : null}
         </div>

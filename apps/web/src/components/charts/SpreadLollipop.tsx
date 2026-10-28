@@ -23,7 +23,10 @@ const fillable = (s: SpreadPoint): s is SpreadPoint & { spreadBps: number } =>
 export function lollipopAxis(spreads: readonly SpreadPoint[]): { max: number; ticks: number[] } {
   const top = Math.max(0, ...spreads.map((s) => (fillable(s) ? s.spreadBps : 0)))
   const step = niceStepUp(top > 0 ? top : 1, 3)
-  return { max: step * 3, ticks: [0, step, step * 2, step * 3].map((v) => Number(v.toPrecision(12))) }
+  return {
+    max: step * 3,
+    ticks: [0, step, step * 2, step * 3].map((v) => Number(v.toPrecision(12))),
+  }
 }
 
 export function lollipopLabel(spreads: readonly SpreadPoint[]): string {
@@ -53,7 +56,7 @@ export function SpreadLollipop({
             <div className="dot-r" key={s.notionalUsd}>
               <span className="k num">{usd(s.notionalUsd)}</span>
               <span className="dot-t" style={vars({ '--x': x })}>
-                {ok ? <i className="dot-s" data-bar="" /> : null}
+                {ok ? <i className="dot-s" /> : null}
                 <i className={`dot-d${ok ? '' : ' ring'}`} />
                 <b className="num">{ok ? bps(s.spreadBps) : cantAbsorb(s.notionalUsd)}</b>
               </span>
@@ -67,7 +70,7 @@ export function SpreadLollipop({
           {axis.ticks.map((v, i) => (
             <span
               key={v}
-              className={i === axis.ticks.length - 1 ? 'dp-last' : undefined}
+              className={i === axis.ticks.length - 1 ? 'tk dp-last' : 'tk'}
               style={vars({ '--x': v / axis.max })}
               aria-hidden={i === axis.ticks.length - 1 ? undefined : true}
             >

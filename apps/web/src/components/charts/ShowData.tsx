@@ -25,7 +25,10 @@ export function ShowData({
   const has = children !== undefined && children !== null && children !== false
   if (!has && !note) return null
   return (
-    <div className={`chart-foot${band ? ' on-band' : ''}${className ? ` ${className}` : ''}`}>
+    <div
+      className={`chart-foot${band ? ' on-band' : ''}${className ? ` ${className}` : ''}`}
+      data-furniture={band ? '' : undefined}
+    >
       <div className="chart-foot-row">
         {has ? <DisclosureTrigger state={state} label="Show data" openLabel="Hide data" /> : null}
         {note ? <p className="cap chart-cap">{note}</p> : null}

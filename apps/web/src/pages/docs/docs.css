@@ -1,76 +1,63 @@
-/* Methodology and Not found (docs/design/visual-v3.md §6.8–§6.9, ia-v3 §4.8). Rhythm: answer to
-   the metric index 48 (32 on phones), index to the sections 64 (32), sections 48 top and bottom
-   under a border-subtle hairline (32 on phones), prose at 66ch in --t-prose, figures 32 below the
-   prose with a caption 12 below. Classes are page-prefixed. */
+/* Methodology (docs/design/visual-v4.md §6.9, ia-v3 §4.8). The title section and the band come
+   from styles/; here: the metric blocks over the band, the conventions, the sticky outline, the
+   prose sections (16 px at 66ch under 1 px rules, the lowercase heading with "Show formula" at its
+   right), the figures and their captions. Rhythm: metric blocks 48 to the conventions, 32 to the
+   sections; sections 48 top and bottom (32 on phones); figures 32 under the prose, captions 12
+   under the figure. Classes are page-prefixed `doc-`. */
 
-/* "On this page" as a disclosure under the answer (below 1200 px). */
+/* ---------- The metric blocks: three over the band, the rest on the canvas ---------- */
+.doc-index .grid > li {
+  display: flex;
+}
+.doc-metric {
+  display: grid;
+  align-content: start;
+  gap: var(--s3);
+  width: 100%;
+}
+.doc-metric .take {
+  max-width: 44ch;
+}
+.doc-metric .h2:focus-visible {
+  outline: none;
+}
+
+/* ---------- Conventions and the outline ---------- */
+.doc-rest {
+  margin-top: var(--s7);
+}
+.doc-conv {
+  color: var(--text-2);
+}
 .doc-toc-disc {
   margin-top: var(--s5);
 }
 .doc-toc-disc .disc-inner {
   padding-top: var(--s2);
 }
-
-/* ---------- The metric index (focal): a definition list on a border rule ---------- */
-.doc-index {
-  margin-top: var(--s7);
-  max-width: 820px;
-}
-.doc-index dl {
-  border-top: 1px solid var(--border);
-}
-.doc-index dl > div {
-  display: grid;
-  grid-template-columns: 10rem minmax(0, 1fr);
-  gap: var(--s4);
-  align-items: baseline;
-  padding-block: var(--s4);
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: var(--t-data);
-  line-height: 1.43;
-}
-.doc-term {
-  color: var(--text-1);
-  font-weight: 500;
-}
-.doc-index dd {
-  color: var(--text-2);
-  text-wrap: pretty;
-}
-.doc-conv {
-  margin-top: var(--s5);
-  max-width: 66ch;
-  color: var(--text-2);
-}
-
-/* ---------- Body: the sticky outline beside the sections from 1200 px ---------- */
 .doc-body {
-  margin-top: var(--s8);
+  margin-top: var(--s6);
 }
 .doc-body.is-wide {
   display: grid;
   grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
-  column-gap: var(--s6);
+  column-gap: var(--s7);
 }
 .doc-secs {
   min-width: 0;
 }
 .doc-toc {
   position: sticky;
-  top: calc(var(--appbar-h) + var(--s5));
+  top: calc(var(--chrome-h) + var(--s5));
   align-self: start;
-  margin-top: calc(var(--s7) + 1px);
+  margin-top: var(--s7);
 }
 .doc-toc-h {
   margin-bottom: var(--s3);
-  font-size: var(--t-small);
-  line-height: 1.385;
-  font-weight: 500;
-  color: var(--text-2);
 }
-/* The outline: a 1 px rail with a 2 px text-1 bar on the current section. */
+/* The outline: a 1 px rail with a 4 px --nav-ind bar on the current section. */
 .doc-outline {
-  border-left: 1px solid var(--border-subtle);
+  border-left: 1px solid var(--line);
 }
 .doc-outline a {
   display: flex;
@@ -78,15 +65,16 @@
   min-height: 32px;
   margin-left: -1px;
   padding: 6px 0 6px var(--s4);
-  border-left: 2px solid transparent;
+  border-left: 4px solid transparent;
   color: var(--text-2);
   font-size: var(--t-data);
-  line-height: 1.43;
-  transition: color var(--dur-hover) ease;
+  font-weight: 650;
+  line-height: 1.4;
+  transition: color var(--d-hover) ease;
 }
 .doc-outline a[aria-current] {
   color: var(--text-1);
-  border-left-color: var(--text-1);
+  border-left-color: var(--nav-ind);
 }
 .doc-outline a:focus-visible {
   outline-offset: -2px;
@@ -107,8 +95,10 @@
   display: grid;
   grid-template-columns: minmax(0, 66ch);
   padding-block: var(--s7);
-  border-top: 1px solid var(--border-subtle);
-  font-size: var(--t-prose);
+  border-top: 1px solid var(--line);
+}
+.doc-sec:first-child {
+  border-top: 2px solid var(--text-1);
 }
 .doc-sec-head {
   display: grid;
@@ -130,8 +120,8 @@
 }
 .doc-prose {
   margin-top: var(--s4);
-  font-size: var(--t-prose);
-  line-height: 1.625;
+  font-size: var(--t-body);
+  line-height: 1.6;
   color: var(--text-1);
 }
 .doc-prose p + p {
@@ -139,6 +129,7 @@
 }
 .doc-formula {
   max-width: 100%;
+  margin-top: var(--s5);
 }
 
 /* ---------- Figures ---------- */
@@ -150,20 +141,59 @@
   min-width: 0;
 }
 .doc-legend {
-  margin-bottom: var(--s3);
+  margin: 0 0 var(--s3);
 }
 .doc-cap {
   margin-top: var(--s3);
   max-width: 60ch;
   text-wrap: pretty;
   font-size: var(--t-small);
-  line-height: 1.385;
+  line-height: 1.4;
   color: var(--text-2);
+}
+/* Flat areas under the depth schematic; the lines and points carry the contrast. */
+.doc-area {
+  stroke: none;
+}
+.doc-area.sell {
+  fill: var(--sell);
+  fill-opacity: 0.18;
+}
+.doc-area.buy {
+  fill: var(--buy);
+  fill-opacity: 0.3;
+}
+/* On black a quieter Yellow keeps the area from reading as a colour of its own. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .doc-area.buy {
+    fill-opacity: 0.16;
+  }
+}
+:root[data-theme="dark"] .doc-area.buy {
+  fill-opacity: 0.16;
+}
+/* The buy line's 1 px ink edge in light: a 4 px edge stroke under the 2 px Yellow one. */
+.doc-edge {
+  fill: none;
+  stroke: var(--buy-edge);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.doc-pt.sell {
+  fill: var(--sell);
+  stroke: var(--canvas);
+  stroke-width: 2px;
+}
+.doc-pt.buy {
+  fill: var(--buy);
+  stroke: var(--buy-edge);
+  stroke-width: 1px;
 }
 .doc-ring {
   fill: var(--canvas);
   stroke: var(--text-1);
-  stroke-width: 1.5px;
+  stroke-width: 2.5px;
 }
 
 /* Health: the grade bands with their shapes on the 0–100 total. */
@@ -180,8 +210,7 @@
   display: block;
   width: 100%;
   height: 4px;
-  border-radius: 1px;
-  background: var(--border);
+  background: var(--line-2);
 }
 
 /* Tick labels on a percentage axis: centred, the ends kept inside. */
@@ -191,8 +220,7 @@
   font-size: var(--t-caption);
   line-height: 16px;
   font-weight: 500;
-  letter-spacing: 0.01em;
-  color: var(--text-3);
+  color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
 .doc-grades .doc-axis {
@@ -202,17 +230,18 @@
   position: absolute;
   top: 0;
   left: calc(var(--at, 0) * 100%);
-  transform: translateX(-50%);
+  translate: -50% 0;
   white-space: nowrap;
 }
 .doc-tick.is-start {
-  transform: none;
+  translate: none;
 }
 .doc-tick.is-end {
-  transform: translateX(-100%);
+  translate: -100% 0;
 }
 .doc-tick.is-gap {
-  color: var(--text-2);
+  color: var(--text-1);
+  font-weight: 650;
 }
 
 /* Gaps: turnover over the gap score on one log scale; under 3× is drawn quiet. */
@@ -233,7 +262,7 @@
 }
 .doc-gap-track {
   position: relative;
-  height: 4px;
+  height: 10px;
 }
 .doc-gap-quiet,
 .doc-gap-fill {
@@ -244,39 +273,29 @@
 .doc-gap-quiet {
   left: 0;
   width: calc(var(--gap) * 100% - 1px);
-  border-radius: 2px 0 0 2px;
-  background: var(--control);
+  background: var(--surface-2);
 }
 .doc-gap-fill {
   left: calc(var(--gap) * 100% + 1px);
   right: 0;
-  border-radius: 0 2px 2px 0;
   background: var(--text-1);
 }
 .doc-gap-tick {
   position: absolute;
-  top: -4px;
+  top: -5px;
   left: calc(var(--gap) * 100%);
-  width: 1px;
-  height: 12px;
-  background: var(--text-3);
+  width: 2px;
+  height: 20px;
+  margin-left: -1px;
+  background: var(--text-1);
 }
 
 @media (max-width: 52.49em) {
-  .doc-index {
-    margin-top: var(--s6);
-  }
-  .doc-body {
+  .doc-rest {
     margin-top: var(--s6);
   }
   .doc-sec {
     padding-block: var(--s6);
-  }
-}
-@media (max-width: 37.49em) {
-  .doc-index dl > div {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 2px;
   }
 }
 @media (forced-colors: active) {

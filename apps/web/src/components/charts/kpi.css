@@ -87,6 +87,24 @@
 .kpi-h.b .kpi-line {
   margin-left: -1.5px;
 }
+/* The stretch of the line inside a bar that holds its KPI: ink dashes on the bar's own colour,
+   which covers the white line under it. */
+.kpi-line-in {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 0;
+  border-left: 3px dashed var(--g100);
+}
+.kpi-h.s .kpi-line-in {
+  margin-right: -1.5px;
+  background: var(--sell-band);
+}
+.kpi-h.b .kpi-line-in {
+  margin-left: -1.5px;
+  background: var(--buy-band);
+}
 .kpi-lab {
   position: absolute;
   top: -48px;
@@ -111,12 +129,22 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* The words inside a bar sit above the KPI line on a patch of the bar's colour, so the line never
+   runs through them. */
 .kpi-in {
   position: absolute;
   top: 50%;
-  z-index: 2;
+  z-index: 4;
   translate: 0 -50%;
+  margin: -4px -8px;
+  padding: 4px 8px;
   color: var(--g100);
+}
+.kpi-h.s .kpi-in {
+  background: var(--sell-band);
+}
+.kpi-h.b .kpi-in {
+  background: var(--buy-band);
 }
 .kpi-in small,
 .kpi-out small {
@@ -165,8 +193,14 @@
 }
 
 @media (max-width: 52.49em) {
+  /* The legend row drops its middle; the band's heading there stays for assistive tech. */
   .kpi-mid {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .kpi-head {
     grid-template-columns: 1fr 1fr;
@@ -189,6 +223,11 @@
   }
   .kpi-under > :last-child {
     padding-left: 10px;
+  }
+  /* A KPI line near the spine: its label is set outward, away from the other side's. */
+  .kpi-h.s .kpi-lab.is-out,
+  .kpi-h.b .kpi-lab.is-out {
+    translate: 0 0;
   }
 }
 

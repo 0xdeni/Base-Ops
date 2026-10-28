@@ -3,17 +3,17 @@
  * of a session, on whichever route the visitor lands, the page builds itself once: the band's
  * ground drops, the title rises, bars grow from their spine, the blocks settle over the band. Every
  * step ends by 450 ms. Route changes, Back, Forward and refetches never play it; `?replay=1`
- * replays it for review. The gate is the `sessionStorage` key `dw-first-view`, written once the
+ * replays it on request. The gate is the `sessionStorage` key `dw-first-view`, written once the
  * timeline has started; blocked storage simply plays it again.
  *
- * The steps run as Web Animations that all start from one instant, so a test (or a review tool)
- * can pause them and seek any frame. Elements opt in with attributes their page or chart sets:
+ * The steps run as Web Animations that all start from one instant, so a test can pause them and
+ * seek any frame. Elements opt in with attributes their page or chart sets:
  * - `.band-ground`: the band's ground layer (clipped from 60 % to full);
  * - `[data-rise]`: the title parts, in order (the figure and sentence on Home, title and answer);
  * - `[data-in]`: the eyebrow, lead and actions;
  * - `[data-bar]`: a bar that grows from its spine or baseline (`data-bar="y"` grows vertically;
  *   its `transform-origin` comes from its stylesheet). Bars inside a `[data-over]` block grow with
- *   that block, the rest with the band;
+ *   that block and bars on the band with the band; any other bar is drawn at once;
  * - `[data-over]`: a block stacked over the band;
  * - `[data-furniture]`: legends, totals, labels, axes, captions and readouts, which fade in after
  *   their marks so no value leads its mark;
@@ -95,34 +95,35 @@ function reducedSteps(root: ParentNode): FirstViewStep[] {
 export function firstViewSteps(root: ParentNode, reduced: boolean): FirstViewStep[] {
   if (reduced) return reducedSteps(root)
   const out: FirstViewStep[] = []
-  const add = (el: Element, keyframes: Keyframe[], delay: number, duration: number) =>
+  const add = (el: Element, keyframes: Keyframe[], delay: number, duration: number) => {
     out.push({ el, keyframes, delay, duration, easing: EASE.out })
+  }
   // 1. The band's ground: clipped from its top 60 % to full.
   for (const el of all(root, '.band-ground'))
     add(el, [{ clipPath: 'inset(0 0 40% 0)' }, { clipPath: 'inset(0 0 0 0)' }], 0, 380)
   // 2. Title parts rise 24 px, 40 ms apart.
-  all(root, '[data-rise]').forEach((el, i) => add(el, rise(24), Math.min(i, 2) * 40, 360))
+  for (const [i, el] of all(root, '[data-rise]').entries())
+    add(el, rise(24), Math.min(i, 2) * 40, 360)
   // 3. Eyebrow, lead and actions rise 16 px, 30 ms apart.
-  all(root, '[data-in]').forEach((el, i) => add(el, rise(16), 60 + Math.min(i, 3) * 30, 300))
+  for (const [i, el] of all(root, '[data-in]').entries())
+    add(el, rise(16), 60 + Math.min(i, 3) * 30, 300)
   // 4. Bars on the band grow from the spine or the baseline, 10 ms apart.
   const bars = all(root, '[data-bar]')
-  bars
-    .filter((el) => !el.closest('[data-over]'))
-    .forEach((el, i) => add(el, grow(el), 80 + Math.min(i, 10) * 10, 260))
+  const onBand = bars.filter((b) => !b.closest('[data-over]') && b.closest('.band'))
+  for (const [i, el] of onBand.entries()) add(el, grow(el), 80 + Math.min(i, 10) * 10, 260)
   // 5. Blocks over the band rise 24 px; 6. the bars inside each one grow with it.
-  all(root, '[data-over]').forEach((block, i) => {
+  for (const [i, block] of all(root, '[data-over]').entries()) {
     add(block, rise(24), 80 + Math.min(i, 2) * 20, 320)
-    bars
-      .filter((el) => el.closest('[data-over]') === block)
-      .forEach((el, j) => add(el, grow(el), 100 + Math.min(j, 10) * 10, 240))
-  })
+    const inside = bars.filter((b) => b.closest('[data-over]') === block)
+    for (const [j, el] of inside.entries()) add(el, grow(el), 100 + Math.min(j, 10) * 10, 240)
+  }
   // 7. Chart furniture fades in after the marks, linear.
   for (const el of all(root, '[data-furniture]')) {
     out.push({ el, keyframes: opacityIn, delay: 260, duration: 160, easing: 'linear' })
   }
   // 8. Field squares appear largest first, scaling from 0.6.
   const squares = all(root, '[data-sq]')
-  squares.forEach((el, i) => {
+  for (const [i, el] of squares.entries()) {
     const at = el instanceof HTMLElement || el instanceof SVGElement ? el.style.transform : ''
     const from = `${at} scale(0.6)`.trim()
     const to = `${at} scale(1)`.trim()
@@ -136,7 +137,7 @@ export function firstViewSteps(root: ParentNode, reduced: boolean): FirstViewSte
       40 + Math.round(Math.sqrt(rank) * 200),
       200,
     )
-  })
+  }
   // 9. The curve's areas open from the mid line; 10. its points fade in.
   for (const el of all(root, '[data-area]'))
     add(el, [{ clipPath: 'inset(0 50% 0 50%)' }, { clipPath: 'inset(0 0 0 0)' }], 60, 320)
@@ -174,7 +175,9 @@ export function playFirstView(
 
 /** The landing route has rendered its content: something in it, and no skeleton or busy region. */
 export function isSettled(root: Element): boolean {
-  return root.childElementCount > 0 && root.querySelector('.skel-stack, [aria-busy="true"]') === null
+  return (
+    root.childElementCount > 0 && root.querySelector('.skel-stack, [aria-busy="true"]') === null
+  )
 }
 
 /**

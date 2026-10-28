@@ -67,20 +67,12 @@ export function stripLayout(
   return { cells: group(points, Math.max(1, Math.ceil(points.length / room))), gap: 2, dense: true }
 }
 
-/** The cells alone (kept for callers that only need the grouping). */
-export function stripCells(
-  points: readonly Pick<MmSampleDto, 'timestamp' | 'withinKpi'>[],
-  widthPx: number,
-): StripCell[] {
-  return stripLayout(points, widthPx).cells
-}
-
-/** "36 of 84 samples within KPI": the checkable samples only, as the uptime counts them. */
+/** "36 of 84 samples within KPI": the evaluable samples only, as the uptime counts them. */
 export function stripLabel(points: readonly Pick<MmSampleDto, 'withinKpi'>[]): string {
   const evaluable = points.filter((p) => p.withinKpi !== null).length
   const within = points.filter((p) => p.withinKpi === true).length
-  const unchecked = points.length - evaluable
-  return `${within} of ${evaluable} samples within KPI${unchecked ? `, ${unchecked} not checkable` : ''}`
+  const unpriced = points.length - evaluable
+  return `${within} of ${evaluable} samples within KPI${unpriced ? `, ${unpriced} not evaluable` : ''}`
 }
 
 const KIND_CLASS: Record<StripKind, string> = { ok: 'ok', bad: 'br', none: 'na' }
@@ -121,7 +113,6 @@ export function UptimeStrip({
             <i
               key={c.from}
               className={KIND_CLASS[c.kind]}
-              data-bar="y"
               title={
                 c.samples > 1
                   ? `${full(c.from)} to ${full(c.to)}, ${c.samples} samples`

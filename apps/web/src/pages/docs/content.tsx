@@ -1,8 +1,10 @@
 /**
- * Methodology's copy (ia-v3 §4.8): the metric index and one section per anchor, each a plain
- * explanation of at most 150 words (v2's text, in the fixed vocabulary of principles CP9, without
- * "we"), an optional schematic and the exact formula from docs/METRICS.md and docs/SCORECARDS.md.
- * Formulas use only glyphs the self-hosted mono subset carries (no √, Σ or ∈).
+ * Methodology's copy (ia-v3 §4.8, docs/design/visual-v4.md §6.9): the metric blocks and one
+ * section per anchor, each a plain explanation of at most 150 words (in the fixed vocabulary of
+ * principles CP9, without "we"), an optional schematic and the exact formula from
+ * docs/METRICS.md and docs/SCORECARDS.md. Section titles are lowercase words (acronyms and
+ * symbols keep their case). Formulas use only glyphs the self-hosted mono subset carries (no √,
+ * Σ or ∈).
  */
 import { GAP_FEED_MIN_VOLUME_USD } from '@depthwatch/core'
 import type { ReactNode } from 'react'
@@ -12,7 +14,7 @@ import { GapScale, HealthFigure } from './scales.js'
 
 export interface MetricSection {
   id: string
-  /** The index term and the "On this page" label. */
+  /** The "On this page" label; lowercased, the metric block's heading. */
   short: string
   /** The index definition: one line (ia-v3 §4.8). */
   definition: string
@@ -30,7 +32,7 @@ export const SECTIONS: readonly MetricSection[] = [
     id: 'depth',
     short: 'Depth',
     definition: `Dollars it takes to move the price 1, 2 or ${u(5, '%')}, on each side.`,
-    title: `Depth at ±1, 2 and ${u(5, '%')}`,
+    title: `depth at ±1, 2 and ${u(5, '%')}`,
     body: (
       <>
         <p>
@@ -54,7 +56,7 @@ export const SECTIONS: readonly MetricSection[] = [
     id: 'spread',
     short: 'Spread',
     definition: 'What a round trip of $1K, $10K or $100K costs, fees included.',
-    title: 'Effective spread',
+    title: 'effective spread',
     body: (
       <p>
         Effective spread is what a round trip costs: buy N dollars of the first token, sell N
@@ -96,7 +98,7 @@ export const SECTIONS: readonly MetricSection[] = [
     id: 'persistence',
     short: 'Persistence',
     definition: 'Whether the depth is still there from one snapshot to the next.',
-    title: 'Persistence',
+    title: 'persistence',
     body: (
       <p>
         {`A pool that is deep at snapshot time but empty a tenth of the day is not deep. Persistence looks at every snapshot of the last ${u(24, 'h')} and ${u(7, 'd')}: stability compares the worst tenth of readings with a normal one, and uptime counts how often the pool held at least half its usual depth. Both are unknown, and the health score treats them as neutral, until there are three snapshots that span at least a quarter of the window. A pool with no depth at all scores zero for it.`}
@@ -116,7 +118,7 @@ export const SECTIONS: readonly MetricSection[] = [
     short: 'Health',
     definition:
       'One score from 0 to 100, and a grade from A to F for pools deep enough to be rated.',
-    title: 'Health and grades',
+    title: 'health and grades',
     body: (
       <>
         <p>
@@ -149,7 +151,7 @@ export const SECTIONS: readonly MetricSection[] = [
     id: 'gaps',
     short: 'Gaps',
     definition: 'Pools that trade far more each day than the liquidity near their price.',
-    title: 'Gap score',
+    title: 'gap score',
     body: (
       <p>
         {`A gap is a pool where a day’s trading is many times the money sitting near its price: real demand, thin liquidity. That is where added liquidity earns the most fees and does the most good. Turnover is the day’s volume over the depth ±${u(2, '%')}; the gap score maps 1× to 0, 10× to 50 and 100× or more to 100. The gaps list only includes pools with at least ${usd(GAP_FEED_MIN_VOLUME_USD)} of ${u(24, 'h')} volume, so dust pools with a single trade stay out.`}
@@ -166,7 +168,7 @@ export const SECTIONS: readonly MetricSection[] = [
     id: 'scorecards',
     short: 'Scorecards',
     definition: 'A market maker’s promised depth, checked at every snapshot.',
-    title: 'Market-maker scorecards and uptime',
+    title: 'market-maker scorecards and uptime',
     body: (
       <>
         <p>
@@ -190,7 +192,11 @@ export const SECTIONS: readonly MetricSection[] = [
 ]
 
 /** The closing section (ia-v3 §4.8 "End"). */
-export const REPRODUCE = { id: 'reproduce', short: 'Reproduce any number' } as const
+export const REPRODUCE = {
+  id: 'reproduce',
+  short: 'Reproduce any number',
+  title: 'reproduce any number',
+} as const
 
 /** Every anchor on the page, in order, for "On this page". */
 export const OUTLINE: ReadonlyArray<{ id: string; label: string }> = [

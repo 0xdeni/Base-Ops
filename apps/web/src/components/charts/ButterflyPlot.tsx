@@ -28,7 +28,11 @@ export function barWidth(w: number, value: number | null): string {
  * the pair at 15 px / 750 and the venue at 13 px run about 8.6 and 6.8 px a glyph. A row that
  * would push its label off the figure stacks it on its own line instead.
  */
-export function labelFits(row: Pick<ButterflyRow, 'pair' | 'venue' | 'sellW'>, trackPx: number, lanePx: number) {
+export function labelFits(
+  row: Pick<ButterflyRow, 'pair' | 'venue' | 'sellW'>,
+  trackPx: number,
+  lanePx: number,
+) {
   const need = row.pair.length * 8.6 + 8 + row.venue.length * 6.8 + 12
   return (1 - Math.min(1, row.sellW)) * trackPx + lanePx >= need
 }
@@ -55,6 +59,7 @@ export function TotalRow({
 }: {
   m: ButterflyModel
   scope: string
+  /** The label fits left of the sell side; it stays in the DOM, hidden, when it does not. */
   showLabel: boolean
 }) {
   const ws = m.max > 0 ? m.total.sell / m.max : 0
@@ -67,11 +72,13 @@ export function TotalRow({
       role="img"
       aria-label={`All of ${scope}: ${usd(m.total.sell)} on the sell side and ${usd(m.total.buy)} on the buy side within 2${NB}%.${rest}`}
     >
-      {showLabel ? (
-        <div className="bf-lab" style={vars({ '--ws': ws.toFixed(4) })}>
-          <b>All of {scope}</b>
-        </div>
-      ) : null}
+      <div
+        className={`bf-lab${showLabel ? '' : ' is-off'}`}
+        data-furniture=""
+        style={vars({ '--ws': ws.toFixed(4) })}
+      >
+        <b>All of {scope}</b>
+      </div>
       <div className="bf-h bf-h--s">
         <div className="bf-t" data-bar="">
           <Segments side="s" segs={m.segments.sell} />
@@ -90,7 +97,7 @@ export function Bracket({ m }: { m: ButterflyModel }) {
   const b = m.bracket
   if (!b) return null
   return (
-    <div className="bf-call" aria-hidden="true">
+    <div className="bf-call" data-furniture="" aria-hidden="true">
       <div className="bf-h bf-h--s">
         <div className="bf-t">
           <i className="bf-call-in s" style={{ width: pct(b.sellW) }} />
@@ -119,7 +126,7 @@ export interface RowProps {
 export function PoolRow({ row, index, on, stacked, scope, gap }: RowProps) {
   return (
     <li className={`bf-r${on ? ' is-on' : ''}${stacked ? ' is-stacked' : ''}`} data-k={index}>
-      <div className="bf-lab" style={vars({ '--ws': row.sellW.toFixed(4) })}>
+      <div className="bf-lab" data-furniture="" style={vars({ '--ws': row.sellW.toFixed(4) })}>
         <b>{row.pair}</b>
         <span className="meta">{row.venue}</span>
       </div>
@@ -134,6 +141,7 @@ export function PoolRow({ row, index, on, stacked, scope, gap }: RowProps) {
           {gap ? (
             <Link
               className="bf-gap"
+              data-furniture=""
               to="/gaps"
               style={{ left: `calc(${barWidth(row.buyW, row.buy)} + 10px)` }}
               aria-label={`Liquidity gap: ${row.pair} trades ${ratio(gap.turnoverRatio)} its depth a day`}
@@ -151,7 +159,7 @@ export function PoolRow({ row, index, on, stacked, scope, gap }: RowProps) {
 export function Axis({ m, kept }: { m: ButterflyModel; kept: readonly number[] }): ReactNode {
   const at = (v: number) => pct(v / m.max)
   return (
-    <div className="bf-axis" aria-hidden="true">
+    <div className="bf-axis" data-furniture="" aria-hidden="true">
       <div className="bf-ticks s">
         {kept.map((v) => (
           <span key={v} style={{ left: pct(1 - v / m.max) }}>

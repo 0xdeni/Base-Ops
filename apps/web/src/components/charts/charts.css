@@ -128,8 +128,12 @@
   color: var(--text-1);
   box-shadow: var(--edge), var(--sh-band), var(--hl);
 }
-.band-data :focus-visible {
+.chart-foot.on-band .band-data :focus-visible {
   outline-color: var(--focus);
+}
+/* Inside the block the band's light secondary text would vanish: it reads `--text-2` again. */
+.band .band-data :is(.eyebrow, .meta, .cap, .caption, .t2, .muted, .faint, .take, .takeaway) {
+  color: var(--text-2);
 }
 @media (min-width: 37.5em) {
   .band-data {

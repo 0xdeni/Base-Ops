@@ -75,7 +75,9 @@ export function SmallMultiples<T extends { timestamp: number }>({
   const W = useChartWidth(wrapRef)
   const phone = useIsPhone()
   const [scrub, setScrub] = useState(-1)
-  const inWindow = points.filter((p) => p.timestamp >= domain[0] - 1 && p.timestamp <= domain[1] + 1)
+  const inWindow = points.filter(
+    (p) => p.timestamp >= domain[0] - 1 && p.timestamp <= domain[1] + 1,
+  )
   const fitted = fittedDomain(inWindow, domain)
   const own = series.map((s) => seriesYDomain(inWindow, s))
   const shared = sharedY ? unionDomain(own) : null
@@ -118,7 +120,7 @@ export function SmallMultiples<T extends { timestamp: number }>({
   if (inWindow.length < 2) {
     return <p className="chart-note">Fewer than 2 snapshots in this window.</p>
   }
-  const ticks = clearOfEdges(fittedTimeTicks(state.dom), fx, SM_LEFT, plotR)
+  const ticks = clearOfEdges(fittedTimeTicks(state.dom), fx, 0, W)
   return (
     <>
       {/* biome-ignore lint/a11y/useSemanticElements: a focusable group of plots scrubbed with the arrow keys (CH2) */}

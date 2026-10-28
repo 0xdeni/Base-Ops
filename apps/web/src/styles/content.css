@@ -57,6 +57,11 @@
 .blk--over {
   box-shadow: var(--edge), var(--sh-band), var(--hl);
 }
+/* A focusable block over the band straddles the band and the canvas: its ring sits inside its
+   edge, on the block's own surface, so no stretch of it is lost against the band (A4). */
+.blk--over:focus-visible {
+  outline-offset: -5px;
+}
 /* A sheet of rows (the table sheet, the sections sheet): no padding, clipped to its radius. */
 .blk--flush {
   padding: 0;
@@ -152,21 +157,6 @@
     grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
     column-gap: var(--s7);
   }
-}
-.title-block {
-  display: grid;
-  gap: var(--s3);
-}
-.subline {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s1) var(--s5);
-  color: var(--text-2);
-  font-size: var(--t-data);
-}
-.answer-block {
-  margin-top: var(--s5);
 }
 .actions {
   display: flex;

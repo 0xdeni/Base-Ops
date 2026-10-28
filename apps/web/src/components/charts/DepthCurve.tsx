@@ -54,7 +54,7 @@ const sideWord = (p: CurvePoint) => `${p.pct < 0 ? 'Sell' : 'Buy'} ${pct(p.pct)}
 function DirectLabel({ p, g }: { p: CurvePoint; g: CurveGeometry }) {
   const x = g.fx(p.pct)
   return (
-    <g className="cv-lab">
+    <g className="cv-lab" data-furniture="">
       <line className="lead-l" x1={x} x2={x} y1={g.top - 10} y2={g.fy(p.usd) - 12} />
       <text className="lab-k" x={x} y={g.top - 52} textAnchor="middle">
         {sideWord(p)}
@@ -97,12 +97,12 @@ export function DepthCurve({ snapshot, token0, token1, heading, children }: Dept
   const sell2 = twoPct(points, 'sell')
   const buy2 = twoPct(points, 'buy')
   const head = (
-    <div className="cv-head">
+    <div className="cv-head" data-furniture="">
       <span className="meta">
         <i className="sw sell-band" aria-hidden="true" />
         Sell side, price down
       </span>
-      {heading ? <div className="cv-mid">{heading}</div> : <span />}
+      <div className="cv-mid">{heading}</div>
       <span className="meta">
         <i className="sw buy-band" aria-hidden="true" />
         Buy side, price up
@@ -111,7 +111,7 @@ export function DepthCurve({ snapshot, token0, token1, heading, children }: Dept
   )
   if (!points.length) {
     return (
-      <div className="cv-wrap">
+      <div className="cv-wrap" data-chart="">
         {head}
         <p className="chart-note">
           Neither {token0.symbol} nor {token1.symbol} has a USD price, so depth is not drawn.
@@ -124,9 +124,9 @@ export function DepthCurve({ snapshot, token0, token1, heading, children }: Dept
   const band = { x: fx(-2), w: fx(2) - fx(-2) }
   const sides = (['sell', 'buy'] as const).filter((s) => !missing(s))
   return (
-    <div className="cv-wrap">
+    <div className="cv-wrap" data-chart="">
       {head}
-      <div className="cv-read" aria-hidden="true">
+      <div className="cv-read" data-furniture="" aria-hidden="true">
         <span>
           <small>
             Sell {MINUS}2{NB}%
@@ -169,7 +169,7 @@ export function DepthCurve({ snapshot, token0, token1, heading, children }: Dept
             width={band.w.toFixed(1)}
             height={base - top + 6}
           />
-          <g className="cv-areas">
+          <g className="cv-areas" data-area="">
             {sides.map((s) => {
               const d = areaPath(g[s], g.exhausted[s], base)
               return d ? <path key={s} className={`cv-area ${s}`} d={d} /> : null
@@ -180,37 +180,39 @@ export function DepthCurve({ snapshot, token0, token1, heading, children }: Dept
             return d ? <path key={`o${s}`} className={`cv-out ${s}`} d={d} /> : null
           })}
           <line className="cv-mid-line" x1={cx} x2={cx} y1={top - 6} y2={base} />
-          {g.yTicks.map((v) => (
-            <text key={v} className="ax" x={cx + 8} y={fy(v) + 4}>
-              {usdTick(v)}
-            </text>
-          ))}
-          {(['sell', 'buy'] as const).map((s) => {
-            const at = g[s][g.exhausted[s]]
-            if (g.exhausted[s] < 0 || !at) return null
-            return (
-              <text
-                key={`x${s}`}
-                className="ax is-strong"
-                x={at[0] + (s === 'sell' ? 10 : -10)}
-                y={at[1] - 14}
-                textAnchor={s === 'sell' ? 'start' : 'end'}
-              >
-                Liquidity runs out
+          <g data-furniture="">
+            {g.yTicks.map((v) => (
+              <text key={v} className="ax" x={cx + 8} y={fy(v) + 4}>
+                {usdTick(v)}
               </text>
-            )
-          })}
-          {(['sell', 'buy'] as const).filter(missing).map((s) => (
-            <text
-              key={`m${s}`}
-              className="ax is-strong"
-              x={s === 'sell' ? cx / 2 : cx + cx / 2}
-              y={(top + base) / 2}
-              textAnchor="middle"
-            >
-              {(s === 'sell' ? token0 : token1).symbol} has no USD price
-            </text>
-          ))}
+            ))}
+            {(['sell', 'buy'] as const).map((s) => {
+              const at = g[s][g.exhausted[s]]
+              if (g.exhausted[s] < 0 || !at) return null
+              return (
+                <text
+                  key={`x${s}`}
+                  className="ax is-strong"
+                  x={at[0] + (s === 'sell' ? 10 : -10)}
+                  y={at[1] - 14}
+                  textAnchor={s === 'sell' ? 'start' : 'end'}
+                >
+                  Liquidity runs out
+                </text>
+              )
+            })}
+            {(['sell', 'buy'] as const).filter(missing).map((s) => (
+              <text
+                key={`m${s}`}
+                className="ax is-strong"
+                x={s === 'sell' ? cx / 2 : cx + cx / 2}
+                y={(top + base) / 2}
+                textAnchor="middle"
+              >
+                {(s === 'sell' ? token0 : token1).symbol} has no USD price
+              </text>
+            ))}
+          </g>
           {selected ? (
             <line
               className="xh"
@@ -226,6 +228,7 @@ export function DepthCurve({ snapshot, token0, token1, heading, children }: Dept
               <rect
                 key={p.pct}
                 className={`cv-pt ${p.side}${i === sel ? ' is-on' : ''}`}
+                data-pt=""
                 x={(fx(p.pct) - r).toFixed(1)}
                 y={(fy(p.usd) - r).toFixed(1)}
                 width={r * 2}
@@ -240,17 +243,19 @@ export function DepthCurve({ snapshot, token0, token1, heading, children }: Dept
               {buy2 ? <DirectLabel p={buy2} g={g} /> : null}
             </>
           )}
-          {CURVE_X_TICKS.map((v) => (
-            <text
-              key={v}
-              className="ax"
-              x={clampTickX(fx(v), W).toFixed(1)}
-              y={H - 6}
-              textAnchor="middle"
-            >
-              {v === 0 ? 'Mid' : pct(v)}
-            </text>
-          ))}
+          <g data-furniture="">
+            {CURVE_X_TICKS.map((v) => (
+              <text
+                key={v}
+                className="ax"
+                x={clampTickX(fx(v), W).toFixed(1)}
+                y={H - 6}
+                textAnchor="middle"
+              >
+                {v === 0 ? 'Mid' : pct(v)}
+              </text>
+            ))}
+          </g>
         </svg>
         <span className="sr-only" aria-live="polite">
           {selected ? pointText(selected) : ''}

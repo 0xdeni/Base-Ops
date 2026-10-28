@@ -15,7 +15,7 @@ export function BadgePreview({ svg, alt }: { svg: string; alt: string }) {
 }
 
 /** The two copy buttons, kept together as one unit whatever the badge's width. */
-export function CopyPair({ html, markdown }: { html: string; markdown: string }) {
+function CopyPair({ html, markdown }: { html: string; markdown: string }) {
   return (
     <div className="copy-row">
       <CopyButton text={html} label="Copy HTML" />

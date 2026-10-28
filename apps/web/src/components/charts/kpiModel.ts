@@ -83,8 +83,9 @@ export function shortfallText(m: KpiModel): string | null {
  * and 12 px clear of the bar's end. A side that does not fit reads under the bars instead.
  */
 export function wordsFit(k: KpiSide, halfPx: number, valuePx: number, phone: boolean): boolean {
-  const title = phone ? word(k.side).split(' ')[0] ?? '' : sideTitle(k)
-  const need = Math.max(title.length * 7, usd(k.value).length * valuePx * 0.56) + (phone ? 10 : 20) + 12
+  const title = phone ? (word(k.side).split(' ')[0] ?? '') : sideTitle(k)
+  const need =
+    Math.max(title.length * 7, usd(k.value).length * valuePx * 0.56) + (phone ? 10 : 20) + 12
   return k.w * halfPx >= need
 }
 

@@ -1,6 +1,7 @@
 /**
- * "About this pool" (L3, ia-v3 §4.3 section 6): every identifier and piece of metadata, as a
- * two-column definition list on desktop and a disclosure on phones (§5.7). On-chain ids are mono;
+ * "about this pool" (L3, ia-v3 §4.3 section 6, docs/design/visual-v4.md §5.7): every identifier and
+ * piece of metadata in a panel after the sections sheet, as a two-column definition list from
+ * 840 px and the "About this pool" disclosure on phones. On-chain ids are mono;
  * addresses link to Basescan and can be copied. A Uniswap v4 pool lives in the singleton
  * PoolManager and is keyed by a bytes32 id, which has no explorer page, so it is text.
  */
@@ -67,7 +68,7 @@ export function PoolAbout({ detail }: { detail: PoolDetail }) {
   const hooks = hooksOf(pool)
   const key = pool.address ?? pool.poolId
   return (
-    <AboutSection id="s-about" title="About this pool">
+    <AboutSection id="s-about" title="about this pool" disclosureLabel="About this pool">
       <dl className="about">
         <Row term="DEX">
           {dexLabel(pool.dex)}, {KIND[pool.kind]}

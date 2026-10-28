@@ -1,5 +1,5 @@
 /**
- * The pools table's model, shared by Pools and Token (docs/design/visual-v3.md §5.8, TB4, TB6,
+ * The pools table's model, shared by Pools and Token (docs/design/visual-v4.md §5.8, TB4, TB6,
  * TB7): the sort keys and their labels, the optional columns, the order (nulls last in both
  * directions), the `sort` / `dir` / `cols` URL state, and the reason an unknown value gives (D6).
  *
@@ -8,7 +8,7 @@
  * the sort metric (TB7). Formatting only: every value is the API's.
  */
 import type { PoolSort, PoolSummary, SortDir } from '../api/types.js'
-import { ago, NB } from './format.js'
+import { ago, dated, NB, SNAPSHOT_CLOCK } from './format.js'
 import { sortSummaries } from './sort.js'
 
 export type PoolsSortKey = PoolSort | 'spread' | 'top'
@@ -147,13 +147,15 @@ export function glyphMax(pools: readonly PoolSummary[]): number {
 
 /**
  * The caption's freshness (TB6): one value repeated on every row becomes "All pools updated 2 min
- * ago"; otherwise the oldest and newest, and the per-row values sit in the Updated column.
+ * ago"; otherwise the oldest and newest, and the per-row values sit in the Updated column. On a
+ * published snapshot the time carries its year ("All pools updated 25 Oct 2026, 11:30 UTC").
  */
 export function updatedCaption(pools: readonly PoolSummary[], now: number): string {
   const times = pools.map((p) => p.updatedAt).filter((t): t is number => t !== null)
   if (!times.length) return ''
-  const oldest = ago(Math.min(...times), now)
-  const newest = ago(Math.max(...times), now)
+  const at = (ts: number) => (now === SNAPSHOT_CLOCK ? dated(ts) : ago(ts, now))
+  const oldest = at(Math.min(...times))
+  const newest = at(Math.max(...times))
   if (oldest === newest) return `All pools updated ${newest}`
   return `Updated ${oldest} to ${newest}`
 }

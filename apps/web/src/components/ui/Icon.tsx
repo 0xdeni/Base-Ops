@@ -27,13 +27,6 @@ const PATHS = {
   external: <path d="M6.5 3.5h-3v9h9v-3M9.5 2.5h4v4M13.5 2.5l-6 6" />,
   arrowDown: <path d="M8 3v10M4 9l4 4 4-4" />,
   arrowUp: <path d="M8 13V3M4 7l4-4 4 4" />,
-  sliders: (
-    <>
-      <path d="M2.5 5h7M12.5 5h1M2.5 11h1M6.5 11h7" />
-      <circle cx="11" cy="5" r="1.5" />
-      <circle cx="5" cy="11" r="1.5" />
-    </>
-  ),
   filter: <path d="M2.5 4.5h11M4.5 8h7M6.5 11.5h3" />,
   columns: (
     <>

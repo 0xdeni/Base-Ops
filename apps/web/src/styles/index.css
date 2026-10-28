@@ -2,7 +2,6 @@
    fonts first, then base, the shell, components, states and motion last. Chart and page sheets are
    imported by their components and load after this one (main.tsx imports it first). */
 @import "./tokens.css";
-@import "./legacy.css";
 @import "./fonts.css";
 @import "./base.css";
 @import "./shell.css";

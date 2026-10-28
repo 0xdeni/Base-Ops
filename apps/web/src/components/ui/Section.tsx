@@ -21,20 +21,13 @@ export interface SectionDetails {
 
 /** The one block that holds a page's sections as rows. */
 export function SectionsSheet({
-  label,
   className,
   children,
 }: {
-  /** The region's accessible name, when the page names it. */
-  label?: string
   className?: string
   children: ReactNode
 }) {
-  return (
-    <div className={`secs${className ? ` ${className}` : ''}`} role={label ? 'region' : undefined} aria-label={label}>
-      {children}
-    </div>
-  )
+  return <div className={`secs${className ? ` ${className}` : ''}`}>{children}</div>
 }
 
 export function Section({

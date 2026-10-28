@@ -1,8 +1,8 @@
 /**
- * The words of the scorecard screens (ia-v3 §4.5–§4.6 as amended, docs/design/visual-v3.md
- * §6.5–§6.6): answer sentences, fact labels, section takeaways and row lines. Pure: every number is read
- * as the API stored it (core's uptime, streak, worst excursions and stored KPI evaluations) and only
- * formatted here; marks come from `sampleMark`, so a label never contradicts the status.
+ * The words of the scorecard screens (ia-v3 §4.5–§4.6, docs/design/visual-v4.md §6.6–§6.7): answer
+ * sentences, the eyebrow, fact labels, section takeaways and row lines. Pure: every number is read
+ * as the API stored it (core's uptime, streak, worst excursions and stored KPI evaluations) and
+ * only formatted here; marks come from `sampleMark`, so a sentence never contradicts the status.
  */
 import type {
   MmSampleDto,
@@ -29,6 +29,7 @@ import {
   episodeHours,
   type KpiMark,
   SAMPLE_WINDOW_HOURS,
+  sampleMark,
   splitPoolId,
 } from '../../lib/scorecard.js'
 
@@ -73,13 +74,12 @@ export function windowPoints<T extends { timestamp: number }>(
 }
 
 /**
- * The scorecard's answer (ia-v3 §4.6): the current streak and since when. With a fourth (spread)
- * fact the "since …" clause is dropped to stay within the first-viewport budget.
+ * The streak (ia-v3 §4.6): "Breached for 8 consecutive samples, since 14 h ago." It reads the
+ * current run of the latest sample's state; the "depth over time" section leads with it.
  */
-export function scorecardAnswer(
+export function streakLine(
   sc: Pick<ScorecardSummaryDto, 'mandate' | 'latest' | 'streak'>,
   now: number,
-  withSince = true,
 ): string {
   if (!sc.mandate.active) {
     return sc.latest
@@ -89,18 +89,66 @@ export function scorecardAnswer(
   const { streak } = sc
   if (!sc.latest || streak.samples === 0) return 'No samples yet.'
   const state = streak.breached ? 'Breached' : 'Within KPI'
-  if (streak.samples === 1) {
-    return withSince
-      ? `${state} at the latest sample, ${ago(sc.latest.timestamp, now)}.`
-      : `${state} at the latest sample.`
-  }
-  const since = withSince && streak.since !== null ? `, since ${ago(streak.since, now)}` : ''
+  if (streak.samples === 1)
+    return `${state} at the latest sample, ${ago(sc.latest.timestamp, now)}.`
+  const since = streak.since !== null ? `, since ${ago(streak.since, now)}` : ''
   return `${state} for ${count(streak.samples)} consecutive samples${since}.`
 }
 
+/**
+ * The Scorecard's answer (docs/design/visual-v4.md §6.7): what the latest sample says against the
+ * per-side KPI, read from the evaluation core stored with it. "The sell side is below its $400K
+ * KPI: $386K sits within 2 % of the price."
+ */
+export function scorecardAnswer(
+  sc: Pick<ScorecardSummaryDto, 'mandate' | 'latest'>,
+  now: number,
+): string {
+  const { mandate, latest } = sc
+  if (!mandate.active) {
+    return latest
+      ? `Inactive since its last sample, ${ago(latest.timestamp, now)}.`
+      : 'Inactive, with no samples.'
+  }
+  if (!latest) return 'No samples yet.'
+  if (latest.withinKpi === null)
+    return 'The latest sample has no USD price, so it can’t be checked.'
+  if (latest.breaches.includes('noLiquidity'))
+    return 'The latest sample found none of the market maker’s liquidity in the pool.'
+  const { kpis } = mandate
+  const kpi = usd(kpis.minDepthUsd)
+  const band = `${kpis.bandPct}${NB}%`
+  const a = latest.attribution
+  const sell = sampleMark(latest, 'depthDown') === 'fail'
+  const buy = sampleMark(latest, 'depthUp') === 'fail'
+  if (sell && buy)
+    return `Both sides are below the ${kpi} KPI: ${usd(a.depthDownUsd)} and ${usd(a.depthUpUsd)} sit within ${band} of the price.`
+  if (sell)
+    return `The sell side is below its ${kpi} KPI: ${usd(a.depthDownUsd)} sits within ${band} of the price.`
+  if (buy)
+    return `The buy side is below its ${kpi} KPI: ${usd(a.depthUpUsd)} sits within ${band} of the price.`
+  if (kpis.maxSpreadBps !== null && sampleMark(latest, 'spread') === 'fail') {
+    const at = usd(kpis.spreadNotionalUsd)
+    return a.spreadBps === null
+      ? `Both sides hold the ${kpi} KPI, but the market maker can’t absorb ${at}.`
+      : `Both sides hold the ${kpi} KPI, but the spread at ${at} is ${bps(a.spreadBps)}, above its ${bps(kpis.maxSpreadBps)} KPI.`
+  }
+  return `Both sides are within the ${kpi} KPI at the latest sample.`
+}
+
+/** The list's answer with no mandate (§5.12); a published snapshot speaks of itself. */
+export function noMandates(snapshot: boolean): string {
+  return snapshot
+    ? 'No market-maker mandates are registered in this snapshot.'
+    : 'No market-maker mandates are registered yet.'
+}
+
 /** The list's answer (ia-v3 §4.5): "1 of 2 mandates is within its KPIs right now." */
-export function listAnswer(items: readonly Pick<ScorecardSummaryDto, 'mandate' | 'status'>[]) {
-  if (!items.length) return 'No market-maker mandates are registered yet.'
+export function listAnswer(
+  items: readonly Pick<ScorecardSummaryDto, 'mandate' | 'status'>[],
+  snapshot = false,
+) {
+  if (!items.length) return noMandates(snapshot)
   const active = items.filter((s) => s.mandate.active)
   if (!active.length) {
     return items.length === 1
@@ -120,11 +168,18 @@ export function markWord(mark: KpiMark, failWord = 'below'): string {
   return mark === 'fail' ? failWord : 'not evaluable against'
 }
 
-/** "uptime, 7 d, below the 95 % target" (ia-v3 §4.6). */
-export function uptimeLabel(u: Pick<UptimeWindow, 'uptime'>, target: number): string {
-  if (u.uptime === null) return `uptime, 7${NB}d, no evaluable samples`
-  const word = u.uptime < target ? 'below' : 'meets'
-  return `uptime, 7${NB}d, ${word} the ${uptime(target)} target`
+/**
+ * The uptime fact (§6.7): the count leads, so a one-sample uptime never reads as a rate alone.
+ * "80 of 83" over "samples within KPI in 7 d: uptime 96.4 %, target 95 %".
+ */
+export function uptimeFact(u: Pick<UptimeWindow, 'samples' | 'withinKpi' | 'uptime'>): string {
+  return u.samples === 0 ? '—' : `${count(u.withinKpi)} of ${count(u.samples)}`
+}
+
+export function uptimeLabel(u: Pick<UptimeWindow, 'samples' | 'uptime'>, target: number): string {
+  if (u.samples === 0 || u.uptime === null)
+    return `samples within KPI in 7${NB}d: none evaluable yet, target ${uptime(target)}`
+  return `samples within KPI in 7${NB}d: uptime ${uptime(u.uptime)}, target ${uptime(target)}`
 }
 
 /** The Uptime takeaway: "36 of 84 samples within KPI over 7 days (target 95 %)." */
@@ -140,6 +195,13 @@ export function episodesLine(eps: readonly BreachEpisode[], w: SampleWindow): st
   const n = eps.length === 1 ? '1 breach episode' : `${count(eps.length)} breach episodes`
   if (longest <= 0) return `${n} in ${WINDOW_LABEL[w]}, each a single sample.`
   return `${n} in ${WINDOW_LABEL[w]}, the longest ${hours(longest)}.`
+}
+
+/** After the breaches takeaway: "Alerts fire after 3 in a row." */
+export function alertsLine(after: number): string {
+  return after <= 1
+    ? 'Alerts fire on the first breached sample.'
+    : `Alerts fire after ${count(after)} in a row.`
 }
 
 /** An episode row's middle line: "14 h, ongoing, 8 samples, both sides". */
@@ -180,9 +242,27 @@ export function poolWords(
   return { pair: shortAddress(key, 4), dex: dexName }
 }
 
-/** "Aerodrome v2, 0.3 %": the meta line's pool description. */
+/** "Aerodrome v2, 0.3 %": the pool's DEX and fee after its pair. */
 export function poolDexFee(meta: { dex: string; feePips: number }): string {
   return `${dexLabel(meta.dex)}, ${fee(meta.feePips)}`
+}
+
+/**
+ * The eyebrow's second item (§6.7): "Demo Markets on WETH / AERO, Aerodrome Slipstream 0.3 %",
+ * or the DEX and short address while the pool is unknown.
+ */
+export function mandateWhere(
+  mandate: { marketMaker: string; poolId: string },
+  meta:
+    | { token0: { symbol: string }; token1: { symbol: string }; dex: string; feePips: number }
+    | null
+    | undefined,
+): string {
+  const words = poolWords(mandate.poolId, meta)
+  const where = meta
+    ? `${words.pair}, ${dexLabel(meta.dex)} ${fee(meta.feePips)}`
+    : `${words.pair}, ${words.dex}`
+  return `${mandate.marketMaker} on ${where}`
 }
 
 /** "LP share, 1 holder", "2 positions": how the market maker's liquidity was found. */

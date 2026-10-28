@@ -248,7 +248,7 @@
     order: 3;
     flex: 1 0 100%;
     height: var(--strip-h);
-    gap: 4px;
+    gap: 2px;
     overflow-x: auto;
     scrollbar-width: none;
     margin-inline: calc(-1 * var(--gutter));
@@ -282,42 +282,47 @@
     display: none;
   }
 }
+/* Below 360 px the tab strip scrolls; its trailing edge fades to say so. */
+@media (max-width: 22.49em) {
+  .nav {
+    mask-image: linear-gradient(to right, #000 calc(100% - var(--gutter)), transparent);
+  }
+}
 /* PH3: a bottom bar only in an installed app; a browser tab keeps the top strip. */
 @media (max-width: 52.49em) and (display-mode: standalone) {
   .appbar .nav {
     display: none;
   }
-}
-
-/* ---------- Dock: Gray 100, four 48 px tabs, sticky at the bottom of the app column ---------- */
-.dock {
-  position: sticky;
-  bottom: 0;
-  z-index: 45;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
-  background: var(--g100);
-  border-radius: 20px 20px 0 0;
-  box-shadow: 0 -12px 32px -12px rgb(10 11 13 / 0.35);
-}
-.dock a {
-  display: grid;
-  place-items: center;
-  height: 48px;
-  border-radius: var(--r-ctl);
-  font-size: var(--t-ui);
-  font-weight: 700;
-  color: rgb(255 255 255 / 0.8);
-}
-.dock a[aria-current="page"] {
-  background: var(--blue);
-  color: #ffffff;
-}
-.dock a:focus-visible {
-  outline-color: var(--focus-band);
-  outline-offset: -2px;
+  /* The dock: Gray 100, four 48 px tabs, sticky at the bottom of the app column. */
+  .dock {
+    position: sticky;
+    bottom: 0;
+    z-index: 45;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    background: var(--g100);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -12px 32px -12px rgb(10 11 13 / 0.35);
+  }
+  .dock a {
+    display: grid;
+    place-items: center;
+    height: 48px;
+    border-radius: var(--r-ctl);
+    font-size: var(--t-ui);
+    font-weight: 700;
+    color: rgb(255 255 255 / 0.8);
+  }
+  .dock a[aria-current="page"] {
+    background: var(--blue);
+    color: #ffffff;
+  }
+  .dock a:focus-visible {
+    outline-color: var(--focus-band);
+    outline-offset: -2px;
+  }
 }
 
 /* <main> takes the room the app column leaves. While a route's skeleton shows, or during the

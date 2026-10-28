@@ -233,7 +233,13 @@ export function MarketMakerChart({
                   y1={top}
                   y2={H - bottom}
                 />
-                <text className="chart-text" x={fx(registeredAt) - 8} y={top + 12} textAnchor="end">
+                {/* Left of the line, or right of it when the plot's edge is too near. */}
+                <text
+                  className="chart-text"
+                  x={fx(registeredAt) + (fx(registeredAt) < 112 ? 8 : -8)}
+                  y={top + 12}
+                  textAnchor={fx(registeredAt) < 112 ? 'start' : 'end'}
+                >
                   Registered {day(registeredAt)}
                 </text>
               </>

@@ -53,8 +53,8 @@ export function HealthBar({
   const bar = (
     <div className={`wbar${mini ? ' mini' : ''}`} role="img" aria-label={healthLabel(components)}>
       {HEALTH_PARTS.map(({ key }) => (
-        <span key={key} style={{ flexGrow: HEALTH_MAX[key] }}>
-          <i data-bar="" style={vars({ '--f': healthFill(components, key) })} />
+        <span key={key} className="wseg" style={{ flexGrow: HEALTH_MAX[key] }}>
+          <i className="wfill" style={vars({ '--f': healthFill(components, key) })} />
         </span>
       ))}
     </div>
@@ -68,7 +68,7 @@ export function HealthBar({
           {HEALTH_PARTS.map(({ key, label }) => (
             <span
               key={key}
-              className={key === weakest ? 'weak' : undefined}
+              className={`wlab${key === weakest ? ' weak' : ''}`}
               style={{ flexGrow: HEALTH_MAX[key] }}
             >
               <b>{label}</b>

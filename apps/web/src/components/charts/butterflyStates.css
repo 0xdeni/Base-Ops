@@ -40,6 +40,11 @@
   background: var(--on-band);
 }
 
+/* "All of …" hides where it would run off the figure; the total row's summary still names it. */
+.bf-total .bf-lab.is-off {
+  display: none;
+}
+
 /* A row whose label would not fit left of its sell bar puts it on its own line, centred. */
 .bf-pools .bf-r.is-stacked {
   height: auto;
@@ -96,6 +101,9 @@
   .bf-total {
     height: 44px;
   }
+  .bf-total .bf-lab {
+    display: none;
+  }
   .bf-total .bf-h {
     height: 36px;
   }
@@ -114,7 +122,7 @@
 }
 
 /* Touch: a row's link takes taps only once the row is lensed, so the first tap reads the row
-   and the second opens the pool. Every row is at least 28 px high and spans the figure. */
+   and the second opens the pool. Rows, "Open pool" and "Gap" are at least 44 px high. */
 @media (pointer: coarse) {
   .bf-pools .bf-r:not(.is-on) > .bf-link {
     pointer-events: none;
@@ -122,7 +130,8 @@
   .bf-pools .bf-r {
     min-height: 44px;
   }
-  .bf-open {
+  .bf-open,
+  .bf-gap {
     display: inline-flex;
     align-items: center;
     min-height: 44px;

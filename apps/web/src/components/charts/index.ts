@@ -1,8 +1,8 @@
 /**
- * The v4 charts (docs/design/visual-v4.md §5.9, §7.5): hand-written SVG and HTML, themed by the CSS
- * tokens only, each with a `role="img"` (or `group`) summary and a "Show data" table where the
- * spec asks for one (CH9). The four band charts (butterfly, square field, depth curve, KPI chart)
- * mark their bars with `data-bar` for the first view.
+ * The v4 charts (docs/design/visual-v4.md §5.9, §7.5): hand-written SVG and HTML, themed by the
+ * CSS tokens only, each with a `role="img"` (or `group`) summary and a "Show data" table where the
+ * spec asks for one (CH9). The band charts carry the first view's attributes (`data-chart`,
+ * `data-bar`, `data-furniture`, `data-sq`, `data-area`, `data-pt`; see lib/firstView.ts).
  */
 export { BulletGraph, bulletFractions, depthBullet } from './BulletGraph.js'
 export { pickButterflyRows } from './butterflyModel.js'

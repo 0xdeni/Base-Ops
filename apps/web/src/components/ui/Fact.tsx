@@ -10,8 +10,9 @@
  * columns with 1 px dividers from 1024 px, 2 columns from 600 px, then 2 × 2 at 28 px (Pool) or
  * one column (Scorecard); a note (the gap callout) may follow under a Gray 80 rule.
  */
-import type { ReactNode } from 'react'
+
 import type { HealthGrade } from '@depthwatch/core'
+import type { ReactNode } from 'react'
 import { GradeGlyph } from './GradeGlyph.js'
 import { BreachMark } from './StatusWord.js'
 

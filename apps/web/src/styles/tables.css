@@ -76,11 +76,24 @@
   gap: 2px var(--s4);
   padding: var(--s4) 0;
   font-size: var(--t-caption);
+  line-height: 1.35;
   color: var(--text-2);
 }
 .blk--flush > .tbl-caption {
   padding-inline: var(--s6);
   border-bottom: 1px solid var(--line);
+}
+/* The foot of a table sheet: paging and toggles, padded 24 × 32 (16 on phones). */
+.tbl-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px var(--s4);
+  padding: var(--s5) var(--s6);
+}
+.tbl-foot > .tbl-note {
+  flex: 1 1 100%;
+  margin: 0;
 }
 .ptable {
   --cell-x: 12px;
@@ -339,4 +352,32 @@ th[aria-sort] .sort-btn svg {
 }
 .prow > li.rl-group {
   background: var(--surface-2);
+}
+/* Phone rows inside a flush sheet: padded 16 px, the hover layer and the link flush to the edge,
+   the caption's two lines stacked. */
+@media (max-width: 52.49em) {
+  .blk--flush > .tbl-caption {
+    flex-direction: column;
+    padding: 14px var(--s4);
+  }
+  .blk--flush .prow-head {
+    padding: 12px var(--s4) 10px;
+  }
+  .blk--flush .prow .rl-row,
+  .blk--flush .prow > li.rl-group {
+    padding-inline: var(--s4);
+  }
+  .blk--flush .prow .rl-row {
+    padding-block: var(--s2);
+  }
+  .blk--flush .prow .rl-row::before {
+    inset: 0;
+    border-radius: 0;
+  }
+  .blk--flush .prow .rl-link::after {
+    inset: 0;
+  }
+  .tbl-foot {
+    padding: var(--s4);
+  }
 }

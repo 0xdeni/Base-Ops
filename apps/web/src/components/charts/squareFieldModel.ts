@@ -12,14 +12,17 @@ export interface FieldPool {
   depth: number | null
 }
 
-export type FieldSquare<P extends FieldPool> = {
-  /** Left and top in px from the field's top left corner, and the side. */
+/** What a square stands for: one pool, or the pools merged into one square. */
+type Stands<P extends FieldPool> = { kind: 'pool'; pool: P } | { kind: 'merged'; pools: P[] }
+
+/** A square before placement: its side, and the USD its area stands for. */
+type Item<P extends FieldPool> = { s: number; depth: number } & Stands<P>
+
+export type FieldSquare<P extends FieldPool> = Item<P> & {
+  /** Left and top in px from the field's top left corner. */
   x: number
   y: number
-  s: number
-  /** USD the square's area stands for. */
-  depth: number
-} & ({ kind: 'pool'; pool: P } | { kind: 'merged'; pools: P[] })
+}
 
 export interface FieldModel<P extends FieldPool> {
   /** Largest first. */
@@ -48,7 +51,11 @@ export interface FieldOptions {
  * lowest, and raises those columns by the size plus the gutter. Positions are measured from the
  * bottom left (`y` up). A sliding-window maximum keeps each placement linear in the width.
  */
-export function skyline(sizes: readonly number[], W: number, gutter: number): { x: number; y: number }[] {
+export function skyline(
+  sizes: readonly number[],
+  W: number,
+  gutter: number,
+): { x: number; y: number }[] {
   const cols = Math.max(1, Math.floor(W))
   const sky = new Float64Array(cols)
   const out: { x: number; y: number }[] = []
@@ -95,7 +102,7 @@ function packAt<P extends FieldPool>(
   const big: P[] = []
   const small: P[] = []
   for (const p of pools) (Math.sqrt((p.depth ?? 0) * k) >= min ? big : small).push(p)
-  const items: (Omit<FieldSquare<P>, 'x' | 'y'> & { s: number })[] = big.map((p) => ({
+  const items: Item<P>[] = big.map((p) => ({
     kind: 'pool' as const,
     pool: p,
     depth: p.depth ?? 0,
@@ -117,7 +124,7 @@ function packAt<P extends FieldPool>(
     const p = at[i] ?? { x: 0, y: 0 }
     height = Math.max(height, p.y + it.s)
     if (p.x + it.s > W + 1e-6) wide = true
-    return { ...it, x: p.x, y: H - p.y - it.s } as FieldSquare<P>
+    return { ...it, x: p.x, y: H - p.y - it.s }
   })
   return { squares, height, fits: height <= H && !wide, merged: small }
 }
@@ -169,7 +176,11 @@ export function squareField<P extends FieldPool>(
 }
 
 /** The index of the square under (`x`, `y`), with 1 px of slack; -1 over a gutter. */
-export function squareAt(squares: readonly { x: number; y: number; s: number }[], x: number, y: number): number {
+export function squareAt(
+  squares: readonly { x: number; y: number; s: number }[],
+  x: number,
+  y: number,
+): number {
   for (let i = 0; i < squares.length; i++) {
     const q = squares[i]
     if (q && x >= q.x - 1 && x <= q.x + q.s + 1 && y >= q.y - 1 && y <= q.y + q.s + 1) return i

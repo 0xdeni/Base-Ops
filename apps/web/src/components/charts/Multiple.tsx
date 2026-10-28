@@ -47,7 +47,10 @@ export function fittedDomain(
 }
 
 /** The data's own range in the window: what the bracket spans. Null with no values. */
-export function dataRange<T>(points: readonly T[], value: (p: T) => number | null): [number, number] | null {
+export function dataRange<T>(
+  points: readonly T[],
+  value: (p: T) => number | null,
+): [number, number] | null {
   const vals = points.map(value).filter((v): v is number => v !== null && Number.isFinite(v))
   if (!vals.length) return null
   return [Math.min(...vals), Math.max(...vals)]
@@ -160,7 +163,13 @@ export function Multiple<T extends { timestamp: number }>({
         ) : null}
         {ref ? (
           <>
-            <line className="sm-ref" x1={SM_LEFT} x2={plotR} y1={fy(ref.value)} y2={fy(ref.value)} />
+            <line
+              className="sm-ref"
+              x1={SM_LEFT}
+              x2={plotR}
+              y1={fy(ref.value)}
+              y2={fy(ref.value)}
+            />
             <text className="chart-text is-strong" x={SM_LEFT} y={fy(ref.value) - 6}>
               {ref.label}
             </text>
@@ -199,7 +208,10 @@ export function Multiple<T extends { timestamp: number }>({
         {cur ? (
           <line className="xh" x1={fx(cur.timestamp)} x2={fx(cur.timestamp)} y1={4} y2={H - 24} />
         ) : null}
-        {(showPts ? runs.solid.flat() : runs.solid.flat().filter((p) => p.timestamp === cur?.timestamp)).map((p) => (
+        {(showPts
+          ? runs.solid.flat()
+          : runs.solid.flat().filter((p) => p.timestamp === cur?.timestamp)
+        ).map((p) => (
           <rect
             key={p.timestamp}
             className={`sm-pt${cur && cur.timestamp === p.timestamp ? ' is-on' : ''}`}

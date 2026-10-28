@@ -1,8 +1,9 @@
 /**
- * Methodology (ia-v3 §4.8, docs/design/visual-v3.md §6.8): the provenance answer, the metric
- * index as the focal element, one anchored section per metric with its formula behind "Show
- * formula", the schematics, "On this page" (disclosure below 1200 px, sticky list from 1200 px),
- * instant in-page jumps that never count as route changes, and the hash router's hrefs.
+ * Methodology (ia-v3 §4.8, docs/design/visual-v4.md §6.9): the title "method" and the provenance
+ * answer, the band's lead, the seven metric blocks (the first three over the band) that jump to
+ * their sections, one anchored section per metric with its formula behind "Show formula", the
+ * schematics, "On this page" (disclosure below 1200 px, sticky list from 1200 px), instant
+ * in-page jumps that never count as route changes, and the hash router's hrefs.
  */
 import { QueryClient } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
@@ -73,27 +74,44 @@ const section = (id: string) => {
   return el
 }
 
-describe('Methodology: answer and metric index', () => {
-  it('answers where every number comes from, then indexes the seven metrics', () => {
+describe('Methodology: answer, band and metric blocks', () => {
+  it('answers where every number comes from, then indexes the seven metrics as blocks', () => {
     renderAt('/methodology')
-    expect(within(main()).getByRole('heading', { level: 1 }).textContent).toBe('Methodology')
+    const h1 = within(main()).getByRole('heading', { level: 1 })
+    expect(h1.textContent).toBe('method')
+    expect(h1.className).toContain('title')
     expect(within(main()).getByText(METHODOLOGY_ANSWER).className).toContain('answer')
+    const band = screen.getByRole('region', { name: 'Metrics' })
+    expect(band.textContent).toBe(
+      'Seven metrics, each defined once in docs/METRICS.md and computed once in packages/core.',
+    )
     const index = screen.getByRole('region', { name: 'Metric index' })
     expect(index.id).toBe('index')
-    const terms = within(index).getAllByRole('link')
-    expect(terms.map((a) => a.textContent)).toEqual([
-      'Depth',
-      'Spread',
-      'Concentration',
-      'Persistence',
-      'Health',
-      'Gaps',
-      'Scorecards',
+    const blocks = within(index).getAllByRole('link')
+    expect(blocks.map((a) => a.querySelector('h2')?.textContent)).toEqual([
+      'depth',
+      'spread',
+      'concentration',
+      'persistence',
+      'health',
+      'gaps',
+      'scorecards',
     ])
-    expect(terms.map((a) => a.getAttribute('href'))).toEqual(
+    expect(blocks.map((a) => a.getAttribute('href'))).toEqual(
       ANCHORS.map((id) => `/methodology#${id}`),
     )
-    expect([...index.querySelectorAll('dd')].map((d) => d.textContent)).toEqual([
+    // Each block is one destination; the first three stack over the band.
+    expect(blocks.every((a) => a.className.includes('is-dest'))).toBe(true)
+    expect(blocks.map((a) => a.className.includes('blk--over'))).toEqual([
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+    ])
+    expect([...index.querySelectorAll('.take')].map((d) => d.textContent)).toEqual([
       `Dollars it takes to move the price 1, 2 or 5${NB}%, on each side.`,
       'What a round trip of $1K, $10K or $100K costs, fees included.',
       'How much of the liquidity near the price one LP or one range holds.',
@@ -102,7 +120,7 @@ describe('Methodology: answer and metric index', () => {
       'Pools that trade far more each day than the liquidity near their price.',
       'A market maker’s promised depth, checked at every snapshot.',
     ])
-    expect(index.textContent).toContain('a missing value means unknown, never zero')
+    expect(main().textContent).toContain('a missing value means unknown, never zero')
   })
 
   it('keeps middle dots, arrows and "we" out of the page copy (CP2, CP6)', () => {
@@ -120,7 +138,10 @@ describe('Methodology: sections', () => {
     const ids = [...main().querySelectorAll('section.doc-sec')].map((s) => s.id)
     expect(ids).toEqual([...ANCHORS, 'reproduce'])
     for (const id of ANCHORS) {
-      expect(within(section(id)).getByRole('heading', { level: 2 })).toBeTruthy()
+      const h2 = within(section(id)).getByRole('heading', { level: 2 })
+      // Section headings are lowercase words; acronyms and symbols keep their case.
+      expect(h2.textContent).toBe(SECTIONS.find((s) => s.id === id)?.title)
+      expect(h2.textContent?.replace('LP', 'lp')).toBe(h2.textContent?.toLowerCase())
     }
   })
 
@@ -259,19 +280,19 @@ describe('Methodology: in-page jumps', () => {
   it('jumps in place: the hash is pushed, the click never reaches the shell as a route change', () => {
     renderAt('/methodology')
     const index = screen.getByRole('region', { name: 'Metric index' })
+    const block = (name: string) =>
+      within(index).getByRole('link', { name: new RegExp(`^${name} `) })
     // A pointer click: default prevented (no view transition), scrolled, focus left alone.
-    expect(fireEvent.click(within(index).getByRole('link', { name: 'Gaps' }), { detail: 1 })).toBe(
-      false,
-    )
+    expect(fireEvent.click(block('gaps'), { detail: 1 })).toBe(false)
     expect(hash).toBe('#gaps')
     expect(scrolled).toEqual(['gaps'])
     expect(document.activeElement).not.toBe(main())
     // A keyboard click: focus moves to the section's heading, not to <main>.
-    fireEvent.click(within(index).getByRole('link', { name: 'Health' }), { detail: 0 })
+    fireEvent.click(block('health'), { detail: 0 })
     expect(hash).toBe('#health')
     expect(document.activeElement).toBe(within(section('health')).getByRole('heading'))
     // Clicking the current anchor again scrolls without a new history entry.
-    fireEvent.click(within(index).getByRole('link', { name: 'Health' }), { detail: 1 })
+    fireEvent.click(block('health'), { detail: 1 })
     expect(scrolled).toEqual(['gaps', 'health', 'health'])
     // Back keeps the shell's restored position instead of snapping to the section.
     act(() => navigate(-1))
@@ -282,7 +303,7 @@ describe('Methodology: in-page jumps', () => {
   it('leaves modified clicks to the browser (new tab, new window)', () => {
     renderAt('/methodology')
     const link = within(screen.getByRole('region', { name: 'Metric index' })).getByRole('link', {
-      name: 'Depth',
+      name: /^depth /,
     })
     link.addEventListener('click', (e) => e.preventDefault())
     fireEvent.click(link, { detail: 1, metaKey: true })
@@ -296,8 +317,10 @@ describe('Methodology: static build (hash router)', () => {
     window.location.hash = '#/methodology'
     render(<App client={createMockClient({ now: 1_760_000_000 })} mock={false} staticBuild />)
     const index = await screen.findByRole('region', { name: 'Metric index' })
-    expect(within(index).getByRole('link', { name: 'Depth' }).getAttribute('href')).toBe(
-      '#/methodology#depth',
-    )
+    expect(
+      within(index)
+        .getByRole('link', { name: /^depth / })
+        .getAttribute('href'),
+    ).toBe('#/methodology#depth')
   })
 })

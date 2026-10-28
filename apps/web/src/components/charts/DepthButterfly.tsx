@@ -16,7 +16,6 @@ import {
   type PointerEvent,
   type ReactNode,
   useEffect,
-  useId,
   useRef,
   useState,
 } from 'react'
@@ -53,13 +52,6 @@ export interface DepthButterflyProps {
   gap?: ButterflyGap | null
   /** "Base" on Home, the token symbol on a token page. */
   scope?: string
-  /**
-   * Accepted from callers of the earlier API; the first view of a session is played by the page
-   * shell on `data-bar` and the chart furniture, never by the chart itself.
-   */
-  intro?: boolean
-  /** Under the axis, e.g. a "Show all 312 pools" link. */
-  more?: ReactNode
   /** The "Show data" table (CH9). */
   children?: ReactNode
 }
@@ -80,17 +72,15 @@ export function DepthButterfly({
   rows: rowsProp,
   gap = null,
   scope = 'Base',
-  more,
   children,
 }: DepthButterflyProps) {
   const rows = rowsProp ?? pickButterflyRows(pools, gap?.poolId)
   const m = butterflyModel(rows, pools)
   const figRef = useRef<HTMLElement | null>(null)
-  /** The latest pointer press in the plot: its kind, and when (focus right after it is not the keyboard's). */
+  /** The latest press in the plot: its pointer kind, and when (focus right after it is not a key's). */
   const pointer = useRef({ type: 'mouse', at: Number.NEGATIVE_INFINITY })
   const W = useChartWidth(figRef)
   const phone = useIsPhone()
-  const capId = `bf-cap-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
   const [lens, setLens] = useState<Lens | null>(null)
 
   // A tap or click outside the figure ends the lens.
@@ -160,18 +150,18 @@ export function DepthButterfly({
   const cls = `bf${lensed ? ' is-lens' : ''}${lens?.instant ? ' is-instant' : ''}`
   const restWord = `The other ${count(m.rest.count)} ${m.rest.count === 1 ? 'pool' : 'pools'}.`
   return (
+    // biome-ignore lint/a11y/useSemanticElements: the figure groups the row links under one summary (§5.9)
     <figure
       ref={figRef}
       className={cls}
-      aria-labelledby={capId}
+      data-chart=""
+      role="group"
+      aria-label={butterflyLabel(m, scope)}
       onBlur={(e) => {
         if (!figRef.current?.contains(e.relatedTarget as Node | null)) setLens(null)
       }}
     >
-      <figcaption id={capId} className="sr-only">
-        {butterflyLabel(m, scope)}
-      </figcaption>
-      <div className="bf-head">
+      <div className="bf-head" data-furniture="">
         <p className="bf-who" aria-live="polite">
           {who ? (
             <>
@@ -215,7 +205,7 @@ export function DepthButterfly({
         onClick={onClick}
         onKeyDown={onKey}
       >
-        <TotalRow m={m} scope={scope} showLabel={!phone && totalLabelFits(m, scope, track, lane)} />
+        <TotalRow m={m} scope={scope} showLabel={totalLabelFits(m, scope, track, lane)} />
         <Bracket m={m} />
         <ol className="bf-pools">
           {m.rows.map((r, i) => (
@@ -232,7 +222,6 @@ export function DepthButterfly({
         </ol>
       </div>
       <Axis m={m} kept={kept} />
-      {more ? <div className="bf-more">{more}</div> : null}
       <ShowData
         band
         className="bf-foot"

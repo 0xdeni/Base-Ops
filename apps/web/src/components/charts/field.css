@@ -1,5 +1,5 @@
-/* The square field on the Pools band (docs/design/visual-v4.md §5.9.2). Squares are placed with
-   a transform from --x and --y (px from the field's top left), sized by --s, radius --r. */
+/* The square field on the Pools band (docs/design/visual-v4.md §5.9.2). Squares are placed by an
+   inline transform (px from the field's top left), sized by --s, radius --r. */
 
 .field-wrap {
   display: grid;
@@ -17,9 +17,13 @@
 .field:focus-visible {
   outline: 2px solid var(--focus-band);
 }
+/* The squares never widen the page: one placed before the field is measured, or the ring of a
+   square at the edge, stays inside the field plus 6 px. */
 .field-sqs {
   position: absolute;
   inset: 0;
+  overflow: clip;
+  overflow-clip-margin: 6px;
 }
 .field .sq {
   position: absolute;
@@ -28,7 +32,6 @@
   display: block;
   width: var(--s);
   height: var(--s);
-  transform: translate(var(--x), var(--y));
   border-radius: var(--r);
   background: var(--on-band);
   color: var(--blue);
@@ -88,7 +91,7 @@
   font-size: var(--t-data);
   line-height: 1.4;
 }
-.lens b {
+.lens .who {
   font-weight: 800;
 }
 .lens .t2 {

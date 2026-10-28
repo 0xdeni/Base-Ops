@@ -131,7 +131,7 @@ export function butterflyModel(
   }
   const side = (key: 'depth2DownUsd' | 'depth2UpUsd', restUsd: number): Segment[] => {
     let o = 0
-    const out = deep.map((p) => {
+    const out: Segment[] = deep.map((p) => {
       const s = { id: p.pool.id, o, w: frac(p[key]) }
       o += s.w
       return s

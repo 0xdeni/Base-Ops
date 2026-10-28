@@ -124,8 +124,14 @@
   .cv-head {
     grid-template-columns: 1fr 1fr;
   }
+  /* The legend row drops its middle; the band's heading there stays for assistive tech. */
   .cv-mid {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .cv-read {
     display: flex;

@@ -76,7 +76,7 @@ export function SortSheet({
   return (
     <>
       <Button
-        icon={dir === 'asc' ? 'arrowUp' : 'arrowDown'}
+        iconEnd={dir === 'asc' ? 'arrowUp' : 'arrowDown'}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={(e) => {

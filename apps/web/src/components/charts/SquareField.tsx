@@ -8,20 +8,14 @@
  * the second opens. The field is one focusable group: arrow keys step through the rated pools by
  * depth, Enter opens, Escape clears. While a filter is set, squares outside it dim to 0.22.
  */
-import { memo, type CSSProperties, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, memo, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PoolSummary } from '../../api/types.js'
 import { count, NB, pairLabel, poolHref, share, shareOf, usd } from '../../lib/format.js'
 import { useIsPhone } from '../../lib/useMediaQuery.js'
 import { GradeGlyph } from '../ui/GradeGlyph.js'
 import { venueOf } from './butterflyModel.js'
-import {
-  type FieldSquare,
-  squareAt,
-  squareField,
-  step,
-  stepOrder,
-} from './squareFieldModel.js'
+import { type FieldSquare, squareAt, squareField, step, stepOrder } from './squareFieldModel.js'
 import { useChartWidth } from './useChartWidth.js'
 import './charts.css'
 import './field.css'
@@ -44,7 +38,17 @@ export const FIELD_HEIGHT = { desktop: 420, phone: 260 } as const
 export const FIELD_MIN_SIDE = { desktop: 5, phone: 4 } as const
 
 /** The pair label inside a square: from 110 px the pair, from 150 px the venue too. */
-function SquareLabel({ q, largest, total, scope }: { q: FieldSquare<Pool>; largest: boolean; total: number; scope: string }) {
+function SquareLabel({
+  q,
+  largest,
+  total,
+  scope,
+}: {
+  q: FieldSquare<Pool>
+  largest: boolean
+  total: number
+  scope: string
+}) {
   if (q.kind !== 'pool' || q.s < 110) return null
   const size = q.s >= 200 ? 24 : q.s >= 150 ? 18 : 14
   return (
@@ -82,27 +86,44 @@ const Square = memo(function Square({
   total: number
   scope: string
 }) {
+  // Placed by an inline transform, which the first view keeps while it scales the square.
   const style = {
-    '--x': `${q.x.toFixed(2)}px`,
-    '--y': `${q.y.toFixed(2)}px`,
+    transform: `translate(${q.x.toFixed(2)}px, ${q.y.toFixed(2)}px)`,
     '--s': `${q.s.toFixed(2)}px`,
     '--r': `${Math.max(1, q.s * 0.16).toFixed(2)}px`,
   } as CSSProperties
   const cls = `sq${q.kind === 'merged' ? ' merged' : q.pool.health.rated ? '' : ' unrated'}${hot ? ' hot' : ''}${dim ? ' dim' : ''}`
-  if (q.kind === 'merged') return <div className={cls} data-i={i} style={style} />
+  if (q.kind === 'merged') return <div className={cls} data-i={i} data-sq="" style={style} />
   return (
-    <Link className={cls} data-i={i} to={poolHref(q.pool.pool.id)} tabIndex={-1} style={style}>
+    <Link
+      className={cls}
+      data-i={i}
+      data-sq=""
+      to={poolHref(q.pool.pool.id)}
+      tabIndex={-1}
+      style={style}
+    >
       <SquareLabel q={q} largest={largest} total={total} scope={scope} />
     </Link>
   )
 })
 
-function Readout({ q, total, scope, touch }: { q: FieldSquare<Pool> | undefined; total: number; scope: string; touch: boolean }) {
+function Readout({
+  q,
+  total,
+  scope,
+  touch,
+}: {
+  q: FieldSquare<Pool> | undefined
+  total: number
+  scope: string
+  touch: boolean
+}) {
   if (!q) return <span className="t2">Point at, focus or tap a square to read its pool.</span>
   if (q.kind === 'merged')
     return (
       <>
-        <b>{count(q.pools.length)} smallest pools</b>
+        <b className="who">{count(q.pools.length)} smallest pools</b>
         <span>
           {usd(q.depth)} within 2{NB}% together, {shareOf(q.depth / total)} of {scope}
         </span>
@@ -111,7 +132,7 @@ function Readout({ q, total, scope, touch }: { q: FieldSquare<Pool> | undefined;
   const p = q.pool
   return (
     <>
-      <b>
+      <b className="who">
         {pairLabel(p.pool.token0, p.pool.token1)}, {venueOf(p)}
       </b>
       <span>
@@ -172,7 +193,8 @@ export function SquareField({ pools, inFilter = null, scope = 'Base' }: SquareFi
   const merged = m.merged
   const label = `Where ${scope}’s depth sits: one square per pool, area proportional to its depth within 2${NB}% of the price. Arrow keys step through the rated pools, Enter opens one.`
   return (
-    <figure className="field-wrap">
+    <figure className="field-wrap" data-chart="">
+      {/* biome-ignore lint/a11y/useSemanticElements: a focusable group of squares, not a set of form controls (§5.9.2) */}
       <div
         ref={fieldRef}
         className="field"
@@ -225,18 +247,18 @@ export function SquareField({ pools, inFilter = null, scope = 'Base' }: SquareFi
           ))}
         </div>
       </div>
-      <p className="lens" aria-live="polite">
+      <p className="lens" data-furniture="" aria-live="polite">
         <Readout q={cur} total={m.total} scope={scope} touch={touch} />
       </p>
-      <figcaption className="field-cap">
+      <figcaption className="field-cap" data-furniture="">
         Where {scope}’s depth sits: one square per pool, its area true to the pool’s depth within 2
         {NB}% of the price. Solid: rated A to F. Outlined: not rated.
         {merged ? (
           <>
             {' '}
             <span className="hatch" aria-hidden="true" />
-            The {count(merged.count)} smallest, each under {usd(merged.max)}, are drawn as one square
-            of their total, {usd(merged.depth)}.
+            The {count(merged.count)} smallest, each under {usd(merged.max)}, are drawn as one
+            square of their total, {usd(merged.depth)}.
           </>
         ) : null}
         {m.zero ? (

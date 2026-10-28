@@ -2,16 +2,12 @@
    band, `--surface-2` off it), the refetch dim and 2 px bar, empty, a section error and not
    found. No shimmer. */
 
-.skel,
-.skel-text {
+.skel {
   display: block;
   background: var(--surface-2);
   border-radius: 4px;
 }
-.skel-text {
-  height: 13px;
-}
-.band :is(.skel, .skel-text) {
+.band .skel {
   background: rgb(255 255 255 / 0.14);
 }
 .skel-stack {
@@ -108,7 +104,6 @@
 }
 
 /* Boot messages rendered before the shell exists (main.tsx, staticBoot.tsx). */
-.boot,
 #root > .state,
 #root > .container > .state {
   width: 100%;

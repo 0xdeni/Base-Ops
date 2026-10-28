@@ -3,7 +3,10 @@
  * sample's depth per side against the mandate's per-side KPI: two bars from a 2 px white spine on
  * one scale, sell white and buy Yellow, the value inside each bar in ink, the KPI as a dashed
  * white line 24 px beyond the bars on both sides. A side below its KPI shows its shortfall, from
- * the bar's end to the KPI line, as Red hatching; a breach reads in one glance.
+ * the bar's end to the KPI line, as Red hatching; a breach reads in one glance. A side that holds
+ * its KPI draws the stretch of the line inside its bar in ink, and its words mask the line where
+ * they cross it. On phones a KPI label near the spine is set outward from its line, so the two
+ * never meet.
  */
 import { type ReactNode, useRef } from 'react'
 import { usd } from '../../lib/format.js'
@@ -36,11 +39,19 @@ export interface KpiChartProps {
 const pct = (f: number) => `${(f * 100).toFixed(3)}%`
 
 /** The words of a side: its title ("Sell" on phones) over the value. */
-function Words({ k, className }: { k: KpiSide; className: string }) {
+function Words({
+  k,
+  className,
+  furniture = false,
+}: {
+  k: KpiSide
+  className: string
+  furniture?: boolean
+}) {
   const title = sideTitle(k)
   const at = title.indexOf(' ')
   return (
-    <span className={className}>
+    <span className={className} data-furniture={furniture ? '' : undefined}>
       <small>
         {at < 0 ? title : title.slice(0, at)}
         {at < 0 ? null : <span className="long">{title.slice(at)}</span>}
@@ -50,17 +61,38 @@ function Words({ k, className }: { k: KpiSide; className: string }) {
   )
 }
 
+/** A KPI line in the inner half of its side: on phones its label is set outward from the line. */
+const NEAR_SPINE = 0.5
+
 function Half({ k, kpi, inside }: { k: KpiSide; kpi: number; inside: boolean }) {
   const edge = k.side === 'sell' ? 'right' : 'left'
+  const inBar = k.value !== null && k.kpiW < k.w
   return (
     <div className={`kpi-h ${k.side === 'sell' ? 's' : 'b'}`}>
       <b className="kbar" data-bar="" style={{ width: pct(k.w) }} />
       {k.below ? (
-        <i className="short" style={{ [edge]: pct(k.w), width: pct(k.shortW) }} aria-hidden="true" />
+        <i
+          className="short"
+          style={{ [edge]: pct(k.w), width: pct(k.shortW) }}
+          aria-hidden="true"
+        />
       ) : null}
-      {inside ? <Words k={k} className="kpi-in" /> : null}
+      {inside ? <Words k={k} className="kpi-in" furniture /> : null}
       <i className="kpi-line" style={{ [edge]: pct(k.kpiW) }} aria-hidden="true" />
-      <span className="kpi-lab" style={{ [edge]: pct(k.kpiW) }} aria-hidden="true">
+      {inBar ? (
+        <i
+          className="kpi-line-in"
+          data-furniture=""
+          style={{ [edge]: pct(k.kpiW) }}
+          aria-hidden="true"
+        />
+      ) : null}
+      <span
+        className={`kpi-lab${k.kpiW < NEAR_SPINE ? ' is-out' : ''}`}
+        data-furniture=""
+        style={{ [edge]: pct(k.kpiW) }}
+        aria-hidden="true"
+      >
         KPI {usd(kpi)}
       </span>
     </div>
@@ -85,13 +117,13 @@ export function KpiChart({ sell, buy, kpi, latestOnly = false, heading }: KpiCha
   }
   const short = shortfallText(m)
   return (
-    <div className="kpi-wrap">
-      <div className="kpi-head">
+    <div className="kpi-wrap" data-chart="">
+      <div className="kpi-head" data-furniture="">
         <span className="meta">
           <i className="sw sell-band" aria-hidden="true" />
           Sell side
         </span>
-        {heading ? <div className="kpi-mid">{heading}</div> : <span />}
+        <div className="kpi-mid">{heading}</div>
         <span className="meta">
           <i className="sw buy-band" aria-hidden="true" />
           Buy side
@@ -103,14 +135,14 @@ export function KpiChart({ sell, buy, kpi, latestOnly = false, heading }: KpiCha
           <Half k={m.buy} kpi={kpi} inside={fits.buy} />
         </div>
         {fits.sell && fits.buy ? null : (
-          <div className="kpi-under" aria-hidden="true">
+          <div className="kpi-under" data-furniture="" aria-hidden="true">
             <span>{fits.sell ? null : <Words k={m.sell} className="kpi-out" />}</span>
             <span>{fits.buy ? null : <Words k={m.buy} className="kpi-out" />}</span>
           </div>
         )}
       </figure>
       {short || latestOnly ? (
-        <p className="kpi-cap">
+        <p className="kpi-cap" data-furniture="">
           {short ? (
             <span>
               <span className="hatch is-short" aria-hidden="true" />

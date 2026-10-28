@@ -19,10 +19,10 @@ export const API_DOCS_HREF = `${import.meta.env.BASE_URL}AGENTS.md`
 export type DataSourceKind = 'demo' | 'mock' | 'live' | 'snapshot'
 
 const DATA_LINE: Readonly<Record<DataSourceKind, string>> = {
-  demo: 'Data: synthetic demo world',
-  mock: 'Data: in-repo mock',
+  demo: 'Data: a synthetic demo world',
+  mock: 'Data: the in-repo mock',
   live: 'Data: Base mainnet',
-  snapshot: 'Data: Base mainnet snapshot',
+  snapshot: 'Data: a Base mainnet snapshot',
 }
 
 export const FOOTER_PROMISE =

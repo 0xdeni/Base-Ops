@@ -40,12 +40,6 @@
   gap: var(--s4);
   align-content: start;
 }
-.sec-foot {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s2) var(--s5);
-  align-items: center;
-}
 @media (min-width: 37.5em) {
   .sec {
     padding: var(--s6);

@@ -4,8 +4,6 @@
  * the rules shared by every animation: keyboard-initiated actions never animate and reduced motion
  * swaps movement for an instant change plus an opacity settle.
  */
-import { useMediaQuery } from './useMediaQuery.js'
-
 export type Ease = (t: number) => number
 
 /** CSS `cubic-bezier(x1, y1, x2, y2)` as a function of progress: Newton's method on x(t). */
@@ -141,17 +139,12 @@ export function cancelTween(key: string): void {
   running.delete(key)
 }
 
-export const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
 
 /** True when the reader asked for reduced motion (false where `matchMedia` is missing). */
 export function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
   return window.matchMedia(REDUCED_MOTION_QUERY).matches
-}
-
-/** `prefersReducedMotion()` as a hook that re-renders when the preference changes. */
-export function useReducedMotion(): boolean {
-  return useMediaQuery(REDUCED_MOTION_QUERY)
 }
 
 /**
@@ -160,13 +153,6 @@ export function useReducedMotion(): boolean {
  */
 export function isKeyboardClick(e: { detail: number }): boolean {
   return e.detail === 0
-}
-
-/** The duration to use: 0 for keyboard-initiated actions and under reduced motion. */
-export function motionMs(ms: number, opts: { keyboard?: boolean; reduced?: boolean } = {}): number {
-  if (opts.keyboard) return 0
-  if (opts.reduced ?? prefersReducedMotion()) return 0
-  return ms
 }
 
 /** `el.animate(…)` where the Web Animations API exists; null elsewhere (jsdom, old engines). */

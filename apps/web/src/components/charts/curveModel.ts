@@ -108,7 +108,8 @@ export function curveGeometry(
   const yMax = max > 0 ? Math.ceil((max * 1.06) / step) * step : step * 5
   const fy = linear(0, yMax, base, top)
   const yTicks: number[] = []
-  for (let v = step * 2; v <= yMax * (1 + 1e-9); v += step * 2) yTicks.push(Number(v.toPrecision(12)))
+  for (let v = step * 2; v <= yMax * (1 + 1e-9); v += step * 2)
+    yTicks.push(Number(v.toPrecision(12)))
   const sideOf = (side: 'sell' | 'buy') =>
     points.filter((p) => p.side === side).sort((a, b) => Math.abs(a.pct) - Math.abs(b.pct))
   const path = (side: 'sell' | 'buy'): [number, number][] => [
@@ -141,7 +142,11 @@ export function curveGeometry(
  * A side's flat area: from the spine through the reached points, closed down to the baseline.
  * Past the point where liquidity runs out the side is a dashed segment instead (`outPath`).
  */
-export function areaPath(path: readonly [number, number][], exhausted: number, base: number): string {
+export function areaPath(
+  path: readonly [number, number][],
+  exhausted: number,
+  base: number,
+): string {
   const pts = exhausted < 0 ? path : path.slice(0, exhausted)
   if (pts.length < 2) return ''
   const last = pts[pts.length - 1] ?? [0, base]
@@ -177,7 +182,10 @@ export function nearestPoint(points: readonly CurvePoint[], fx: (p: number) => n
 }
 
 /** The ±2 % point of a side, for the direct labels and the phone readout row. */
-export function twoPct(points: readonly CurvePoint[], side: 'sell' | 'buy'): CurvePoint | undefined {
+export function twoPct(
+  points: readonly CurvePoint[],
+  side: 'sell' | 'buy',
+): CurvePoint | undefined {
   return points.find((p) => p.side === side && Math.abs(p.pct) === 2)
 }
 

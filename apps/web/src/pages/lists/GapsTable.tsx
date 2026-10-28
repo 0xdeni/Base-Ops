@@ -1,8 +1,9 @@
 /**
- * The Gaps table view (`view=table`, ia-v3 §4.4, L2): every v2 column, pool, 24 h volume,
- * depth ±2 %, turnover, gap score, health and TVL, each sortable (`sort`, `dir` in the URL) under a
- * sticky header. On phones it scrolls inside its own wrapper with a sticky first column, and the
- * page's metric (turnover, gap score) comes right after the pool (TB7).
+ * The Gaps table view (`view=table`, ia-v3 §4.4, L2, docs/design/visual-v4.md §6.5): a table sheet
+ * over the band with every v2 column, pool, 24 h volume, depth ±2 %, turnover, gap score, health and
+ * TVL, each sortable (`sort`, `dir` in the URL) under a sticky header. On phones it scrolls inside
+ * its own wrapper with a sticky first column, and the page's metric (turnover, gap score) comes
+ * right after the pool (TB7).
  */
 import type { GapItem, SortDir } from '../../api/types.js'
 import { HealthCell } from '../../components/ui/PoolCells.js'

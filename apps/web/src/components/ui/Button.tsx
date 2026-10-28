@@ -1,9 +1,9 @@
 /**
  * Buttons (docs/design/visual-v4.md §5.3): 48 px high (40 small), radius 12, 15 px / 750 labels.
  * - `primary`: Blue fill, white label; at most one filled button per view (P11);
- * - `band`: the white button on the band, Blue label, navy shadow;
- * - `ghost`: a 1.5 px `--line-2` outline (on the band it turns white, as `band-ghost`);
- * - `band-ghost`: a 1.5 px white 55 % outline on the band.
+ * - `on-band`: the white button on the band, Blue label, navy shadow;
+ * - `ghost`: a 1.5 px `--line-2` outline (on the band it turns white, as `on-band-ghost`);
+ * - `on-band-ghost`: a 1.5 px white 55 % outline on the band.
  * The icon button is 36 × 36 (44 on touch) with its required accessible name. A loading button
  * keeps its label and adds a 12 px ring. Press scales 0.97 (motion.css).
  */
@@ -11,18 +11,13 @@ import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react'
 import { Link, type LinkProps } from 'react-router-dom'
 import { Icon, type IconName } from './Icon.js'
 
-/**
- * The variants of §5.3. `secondary` and `quiet` are the v3 names some pages still pass: the ghost
- * and the small ghost.
- */
-export type ButtonVariant = 'primary' | 'band' | 'ghost' | 'band-ghost' | 'secondary' | 'quiet'
+/** The variants of §5.3. Each is also the button's class, so none collides with `.band`. */
+export type ButtonVariant = 'primary' | 'on-band' | 'ghost' | 'on-band-ghost'
 export type ButtonSize = 'md' | 'sm'
 
 /** The class list of a button: `btn`, the variant and the size. */
 export function buttonClass(variant: ButtonVariant, size: ButtonSize = 'md', extra?: string) {
-  const v = variant === 'secondary' || variant === 'quiet' ? 'ghost' : variant
-  const sm = size === 'sm' || variant === 'quiet'
-  return `btn ${v}${sm ? ' is-sm' : ''}${extra ? ` ${extra}` : ''}`
+  return `btn ${variant}${size === 'sm' ? ' is-sm' : ''}${extra ? ` ${extra}` : ''}`
 }
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

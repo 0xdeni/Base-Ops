@@ -1,11 +1,12 @@
 /**
- * The Scorecard's first three sections (ia-v3 §4.6, docs/design/visual-v3.md §6.6):
- * - Uptime: the strip for the selected window; the takeaway carries the counts (ia-v3 §4.6);
- *   Details holds all three windows, with unpriced samples counted separately.
- * - Breaches: episode rows, newest first, five (three on phones) then "Show all N episodes";
- *   "Show samples" in the heading reveals the raw breached samples with their blocks.
- * - Worst moments (30 d): the lowest depth per side (and the widest spread with a spread KPI)
- *   against the KPI, the block number on hover and focus, and in Details.
+ * Three rows of the Scorecard's sections sheet (ia-v3 §4.6, docs/design/visual-v4.md §6.7):
+ * - uptime: the strip for the selected window; the takeaway carries core's counts; Details holds
+ *   all three windows, with unpriced samples counted separately.
+ * - breaches: episode rows, newest first, three then "Show all N episodes"; the
+ *   takeaway ends with when alerts fire, and "Show samples" reveals the raw breached samples with
+ *   their blocks.
+ * - worst moments (30 d), when there is history: the lowest depth per side (and the widest
+ *   spread with a spread KPI) against the KPI, the block on hover and focus, and in Details.
  */
 import type { ExcursionDto, MmSampleDto, SampleWindow, ScorecardDetail } from '../../api/types.js'
 import { UptimeStrip } from '../../components/charts/UptimeStrip.js'
@@ -16,8 +17,8 @@ import { SectionError } from '../../components/ui/States.js'
 import { TableScroll } from '../../components/ui/TableScroll.js'
 import { abs, bps, count, full, group, NB, uptime, usd, when } from '../../lib/format.js'
 import { type BreachEpisode, breachEpisodes, breachSides, sampleKeys } from '../../lib/scorecard.js'
-import { useIsPhone } from '../../lib/useMediaQuery.js'
 import {
+  alertsLine,
   capital,
   episodeLowest,
   episodesLine,
@@ -102,11 +103,15 @@ export function UptimeSection({
   return (
     <Section
       id="s-up"
-      title="Uptime"
+      title="uptime"
       takeaway={uptimeLine(u, win, detail.mandate.kpis.targetUptime)}
       details={{ content: <UptimeTable detail={detail} points={points} to={to} /> }}
     >
-      {strip ? <UptimeStrip points={strip} /> : <div className="sc-strip-space" />}
+      {strip ? (
+        <UptimeStrip points={strip} unchecked="Not checkable: no USD price" />
+      ) : (
+        <div className="sc-strip-space" />
+      )}
     </Section>
   )
 }
@@ -183,12 +188,12 @@ export function BreachesSection({
   to,
   win,
   now,
+  alertAfter,
   onRetry,
-}: SeriesProps & { now: number; onRetry?: () => void }) {
-  const phone = useIsPhone()
+}: SeriesProps & { now: number; alertAfter: number; onRetry?: () => void }) {
   if (!points || to === undefined) {
     return (
-      <Section id="s-br" title="Breaches">
+      <Section id="s-br" title="breaches">
         {onRetry ? (
           <SectionError what="samples" onRetry={onRetry} />
         ) : (
@@ -200,14 +205,16 @@ export function BreachesSection({
   const pts = windowPoints(points, windowDomain(to, win))
   const eps = breachEpisodes(pts)
   const rows = [...eps].reverse()
-  const n = phone ? 3 : 5
+  const n = 3
   const rest = rows.slice(n)
   const breached = pts.filter((p) => p.withinKpi === false).reverse()
   return (
     <Section
       id="s-br"
-      title="Breaches"
-      takeaway={episodesLine(eps, win)}
+      title="breaches"
+      takeaway={
+        eps.length ? `${episodesLine(eps, win)} ${alertsLine(alertAfter)}` : episodesLine(eps, win)
+      }
       details={
         breached.length
           ? { label: 'Show samples', content: <SampleTable rows={breached} /> }
@@ -253,17 +260,12 @@ export function WorstSection({ detail, now }: { detail: ScorecardDetail; now: nu
   if (worst.minDepthDownUsd)
     rows.push({ label: 'Lowest sell-side depth', e: worst.minDepthDownUsd, fmt: usd })
   if (worst.maxSpreadBps) rows.push({ label: 'Widest spread', e: worst.maxSpreadBps, fmt: bps })
-  if (!rows.length) {
-    return (
-      <Section id="s-worst" title="Worst moments" takeaway={`No samples in 30${NB}d.`}>
-        {null}
-      </Section>
-    )
-  }
+  // Without history there is no worst moment to show; the row is left out (§6.7).
+  if (!rows.length) return null
   return (
     <Section
       id="s-worst"
-      title="Worst moments"
+      title="worst moments"
       takeaway={`The lowest depth seen in 30${NB}d, against the ${usd(kpi)} KPI.`}
       details={{
         content: (
