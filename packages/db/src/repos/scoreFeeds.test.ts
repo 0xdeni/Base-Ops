@@ -1,6 +1,7 @@
 /**
  * The score feeds over the whole scored set: the spread and top-owner sorts (the values the rows
- * list, nulls last), the gaps feed's counts and a token's depth summed past any page.
+ * list, nulls last), the gaps feed's counts and a token's depth summed past any page, stale quotes
+ * left out.
  */
 import type { PoolMeta } from '@depthwatch/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -127,5 +128,28 @@ describe('ScoresRepo feeds over the whole scored set', () => {
       depth2UsdTotal: null,
       depthKnownPools: 0,
     })
+  })
+
+  it("leaves a stale quote out of a token's depth, as the stats do", () => {
+    // A ($10,000) quotes 6 % off its tokens' USD prices: stale from 5 %. A snapshot that predates
+    // the measure (null) is not stale.
+    db.snapshots.insert(
+      fixtureSnapshot({ poolId: A.id, timestamp: 200, blockNumber: 2n, priceDeviationBps: 600 }),
+    )
+    db.snapshots.insert(
+      fixtureSnapshot({
+        poolId: D.id,
+        timestamp: 200,
+        blockNumber: 2n,
+        depth2Usd: 4_000,
+        priceDeviationBps: null,
+      }),
+    )
+    expect(db.scores.tokenDepth(FIXTURE_WETH.address)).toEqual({
+      depth2UsdTotal: 24_000,
+      depthKnownPools: 3,
+    })
+    expect(db.scores.tokenDepth(FIXTURE_USDC.address).depthKnownPools).toBe(3)
+    expect(db.scores.topBy('depth', { token: FIXTURE_WETH.address }).total).toBe(4)
   })
 })

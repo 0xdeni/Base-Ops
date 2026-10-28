@@ -141,6 +141,38 @@ describe('scoreStep', () => {
       expect(db.scores.get(A.id)?.health.components.depth).toBe(0)
     })
 
+    it('scores a hooked Uniswap v4 pool unrated with reason hooked, its metrics null', async () => {
+      const H = fixturePool({
+        dex: 'uniswap-v4',
+        address: null,
+        poolId: `0x${'cd'.repeat(32)}`,
+        hooks: fixtureAddress(0xc0),
+      })
+      db.pools.upsertMany([H])
+      db.pools.setTracked([H.id], true)
+      // What `snapshot` stores for a hooked pool: its price, no depth, spread or concentration.
+      db.snapshots.insert(
+        fixtureSnapshot({
+          poolId: H.id,
+          depth: [],
+          depthUsd: [],
+          spreads: [],
+          concentration: null,
+        }),
+      )
+      await scoreStep(ctx)
+      expect(db.scores.get(H.id)?.health).toMatchObject({
+        rated: false,
+        unratedReason: 'hooked',
+        grade: null,
+      })
+      expect(db.scores.get(A.id)?.health.rated).toBe(true)
+      const pools = await json<PoolsResponse>(ctx, '/api/pools?rated=false&limit=200')
+      const hooked = pools.items.find((item) => item.pool.id === H.id)
+      expect(hooked).toMatchObject({ depth2Usd: null, depth2UpUsd: null, spread10kBps: null })
+      expect(hooked?.health.unratedReason).toBe('hooked')
+    })
+
     it('leaves 24 h persistence unknown while the snapshots cover under 6 h', async () => {
       // five snapshots over 51 minutes, as on the first live run
       db.snapshots.insertMany(

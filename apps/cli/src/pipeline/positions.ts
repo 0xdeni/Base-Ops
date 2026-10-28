@@ -4,7 +4,8 @@
  * indexed whether or not they are tracked yet: the snapshot tracks them whatever their rank, and
  * its samples read these positions; until a pool's positions are published (`positionsPublished`)
  * the snapshot does not sample its mandates (an attribution failure, mm.ts, never a false
- * `noLiquidity` breach), and `depthwatch start` runs this step as soon as such a pool exists
+ * `noLiquidity` breach); `depthwatch run` runs this step for the mandated pools before every
+ * snapshot (`mandatedConcentratedPools`) and `depthwatch start` as soon as such a pool exists
  * (`unindexedMandatedPools`).
  *
  * `readPositions` is range based (positions *touched* in the block range, with their current
@@ -130,14 +131,17 @@ export function positionsPublished(db: Database, poolId: string): boolean {
   return db.syncState.get(syncKeys.positions(poolId)) !== undefined
 }
 
+/** The known concentrated pools of the active mandates: what `run` indexes before every snapshot. */
+export function mandatedConcentratedPools(db: Database): PoolMeta[] {
+  return mandatedPools(db).filter((pool) => pool.kind === 'concentrated')
+}
+
 /**
  * Concentrated pools of active mandates whose positions are not published yet: their mandates
  * cannot be sampled (mm.ts), so `depthwatch start` runs positions while there is one.
  */
 export function unindexedMandatedPools(db: Database): PoolMeta[] {
-  return mandatedPools(db).filter(
-    (pool) => pool.kind === 'concentrated' && !positionsPublished(db, pool.id),
-  )
+  return mandatedConcentratedPools(db).filter((pool) => !positionsPublished(db, pool.id))
 }
 
 /** Where a pool stands: its published cursor, its staged first scan, or nothing yet. */

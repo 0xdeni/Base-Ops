@@ -1,6 +1,7 @@
 /**
- * Cost to trade (docs/design/visual-v4.md §5.9.8): the effective spread of a $1K, $10K and $100K
- * round trip as lollipops on one shared bps axis from 0, so each spread reads as a length. Rows of
+ * Cost to trade (docs/design/visual-v4.md §5.9.8): the effective spread of a $1K, $10K, $100K and
+ * $1M round trip (the first three in snapshots stored before the $1M point), one row per stored
+ * point, as lollipops on one shared bps axis from 0, so each spread reads as a length. Rows of
  * 40 px: the notional in a 56 px column, a 2 px `--line` track, a 4 px ink stem from 0 to the
  * value, a 16 px rounded square dot and the value 16 px after it. A notional the pool cannot absorb
  * (infeasible, or a stored spread of 10,000 bps or more) is a hollow ring at 0 labelled "Can’t

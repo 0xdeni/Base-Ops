@@ -81,6 +81,7 @@ function versionOneFile(path: string): void {
   const db = openDatabase(path)
   db.raw.exec('DROP TABLE mm_alerts; DROP TABLE mm_samples; DROP TABLE mandates')
   db.raw.exec('DROP INDEX snapshots_pool_block')
+  db.raw.exec('ALTER TABLE snapshots DROP COLUMN price_deviation_bps')
   db.raw.prepare('DELETE FROM schema_version WHERE version > 1').run()
   expect(currentVersion(db.raw)).toBe(1)
   db.close()

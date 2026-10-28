@@ -12,6 +12,8 @@ const SHIPPED_SHA256: readonly string[] = [
   'daffb1dbecbc3278ef05609bdd7b414f1956afb6150c9e971effbb090b42b1d3',
   '22752b7d69a9fb85dcd3184c7ee452d659815a3c7557d79c8c25e26e87f9e28c',
   'c5f63b67f25188bcd99afad2fa11db18e7be8aae03773281fb301bff26eef948',
+  '7bb1733685f07bc9db37e30f2b456cece98497d8e9ec649f2b26cff2c90b3339',
+  'fe9dbd4325bf2371aa0147d8cf814c2f8d3d6afdb655710cf3d1bc25f77f4a84',
 ]
 
 const sha256 = (sql: string) => createHash('sha256').update(sql).digest('hex')

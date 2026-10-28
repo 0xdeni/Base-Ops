@@ -4,6 +4,7 @@ import {
   computeHealthScore,
   HEALTH_RATING_MIN_SIDE_USD,
   healthGrade,
+  isHookedPool,
   NOTE_CONCENTRATION_NEUTRAL,
   NOTE_CONCENTRATION_RESERVES,
   NOTE_DEPTH_UNKNOWN,
@@ -75,6 +76,27 @@ describe('rateDepth', () => {
     ] as const) {
       expect(rateDepth(up, down)).toEqual({ rated: false, unratedReason: 'unpriced' })
     }
+  })
+
+  it('is hooked for a Uniswap v4 pool with a hook, before any side is looked at', () => {
+    expect(rateDepth(1_000_000, 1_000_000, { hooked: true })).toEqual({
+      rated: false,
+      unratedReason: 'hooked',
+    })
+    expect(rateDepth(null, null, { hooked: true }).unratedReason).toBe('hooked')
+    expect(rateDepth(1_000_000, 1_000_000, { hooked: false }).rated).toBe(true)
+  })
+
+  it('isHookedPool: a non-zero hooks address only', () => {
+    expect(isHookedPool({ hooks: null })).toBe(false)
+    expect(isHookedPool({ hooks: '0x0000000000000000000000000000000000000000' })).toBe(false)
+    expect(isHookedPool({ hooks: '0x00000000000000000000000000000000000000c0' })).toBe(true)
+  })
+
+  it('a hooked pool is unrated with reason hooked; its total is kept', () => {
+    const score = computeHealthScore({ ...perfect, hooked: true })
+    expect(score).toMatchObject({ rated: false, grade: null, unratedReason: 'hooked' })
+    expect(score.total).toBe(computeHealthScore(perfect).total)
   })
 
   it('thinnerSideUsd is the smaller side, null when either is unknown', () => {

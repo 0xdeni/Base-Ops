@@ -14,6 +14,7 @@ import { Link } from 'react-router-dom'
 import type { PoolMetaDto } from '../../api/types.js'
 import { BackLink } from '../../components/ui/BackLink.js'
 import { IconButton } from '../../components/ui/Button.js'
+import { StaleQuoteChip } from '../../components/ui/PoolCells.js'
 import { TextChange } from '../../components/ui/TextChange.js'
 import { dexLabel, fee, NB, price, tokenHref } from '../../lib/format.js'
 import { isKeyboardClick } from '../../lib/motion.js'
@@ -52,11 +53,14 @@ export function PoolTitle({
   pool,
   spot,
   answer,
+  staleDeviationBps,
 }: {
   pool: PoolMetaDto
   spot: number | null
   /** The answer sentence, or its skeleton while the pool loads. */
   answer: ReactNode
+  /** The price deviation of a stale quote: the eyebrow then carries the "Stale price" chip. */
+  staleDeviationBps?: number | null
 }) {
   return (
     <section className="wrap ttl pool-ttl" aria-labelledby="pool-title">
@@ -69,6 +73,12 @@ export function PoolTitle({
           <>
             {' '}
             <span>Stable pair</span>
+          </>
+        ) : null}
+        {staleDeviationBps !== undefined ? (
+          <>
+            {' '}
+            <StaleQuoteChip deviationBps={staleDeviationBps} />
           </>
         ) : null}
       </p>

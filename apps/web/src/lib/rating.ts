@@ -19,6 +19,7 @@ const SHORT: Readonly<Record<UnratedReason, string>> = {
   thin: 'Too thin to rate',
   'one-sided': 'Too thin on one side',
   unpriced: 'No USD price',
+  hooked: 'Hooked pool',
 }
 
 /** "Too thin to rate"; a score stored before ratings existed has no reason yet. */
@@ -37,6 +38,8 @@ export function unratedDetail(reason: UnratedReason | null): string {
       return `${SHORT['one-sided']}: the thinner side holds under ${floor} ${within}.`
     case 'unpriced':
       return `${SHORT.unpriced}: a token in this pool has no price in dollars.`
+    case 'hooked':
+      return `${SHORT.hooked}: its v4 hook runs its own swap code, so depth is not modelled.`
     case null:
       return 'Not rated yet: the score is being refreshed.'
   }

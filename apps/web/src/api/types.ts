@@ -109,7 +109,7 @@ export interface DexStatsDto {
   scored: number
   /** Scored pools that are rated: both ±2 % sides known, the thinner one at least $5,000. */
   rated: number
-  /** Sum of ±2 % depth (USD) over scored pools. */
+  /** Sum of ±2 % depth (USD) over scored pools, stale quotes (`PoolSummary.staleQuote`) left out. */
   depth2Usd: number
   /** Sum over scored pools with a known volume; null when none has one. */
   volume24hUsd: number | null
@@ -217,6 +217,13 @@ export interface PoolSummary {
    */
   depth2DownUsd: number | null
   spread10kBps: number | null
+  /**
+   * The newest snapshot's `priceDeviationBps` (docs/METRICS.md, "Stale quotes"); null when a token
+   * has no USD price, the pool has no snapshot or the snapshot predates the measure.
+   */
+  priceDeviationBps: number | null
+  /** Core's `isStaleQuote(priceDeviationBps)`: left out of the stats' depth sums, last on depth. */
+  staleQuote: boolean
   health: PoolHealthSummary
   gapScore: number | null
   volume24hUsd: number | null
@@ -307,11 +314,11 @@ export interface TokenDetail {
   /** Every discovered pool containing the token, scored or not. */
   poolCount: number
   /**
-   * `depth2Usd` summed over every scored pool containing the token with a known depth, ignoring
-   * limit/offset; null when none has one.
+   * `depth2Usd` summed over every scored pool containing the token with a known depth and no stale
+   * quote, ignoring limit/offset; null when none has one.
    */
   depth2UsdTotal: number | null
-  /** Scored pools of the token whose depth is known: the ones `depth2UsdTotal` sums. */
+  /** Scored pools of the token with a known depth and no stale quote: the ones `depth2UsdTotal` sums. */
   depthKnownPools: number
 }
 

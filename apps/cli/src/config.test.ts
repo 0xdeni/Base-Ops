@@ -48,6 +48,51 @@ describe('parseCliArgs', () => {
     })
   })
 
+  it('parses --keep-days for prune, run and start and refuses it elsewhere', () => {
+    expect(parseCliArgs(['prune', '--keep-days', '14']).flags.keepDays).toBe('14')
+    expect(parseCliArgs(['run', '--keep-days', '14']).command).toBe('run')
+    expect(parseCliArgs(['start', '--keep-days', '14']).command).toBe('start')
+    expect(() => parseCliArgs(['snapshot', '--keep-days', '14'])).toThrow(
+      /--keep-days only applies to prune, run and start/,
+    )
+    expect(loadConfig({}).keepDays).toBe(DEFAULTS.keepDays)
+    expect(loadConfig({ DEPTHWATCH_KEEP_DAYS: '9' }).keepDays).toBe(9)
+    expect(loadConfig({ DEPTHWATCH_KEEP_DAYS: '9' }, { keepDays: '14' }).keepDays).toBe(14)
+    expect(() => loadConfig({}, { keepDays: '1' })).toThrow(/keep days/)
+    expect(() => loadConfig({}, { keepDays: '1.5' })).toThrow(/keep days must be an integer/)
+  })
+
+  it('parses --seed-token for discover --seed, run --seed and start, and reads DEPTHWATCH_SEED_TOKENS', () => {
+    const a = `0x${'ab'.repeat(20)}`
+    const b = `0x${'cd'.repeat(20)}`
+    const args = parseCliArgs([
+      'discover',
+      '--seed',
+      '--seed-token',
+      a.toUpperCase().replace('0X', '0x'),
+      '--seed-token',
+      `${b},${a}`,
+    ])
+    expect(loadConfig({}, args.flags).seedTokens).toEqual([a, b])
+    expect(parseCliArgs(['run', '--seed', '--seed-token', a]).flags.seedToken).toEqual([a])
+    expect(parseCliArgs(['start', '--seed-token', a]).flags.seedToken).toEqual([a])
+    for (const argv of [
+      ['discover', '--seed-token', a],
+      ['run', '--seed-token', a],
+      ['snapshot', '--seed-token', a],
+    ])
+      expect(() => parseCliArgs(argv)).toThrow(
+        /--seed-token only applies to discover --seed, run --seed and start/,
+      )
+    expect(loadConfig({}).seedTokens).toEqual([])
+    expect(loadConfig({ DEPTHWATCH_SEED_TOKENS: ` ${b} , ${a} ` }).seedTokens).toEqual([b, a])
+    expect(loadConfig({ DEPTHWATCH_SEED_TOKENS: b }, { seedToken: [a] }).seedTokens).toEqual([a])
+    expect(loadConfig({ DEPTHWATCH_SEED_TOKENS: '  ' }).seedTokens).toEqual([])
+    expect(() => loadConfig({ DEPTHWATCH_SEED_TOKENS: '0x1234' })).toThrow(
+      'seed token "0x1234" must be a 0x-prefixed 20-byte address',
+    )
+  })
+
   it('parses export --out and --demo, and keeps --demo to export', () => {
     const args = parseCliArgs(['export', '--out', 'site/bundle.json', '--demo'])
     expect(args.command).toBe('export')

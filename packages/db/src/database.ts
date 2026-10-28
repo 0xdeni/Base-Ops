@@ -62,6 +62,11 @@ export interface Database {
    * small side of a join first. Costs milliseconds; the pipeline runs it after discovery.
    */
   analyze(): void
+  /**
+   * `PRAGMA wal_checkpoint(TRUNCATE)`: folds the WAL into the main file and empties it, so a large
+   * delete does not leave a WAL of its size on disk. A no-op outside WAL mode (`:memory:`).
+   */
+  checkpoint(): void
   /** Runs `PRAGMA optimize` and closes the connection. Safe to call more than once. */
   close(): void
   readonly isOpen: boolean
@@ -183,6 +188,10 @@ class SqliteDatabase implements Database {
 
   analyze(): void {
     this.raw.exec('ANALYZE')
+  }
+
+  checkpoint(): void {
+    this.raw.exec('PRAGMA wal_checkpoint(TRUNCATE)')
   }
 
   close(): void {

@@ -49,8 +49,9 @@
   font-size: var(--t-glyph);
   --shape: 10px;
 }
-/* "Not rated": the words instead of a letter, on a neutral well; a button for its reason that
-   sits above any row link, with a 44 × 44 touch area. */
+/* "Not rated" (and "Stale price"): the words instead of a letter, on a neutral well; a button for
+   its reason that sits above any row link, with a 44 × 44 touch area. */
+.grade.is-stale,
 .grade.is-unrated {
   position: relative;
   z-index: 2;
@@ -62,14 +63,17 @@
   font-weight: 650;
   white-space: nowrap;
 }
+.grade.is-stale.is-fact,
 .grade.is-unrated.is-fact {
   height: 36px;
   font-size: var(--t-data);
 }
+.ink .grade.is-stale,
 .ink .grade.is-unrated {
   background: var(--g80);
   color: var(--on-ink);
 }
+.grade.is-stale .gloss,
 .grade.is-unrated .gloss {
   position: relative;
   z-index: 1;

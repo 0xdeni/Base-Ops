@@ -48,6 +48,7 @@ export {
   DEFAULT_SEED_BATCH,
   DEFAULT_SEED_CONCURRENCY,
   probesFor,
+  type SeedDexFailure,
   type SeedDexResult,
   type SeedPoolsOptions,
   type SeedProgress,

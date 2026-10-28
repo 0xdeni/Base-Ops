@@ -5,7 +5,8 @@
  * the band's lower edge, each a lowercase heading and one plain line that jumps to its section
  * (`#index` holds them). Then the conventions, and the sections `#depth` … `#scorecards` in prose
  * at 66ch, each with a schematic where it explains faster than words and its exact formula behind
- * "Show formula" (L2), then "Reproduce any number". From 1200 px a sticky "On this page" list holds
+ * "Show formula" (L2), then the USD price convention (`#usd-prices`, a section but not a metric
+ * block) and "Reproduce any number". From 1200 px a sticky "On this page" list holds
  * the left column; below 1200 px it is a disclosure above the sections.
  */
 import { useRef } from 'react'
@@ -14,7 +15,7 @@ import { Band } from '../components/ui/Band.js'
 import { blockClass } from '../components/ui/Block.js'
 import { DisclosurePanel, DisclosureTrigger, useDisclosure } from '../components/ui/Disclosure.js'
 import { useMediaQuery } from '../lib/useMediaQuery.js'
-import { type MetricSection, REPRODUCE, SECTIONS } from './docs/content.js'
+import { type MetricSection, PRICES, REPRODUCE, SECTIONS } from './docs/content.js'
 import { OnThisPageAside, OnThisPageDisclosure, useAnchorHref } from './docs/OnThisPage.js'
 import { useAnchors } from './docs/useAnchors.js'
 import './docs/docs.css'
@@ -155,6 +156,7 @@ export function Methodology() {
             {SECTIONS.map((s) => (
               <Section key={s.id} section={s} />
             ))}
+            <Section section={PRICES} />
             <Reproduce />
           </div>
         </div>

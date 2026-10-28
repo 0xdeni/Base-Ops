@@ -6,14 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": [
-      "**",
-      "!**/dist",
-      "!**/node_modules",
-      "!**/coverage",
-      "!**/*.json",
-      "!pnpm-lock.yaml"
-    ]
+    "includes": ["**", "!**/dist", "!**/node_modules", "!**/coverage", "!pnpm-lock.yaml"]
   },
   "formatter": {
     "enabled": true,

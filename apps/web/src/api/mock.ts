@@ -12,6 +12,7 @@ import {
   type Dex,
   GAP_FEED_MIN_VOLUME_USD,
   isMeaningfulGap,
+  isStaleQuote,
   toJsonSafe,
 } from '@depthwatch/core'
 import { renderBadge } from '../lib/badge.js'
@@ -116,7 +117,10 @@ function dexStats(dex: Dex, rows: MockPool[]): DexStatsDto {
     tracked: rows.length,
     scored: rows.length,
     rated: rows.filter((p) => p.score.rated).length,
-    depth2Usd: rows.reduce((sum, p) => sum + (p.depth2Usd ?? 0), 0),
+    // As the API: a stale quote's depth stays out of the sum.
+    depth2Usd: rows
+      .filter((p) => !isStaleQuote(p.snapshot.priceDeviationBps))
+      .reduce((sum, p) => sum + (p.depth2Usd ?? 0), 0),
     volume24hUsd: sumKnown(rows.map((p) => p.volume24hUsd)),
     medianHealth: ratedMedian(rows),
   }
@@ -242,7 +246,8 @@ export function createMockClient(opts: MockOptions = {}): ApiClient {
       if (!entry) throw new ApiError(404, 'token not found')
       const [symbol, seed] = entry
       const inPools = sortSummaries(containing(needle), query.sort ?? 'depth', query.dir ?? 'desc')
-      const depths = inPools.map((p) => p.depth2Usd)
+      // A token's depth leaves stale quotes out, as the stats do (docs/METRICS.md).
+      const depths = inPools.filter((p) => !p.staleQuote).map((p) => p.depth2Usd)
       return {
         token: tokenInfo(symbol),
         usd: seed.usd > 0 ? seed.usd : null,

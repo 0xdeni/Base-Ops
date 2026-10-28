@@ -4,7 +4,7 @@
  * the stored values (P3, P8); nothing here is a metric, and every number goes through
  * `lib/format.ts`.
  */
-import { HEALTH_MAX, type HealthComponents, type HealthScore } from '@depthwatch/core'
+import { HEALTH_MAX, type HealthComponents, type HealthScore, isHookedPool } from '@depthwatch/core'
 import type {
   ConcentrationMetrics,
   PersistenceMetrics,
@@ -44,6 +44,8 @@ const PART_NAME: Readonly<Record<keyof HealthComponents, string>> = {
 export function poolAnswer(detail: Pick<PoolDetail, 'pool' | 'latest'>): string {
   const { pool } = detail
   if (!detail.latest) return 'No snapshot yet. Depth appears after the first snapshot.'
+  if (isHookedPool(pool))
+    return 'This pool has a Uniswap v4 hook that runs its own swap code: its depth is not modelled.'
   const latest = detail.latest
   const t0 = pool.token0.symbol
   const t1 = pool.token1.symbol

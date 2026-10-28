@@ -16,7 +16,7 @@ import type {
   SpreadPoint,
   TokenInfo,
 } from '@depthwatch/core'
-import { computeGap, computeHealthScore } from '@depthwatch/core'
+import { computeGap, computeHealthScore, isStaleQuote, priceDeviationBps } from '@depthwatch/core'
 import poolsJson from '../mock/pools.json'
 import tokensJson from '../mock/tokens.json'
 import type { DepthLevelDto, PoolMetaDto, PoolSnapshotDto, PoolSummary } from './types.js'
@@ -249,6 +249,7 @@ export function buildPool(seed: PoolSeed, now: number): MockPool {
     depthUsd: usd,
     spreads,
     concentration,
+    priceDeviationBps: priceDeviationBps(seed.price, tokenUsd(seed.token0), tokenUsd(seed.token1)),
   }
   return {
     seed,
@@ -278,6 +279,8 @@ export function summarize(p: MockPool): PoolSummary {
     depth2UpUsd: level2?.upUsd ?? null,
     depth2DownUsd: level2?.downUsd ?? null,
     spread10kBps: p.spread10kBps,
+    priceDeviationBps: p.snapshot.priceDeviationBps,
+    staleQuote: isStaleQuote(p.snapshot.priceDeviationBps),
     health: {
       total: p.score.total,
       grade: p.score.grade,

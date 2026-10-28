@@ -1,8 +1,8 @@
 /**
  * The pools table's cells (docs/design/visual-v4.md §5.8), shared by Pools, Token and the Gaps
  * table: health is the grade glyph plus the truncated score in a 2ch column (N6), depth the 84 × 20
- * row glyph plus the value 16 px apart, and an unknown value is "—" with its reason (D6).
- * Formatting only: every value comes from the API.
+ * row glyph plus the value 16 px apart (and the "Stale price" chip for a stale quote), and an
+ * unknown value is "—" with its reason (D6). Formatting only: every value comes from the API.
  */
 import type { PoolSummary } from '../../api/types.js'
 import {
@@ -17,10 +17,31 @@ import {
 } from '../../lib/format.js'
 import { basePrice } from '../../lib/orient.js'
 import { type PoolsSortKey, tvlReason, UNKNOWN_REASON } from '../../lib/poolsTable.js'
-import { unratedShort } from '../../lib/rating.js'
+import { unratedDetail, unratedShort } from '../../lib/rating.js'
+import { STALE_PRICE, staleQuoteDetail } from '../../lib/staleQuote.js'
 import { RowDepthGlyph } from '../charts/RowDepthGlyph.js'
+import { Glossary } from './Glossary.js'
 import { NotRatedChip, RatingGlyph } from './GradeGlyph.js'
 import { Unknown } from './Unknown.js'
+
+/**
+ * The chip of a stale quote (docs/METRICS.md, "Stale quotes"): neutral, "Stale price", and how far
+ * the pool's price is from the market on hover, focus or tap.
+ */
+export function StaleQuoteChip({ deviationBps }: { deviationBps: number | null }) {
+  return (
+    <span className="grade tone-none is-stale">
+      <Glossary definition={staleQuoteDetail(deviationBps)} anchor="depth">
+        {STALE_PRICE}
+      </Glossary>
+    </span>
+  )
+}
+
+/** Why a depth or spread is unknown: a hooked pool is not modelled, otherwise a price is missing. */
+function missingReason(p: PoolSummary, fallback: string): string {
+  return p.health.unratedReason === 'hooked' ? unratedDetail('hooked') : fallback
+}
 
 /**
  * Health: the grade glyph and the truncated score, or for a pool with no grade the "Not rated" chip
@@ -47,6 +68,7 @@ export function DepthCell({ pool, max }: { pool: PoolSummary; max: number }) {
     <span className="td-depth">
       <RowDepthGlyph sell={pool.depth2DownUsd} buy={pool.depth2UpUsd} max={max} />
       <span>{metricCell(pool, 'depth')}</span>
+      {pool.staleQuote ? <StaleQuoteChip deviationBps={pool.priceDeviationBps} /> : null}
     </span>
   )
 }
@@ -60,7 +82,8 @@ export type CellKey = PoolsSortKey | 'price' | 'updated'
 
 /**
  * Why a pool's value in this column is "—" (D6), or null when the column shows a value. A null
- * spread is "—" only for a pool with no USD price; otherwise the pool cannot absorb $10K.
+ * spread is "—" only for a pool with no USD price or a hooked pool (not modelled); otherwise the
+ * pool cannot absorb $10K.
  */
 export function unknownReason(p: PoolSummary, key: CellKey): string | null {
   switch (key) {
@@ -68,11 +91,13 @@ export function unknownReason(p: PoolSummary, key: CellKey): string | null {
       // The total of a pool with no grade is not a grade: the chip beside it says so.
       return p.health.rated ? null : unratedShort(p.health.unratedReason)
     case 'depth':
-      return p.depth2Usd === null ? UNKNOWN_REASON.depth : null
-    case 'spread':
-      return p.spread10kBps === null && p.health.unratedReason === 'unpriced'
-        ? UNKNOWN_REASON.spread
+      return p.depth2Usd === null ? missingReason(p, UNKNOWN_REASON.depth) : null
+    case 'spread': {
+      const reason = p.health.unratedReason
+      return p.spread10kBps === null && (reason === 'unpriced' || reason === 'hooked')
+        ? missingReason(p, UNKNOWN_REASON.spread)
         : null
+    }
     case 'volume':
       return p.volume24hUsd === null ? UNKNOWN_REASON.volume : null
     case 'gap':

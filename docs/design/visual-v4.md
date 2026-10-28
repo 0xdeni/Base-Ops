@@ -1179,8 +1179,9 @@ carries the counts from core:
 
 #### 5.9.8 Compact glyphs
 
-- **Cost to trade** (Pool): rows of 40 px per notional ($1K, $10K, $100K, 12 px labels in a 56 px
-  column); a 2 px `--line` track; a 4 px `--text-1` stem from 0 to the value; a 16 px square dot
+- **Cost to trade** (Pool): rows of 40 px per notional ($1K, $10K, $100K, $1M; snapshots stored
+  before the $1M point have three rows), 12 px labels in a 56 px column; a 2 px `--line` track; a
+  4 px `--text-1` stem from 0 to the value; a 16 px square dot
   (radius 4); the value 16 px after it (16 px / 800). Not fillable: a hollow ring at 0 and "Can't
   absorb $100K". Axis: 0 and three nice ticks in bps.
 - **Health bar** (Pool): four segments sized 35 : 25 : 20 : 20 with 4 px gaps, 16 px tall,
@@ -1286,17 +1287,19 @@ the winning study, v4 cut Home by 19 % on desktop and 25 % on phones, Pool by 28
 - **Lists scale with their rows,** so their budgets are also stated without them: Pools ≤ 1,400
   plus 64 per row on desktop (50 rows) and ≤ 1,600 plus 64 per row on phones (25 rows); Gaps ≤ 750
   plus 72 per row on desktop and ≤ 950 plus 102 per row on phones (20 rows).
-- **First-viewport data numbers** (P2): Home 4 on both (the figure, the two side totals, "59 %");
-  Pool 3 (the price, and the two answer numbers that the curve labels repeat); Scorecard 4 on
-  desktop (KPI, the two sides, the shortfall) and 2 on phones; Pools 3 in the answer plus the
-  field's one direct label ("59 %"); the DEX filter's shares are exempt (§1.8).
+- **First-viewport data numbers** (P2): Home 5 on both (the figure, the pool count in its
+  sentence, the two side totals, "59 %"); Pool 3 (the price, and the two answer numbers that the
+  curve labels repeat); Scorecard 4 on desktop (KPI, the two sides, the shortfall) and 2 on phones;
+  Pools 3 in the answer plus the field's one direct label ("59 %"); the DEX filter's shares are
+  exempt (§1.8).
 - **Focal element** (P1): at 25 % zoom the band, and inside it the named focal, is the heaviest
   region of every screen.
 
 ### 6.2 Home (`/`)
 
 **Focal:** the depth butterfly of Base on the band. **Answer:** "$49.9M sits within 2 % of the
-price on Base." **First facts:** 24 h volume, median health, biggest gap.
+price across 492 pools on Base." (the scored pools the figure sums, so it never reads as every pool
+on Base). **First facts:** 24 h volume, median health, biggest gap.
 
 | Element (1440)      |        y | Height | Element (390)        |          y |
 | ------------------- | -------: | -----: | -------------------- | ---------: |

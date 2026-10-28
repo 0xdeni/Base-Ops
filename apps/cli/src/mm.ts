@@ -11,7 +11,9 @@
  * - `show <id>`: the `ScorecardSummary` as JSON (bigints as decimal strings); the alert webhook URL
  *   is printed masked (`https://host/…`), since its path and query are a secret.
  * - `deactivate <id>`: stops sampling; the scorecard stays served as `inactive`.
- * - `sample`: the sampling hook on demand against the latest block (needs an RPC endpoint).
+ * - `sample`: the sampling hook on demand against the latest block (needs an RPC endpoint). A run
+ *   in which every mandate failed stored nothing and exits 1; a partial failure is a warning per
+ *   mandate and exit 0.
  *
  * Validation and lookup failures are runtime errors (exit 1, one line on stderr); the command
  * line itself is checked in config.ts (exit 2).
@@ -30,7 +32,7 @@ import {
 import type { Database } from '@depthwatch/db'
 import { type Config, type MmArgs, scorecardUrl } from './config.js'
 import type { LogFields, Logger } from './log.js'
-import { HOUR_SECONDS, type PipelineContext } from './pipeline/context.js'
+import { assertSomethingStored, HOUR_SECONDS, type PipelineContext } from './pipeline/context.js'
 import { type MmSampleResult, mmSampleStep } from './pipeline/mm.js'
 
 /** Samples the summaries are computed from: the last 30 days, like the API. */
@@ -205,7 +207,12 @@ export async function mmCommand(opts: MmCommandOptions): Promise<void> {
       return
     }
     case 'sample': {
-      await log.timed('mm sample', (step) => mmSampleStep({ ...ctx, log: step }), summarizeSample)
+      const result = await log.timed(
+        'mm sample',
+        (step) => mmSampleStep({ ...ctx, log: step }),
+        summarizeSample,
+      )
+      assertSomethingStored('mm sample', result.failed, result.samples)
       return
     }
   }

@@ -32,10 +32,10 @@ import {
 
 const COLUMNS = `id, pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd,
   active_liquidity, depth_json, depth_usd_json, spreads_json, concentration_json,
-  depth2_usd, spread10k_bps, owner_top1_share`
+  depth2_usd, spread10k_bps, owner_top1_share, price_deviation_bps`
 
 const SUMMARY_COLUMNS = `id, pool_id, block_number, timestamp, price, tvl_usd,
-  depth2_usd, owner_top1_share`
+  depth2_usd, owner_top1_share, price_deviation_bps`
 
 /**
  * SQL for one side of a snapshot's ±2 % USD level, read from its `depth_usd_json` ladder: NULL
@@ -83,8 +83,8 @@ const HEALTH_SUMMARY = `${SUMMARY_OUTER},
 const INSERT = `INSERT OR IGNORE INTO snapshots (
     pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd, active_liquidity,
     depth_json, depth_usd_json, spreads_json, concentration_json,
-    depth2_usd, spread10k_bps, owner_top1_share
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    depth2_usd, spread10k_bps, owner_top1_share, price_deviation_bps
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 /**
  * Newest row per pool: highest timestamp, then highest id (insertion order) as the tie-break.
@@ -113,6 +113,7 @@ export function rowToSnapshot(row: Row): PoolSnapshot {
       capSpreadPoint(point, price),
     ),
     concentration: colJsonOrNull<ConcentrationMetrics>(row, 'concentration_json'),
+    priceDeviationBps: colNumberOrNull(row, 'price_deviation_bps'),
   }
 }
 
@@ -129,6 +130,7 @@ export function rowToSnapshotSummary(row: Row): SnapshotSummary {
     ownerTop1Share: colNumberOrNull(row, 'owner_top1_share'),
     depth2UpUsd: colNumberOrNull(row, 'depth2_up_usd'),
     depth2DownUsd: colNumberOrNull(row, 'depth2_down_usd'),
+    priceDeviationBps: colNumberOrNull(row, 'price_deviation_bps'),
   }
 }
 
@@ -165,6 +167,7 @@ export class SnapshotsRepo {
       summary.depth2Usd,
       summary.spread10kBps,
       summary.ownerTop1Share,
+      snapshot.priceDeviationBps,
     ])
     return changes === 0 ? null : lastInsertRowid
   }
@@ -268,9 +271,18 @@ export class SnapshotsRepo {
     return row ? colBigint(row, 'block_number') : null
   }
 
-  /** Deletes snapshots with `timestamp < ts`. Returns the number deleted. */
-  pruneBefore(ts: number): number {
-    return this.ctx.run('DELETE FROM snapshots WHERE timestamp < ?', [ts]).changes
+  /**
+   * Deletes snapshots with `timestamp < ts`: all of them, or the oldest `limit` when given, so
+   * retention can delete in batches that each hold the write lock briefly. Returns the number
+   * deleted.
+   */
+  pruneBefore(ts: number, limit?: number): number {
+    if (limit === undefined)
+      return this.ctx.run('DELETE FROM snapshots WHERE timestamp < ?', [ts]).changes
+    return this.ctx.run(
+      'DELETE FROM snapshots WHERE id IN (SELECT id FROM snapshots WHERE timestamp < ? ORDER BY timestamp, id LIMIT ?)',
+      [ts, limit],
+    ).changes
   }
 
   count(): number {

@@ -8,7 +8,13 @@ import {
   buildStableSwapState,
   makeToken,
 } from '../testing.js'
-import { computeDepth, depthToUsd } from './depth.js'
+import {
+  computeDepth,
+  depthToUsd,
+  isStaleQuote,
+  priceDeviationBps,
+  STALE_QUOTE_MIN_DEVIATION_BPS,
+} from './depth.js'
 
 const L = 10n ** 21n
 
@@ -64,7 +70,8 @@ describe('computeDepth', () => {
     expect(five.up.amountIn > two.up.amountIn).toBe(true)
   })
 
-  it('marks unreached levels when liquidity runs out', () => {
+  it('marks unreached levels when the walk reaches the edge of the known tick range', () => {
+    // The known ticks end where the position does (±120), short of 2 % (≈ ±198 ticks).
     const narrow = buildConcentratedState({
       positions: [{ tickLower: -120, tickUpper: 120, liquidity: L }],
       tick: 0,
@@ -78,9 +85,35 @@ describe('computeDepth', () => {
     expect(two.up.reached).toBe(false)
     expect(two.down.reached).toBe(false)
     expect(five.up.reached).toBe(false)
-    // totals to exhaustion are reported and are the same for 2 % and 5 %
+    // totals to the edge are reported and are the same for 2 % and 5 %
     expect(two.up.amountIn).toBe(five.up.amountIn)
     expect(two.up.amountIn > one.up.amountIn).toBe(true)
+  })
+
+  it('crosses a range with no liquidity inside the known ticks at no cost, as on chain', () => {
+    // The same ±120-tick position, with ticks known for ±1,000 (about ±10 %, as a snapshot reads).
+    const known = buildConcentratedState({
+      positions: [{ tickLower: -120, tickUpper: 120, liquidity: L }],
+      tick: 0,
+      feePips: 3000,
+      tickSpacing: 60,
+      tickLowerBound: -1_000,
+      tickUpperBound: 1_000,
+    })
+    const [one, two, five] = computeDepth(known, 18, 18)
+    if (!one || !two || !five) throw new Error('missing level')
+    for (const level of [one, two, five]) {
+      expect(level.up.reached).toBe(true)
+      expect(level.down.reached).toBe(true)
+    }
+    // Nothing sits between 2 % and 5 %: the same amounts move the price to either target.
+    expect(five.up.amountIn).toBe(two.up.amountIn)
+    expect(five.down.amountIn).toBe(two.down.amountIn)
+    expect(two.up.amountIn > one.up.amountIn).toBe(true)
+    // Past 10 % the known ticks end: that target is not reached.
+    const [twenty] = computeDepth(known, 18, 18, [20])
+    expect(twenty?.up.reached).toBe(false)
+    expect(twenty?.up.amountIn).toBe(five.up.amountIn)
   })
 
   it('uses the stable pool marginal price', () => {
@@ -152,5 +185,39 @@ describe('depthToUsd', () => {
       downUsd: null,
       totalUsd: null,
     })
+  })
+})
+
+describe('priceDeviationBps / isStaleQuote', () => {
+  it('measures the BRETT/USDC pool of the live run: 17.962 USDC per BRETT at BRETT = $0.004652', () => {
+    const deviation = priceDeviationBps(17.962, 0.004652, 1)
+    expect(deviation).not.toBeNull()
+    expect((deviation ?? 0) / ((17.962 / 0.004652 - 1) * 10_000)).toBeCloseTo(1, 12)
+    expect(deviation).toBeGreaterThan(3.86e7)
+    expect(deviation).toBeLessThan(3.861e7)
+    expect(isStaleQuote(deviation)).toBe(true)
+  })
+
+  it("is 0 for a pool at its tokens' USD cross and symmetric in sign", () => {
+    expect(priceDeviationBps(2500, 2500, 1)).toBe(0)
+    expect(priceDeviationBps(1 / 1.2, 1, 1.2)).toBeCloseTo(0, 9)
+    expect(priceDeviationBps(2500 * 1.05, 2500, 1)).toBeCloseTo(500, 6)
+    expect(priceDeviationBps(2500 * 0.95, 2500, 1)).toBeCloseTo(500, 6)
+  })
+
+  it('is stale from 500 bps inclusive; unknown is not stale', () => {
+    expect(STALE_QUOTE_MIN_DEVIATION_BPS).toBe(500)
+    expect(isStaleQuote(500)).toBe(true)
+    expect(isStaleQuote(499.99)).toBe(false)
+    expect(isStaleQuote(0)).toBe(false)
+    expect(isStaleQuote(null)).toBe(false)
+  })
+
+  it('is null when a USD price is missing, zero or not finite', () => {
+    expect(priceDeviationBps(17.962, null, 1)).toBeNull()
+    expect(priceDeviationBps(17.962, 0.004652, null)).toBeNull()
+    expect(priceDeviationBps(17.962, 0, 1)).toBeNull()
+    expect(priceDeviationBps(17.962, Number.NaN, 1)).toBeNull()
+    expect(priceDeviationBps(0, 0.004652, 1)).toBeNull()
   })
 })

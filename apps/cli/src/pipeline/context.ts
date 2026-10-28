@@ -67,6 +67,8 @@ export const syncKeys = {
   positionsCustodians: (poolId: string) => `positions:${poolId}:custodians`,
   /** When `start` last ran a cadenced step (unix ms; start/scheduler.ts). */
   startLastRun: (step: string) => `start:${step}:lastRunAt`,
+  /** When `prune` last ran (unix seconds; prune.ts), which gates the daily prune of `run` and `start`. */
+  pruneLastRun: () => 'prune:lastRunAt',
   snapshot: () => 'snapshot:lastBlock',
   /** Head of the last `volume` pass. */
   volume: () => 'volume:lastBlock',
@@ -141,6 +143,24 @@ export async function mapConcurrent<T, R>(
 export interface Settled<T> {
   ok: T[]
   failed: Array<{ item: string; error: unknown }>
+}
+
+/**
+ * The exit rule of a command whose step collects per-item failures (`Settled.failed`): a run in
+ * which every item failed stored nothing and is a runtime error (exit 1, one stderr line with the
+ * first failure), where a partial failure stays a warning per item and a count on the `done`
+ * line. `stored` is what the run stored: snapshots, pools read, samples.
+ */
+export function assertSomethingStored(
+  command: string,
+  failed: ReadonlyArray<{ item: string; error: string }>,
+  stored: number,
+): void {
+  const [first] = failed
+  if (first === undefined || stored > 0) return
+  throw new Error(
+    `${command}: every item failed (${failed.length}), nothing stored; ${first.item}: ${first.error}`,
+  )
 }
 
 /**

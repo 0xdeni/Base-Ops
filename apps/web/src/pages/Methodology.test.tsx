@@ -113,7 +113,7 @@ describe('Methodology: answer, band and metric blocks', () => {
     ])
     expect([...index.querySelectorAll('.take')].map((d) => d.textContent)).toEqual([
       `Dollars it takes to move the price 1, 2 or 5${NB}%, on each side.`,
-      'What a round trip of $1K, $10K or $100K costs, fees included.',
+      'What a round trip of $1K, $10K, $100K or $1M costs, fees included.',
       'How much of the liquidity near the price one LP or one range holds.',
       'Whether the depth is still there from one snapshot to the next.',
       'One score from 0 to 100, and a grade from A to F for pools deep enough to be rated.',
@@ -132,11 +132,11 @@ describe('Methodology: answer, band and metric blocks', () => {
 })
 
 describe('Methodology: sections', () => {
-  it('has one anchored section per metric, in the contract order, then Reproduce any number', () => {
+  it('has one anchored section per metric, in the contract order, then USD prices and Reproduce any number', () => {
     renderAt('/methodology')
     expect(SECTIONS.map((s) => s.id)).toEqual(ANCHORS)
     const ids = [...main().querySelectorAll('section.doc-sec')].map((s) => s.id)
-    expect(ids).toEqual([...ANCHORS, 'reproduce'])
+    expect(ids).toEqual([...ANCHORS, 'usd-prices', 'reproduce'])
     for (const id of ANCHORS) {
       const h2 = within(section(id)).getByRole('heading', { level: 2 })
       // Section headings are lowercase words; acronyms and symbols keep their case.
@@ -157,6 +157,7 @@ describe('Methodology: sections', () => {
     const formula = (id: string) => section(id).querySelector('pre')?.textContent ?? ''
     expect(formula('depth')).toContain('totalUsd = upUsd + downUsd')
     expect(formula('spread')).toContain('spreadBps = (buyAvg − sellAvg) / mid × 10 000')
+    expect(formula('spread')).toContain('for N in {$1K, $10K, $100K, $1M}')
     expect(formula('concentration')).toContain('rangeHhi = sum of share_i²')
     expect(formula('persistence')).toContain('stability = clamp(p10 / median, 0, 1)')
     expect(formula('health')).toContain('35 × clamp((log10(2 × min(up, down)) − 3) / 3, 0, 1)')
@@ -168,13 +169,57 @@ describe('Methodology: sections', () => {
     for (const id of ANCHORS) expect(formula(id)).not.toMatch(/[√Σ∈→·]/)
   })
 
+  it('measures the spread up to $1M and says a gap ranks turnover, not fee income', () => {
+    renderAt('/methodology')
+    expect(section('spread').textContent).toContain('It is measured at $1K, $10K, $100K and $1M')
+    const gaps = section('gaps').textContent ?? ''
+    expect(gaps).toContain('It ranks turnover, not fee income')
+    expect(gaps).toContain('fee tier')
+    expect(gaps).not.toMatch(/earns the most fees/)
+  })
+
+  it('says an empty stretch costs nothing to cross and when a depth side runs out', () => {
+    renderAt('/methodology')
+    const depth = section('depth').textContent ?? ''
+    expect(depth).toContain('A stretch with no liquidity costs nothing to cross, as on chain')
+    expect(depth).toContain('When the target lies past the liquidity the snapshot read')
+    expect(depth).not.toMatch(/marked exhausted/)
+  })
+
+  it('states the USD price convention: $1 stablecoin anchors, not an oracle', () => {
+    renderAt('/methodology')
+    const prices = section('usd-prices')
+    const h2 = within(prices).getByRole('heading', { level: 2 })
+    expect(h2.textContent).toBe('USD prices')
+    const text = prices.textContent ?? ''
+    expect(text).toContain('USDC, USDbC, DAI and USDT count as $1 by convention')
+    expect(text).toContain('a valuation convention for depth and volume, not an oracle')
+    const button = within(prices).getByRole('button', { name: 'Show formula' })
+    fireEvent.click(button, { detail: 0 })
+    const formula = prices.querySelector('pre')?.textContent ?? ''
+    expect(formula).toContain('min(up × token1Usd, down × token0Usd)')
+    expect(formula).not.toMatch(/[√Σ∈→·]/)
+    // A convention, not one of the seven metric blocks.
+    const index = screen.getByRole('region', { name: 'Metric index' })
+    expect(within(index).queryByRole('link', { name: /^USD prices/ })).toBeNull()
+  })
+
   it('says which pools are graded, with the reasons that leave one without a grade', () => {
     renderAt('/methodology')
     const health = section('health').textContent ?? ''
     expect(health).toContain('Not rated')
-    expect(health).toContain('too thin to rate, too thin on one side, or no USD price')
+    expect(health).toContain(
+      'too thin to rate, too thin on one side, no USD price, or a hooked pool that is not modelled',
+    )
     expect(health).toContain('at least $5K')
     expect(health).toContain('median health on Home and in the stats counts rated pools only')
+  })
+
+  it('says which depth stays out of the totals: a stale price', () => {
+    renderAt('/methodology')
+    const depth = section('depth').textContent ?? ''
+    expect(depth).toContain('is marked “Stale price”')
+    expect(depth).toContain('so it stays out of the totals and sorts last by depth')
   })
 
   it('draws a schematic where it explains faster than prose, and none elsewhere', () => {
@@ -247,7 +292,7 @@ describe('Methodology: sections', () => {
 })
 
 describe('Methodology: On this page', () => {
-  const outline = [...ANCHORS, 'reproduce'].map((id) => `/methodology#${id}`)
+  const outline = [...ANCHORS, 'usd-prices', 'reproduce'].map((id) => `/methodology#${id}`)
 
   it('is a disclosure under the answer below 1200 px', () => {
     renderAt('/methodology')

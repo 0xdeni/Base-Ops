@@ -29,10 +29,12 @@ import { type PipelineContext, StepBudget, syncKeys, throwIfStopped } from './co
 export const DISCOVER_WINDOW_CHUNKS = 50
 
 /**
- * More `eth_getLogs` per factory than this and the scan logs a warning first: a first scan of
- * Base at 2 000-block chunks needs about 25 000; at a free tier's 10-block chunks, about 5 M.
+ * More `eth_getLogs` per DEX than this and the scan logs a warning first: 5 000 requests take
+ * about 17 minutes at the 5 requests a second Base's public endpoint allows per IP. A first scan
+ * of Base at 2 000-block chunks needs up to about 26 000 per DEX (about 97 000 in all); at a free
+ * tier's 10-block chunks, about 5 M.
  */
-export const DISCOVER_WARN_CHUNKS = 100_000n
+export const DISCOVER_WARN_CHUNKS = 5_000n
 
 export interface DiscoverDexResult {
   dex: Dex
