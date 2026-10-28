@@ -81,7 +81,10 @@ describe('static build startup', () => {
     await waitFor(() =>
       expect(
         screen
-          .getAllByRole('link', { name: `${top.pool.token0.symbol} / ${top.pool.token1.symbol}` })
+          .getAllByRole('link', {
+            name: (name) =>
+              name.startsWith(`${top.pool.token0.symbol} / ${top.pool.token1.symbol}, `),
+          })
           .map((link) => link.getAttribute('href')),
       ).toContain(`#/pools/${encodeURIComponent(top.pool.id)}`),
     )

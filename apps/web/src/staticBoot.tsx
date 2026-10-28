@@ -20,6 +20,7 @@ import {
   snapshotOf,
 } from './api/static.js'
 import type { StaticBundle } from './api/types.js'
+import { RootErrorBoundary } from './components/ErrorBoundary.js'
 
 /** Shown when the bundle cannot be fetched or is not a v1 bundle. */
 export function BundleError({ error }: { error: unknown }) {
@@ -48,7 +49,9 @@ export async function startStatic(
     client.catch(() => undefined)
     root.render(
       <StrictMode>
-        <App client={createPendingClient(client)} mock={false} staticBuild connecting />
+        <RootErrorBoundary>
+          <App client={createPendingClient(client)} mock={false} staticBuild connecting />
+        </RootErrorBoundary>
       </StrictMode>,
     )
   }, shellAfter)
@@ -64,17 +67,19 @@ export async function startStatic(
   const demo = bundle.source === 'demo'
   root.render(
     <StrictMode>
-      <App
-        client={createStaticClient(bundle)}
-        mock={false}
-        demo={demo}
-        // The demo world is frozen at export time: ages are taken against it, so a published
-        // demo never reads "updated 60d ago". A live bundle is a dated snapshot instead: its
-        // times are absolute, since how long after the export the page is read is unknown.
-        dataNow={demo ? bundle.generatedAt : undefined}
-        snapshot={snapshotOf(bundle)}
-        staticBuild
-      />
+      <RootErrorBoundary>
+        <App
+          client={createStaticClient(bundle)}
+          mock={false}
+          demo={demo}
+          // The demo world is frozen at export time: ages are taken against it, so a published
+          // demo never reads "updated 60d ago". A live bundle is a dated snapshot instead: its
+          // times are absolute, since how long after the export the page is read is unknown.
+          dataNow={demo ? bundle.generatedAt : undefined}
+          snapshot={snapshotOf(bundle)}
+          staticBuild
+        />
+      </RootErrorBoundary>
     </StrictMode>,
   )
 }

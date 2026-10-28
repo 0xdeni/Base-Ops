@@ -1,8 +1,9 @@
 /**
  * TanStack Query hooks, one per endpoint. Query keys are namespaced by endpoint and parameters.
  */
-import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query'
-import { useApi } from './context.js'
+import { keepPreviousData, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef } from 'react'
+import { useApi, useIsMock, useIsStatic } from './context.js'
 import type {
   GapsQuery,
   HistoryWindow,
@@ -13,15 +14,35 @@ import type {
   TokenQuery,
 } from './types.js'
 
-const HEALTH_REFETCH_MS = 60_000
+export const HEALTH_REFETCH_MS = 60_000
 
+/**
+ * `GET /api/health`, polled once a minute. When a poll finds a newer snapshot (`latestSnapshotAt`
+ * moved), every other query is marked stale and the mounted ones refetch in place, so an open page
+ * never shows a newer "Updated … ago" over rows from an older snapshot. The mock and the static
+ * build never take a new snapshot, so they skip it.
+ */
 export function useHealth() {
   const api = useApi()
-  return useQuery({
+  const qc = useQueryClient()
+  const staticBuild = useIsStatic()
+  const mock = useIsMock()
+  const follows = !staticBuild && !mock
+  const query = useQuery({
     queryKey: ['health'],
     queryFn: () => api.health(),
     refetchInterval: HEALTH_REFETCH_MS,
   })
+  const at = query.data?.latestSnapshotAt
+  const seen = useRef(at)
+  useEffect(() => {
+    if (at === undefined) return
+    const before = seen.current
+    seen.current = at
+    if (follows && before !== undefined && before !== at)
+      void qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'health' })
+  }, [at, follows, qc])
+  return query
 }
 
 export function useStats() {

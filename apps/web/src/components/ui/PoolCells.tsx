@@ -51,57 +51,66 @@ export function DepthCell({ pool, max }: { pool: PoolSummary; max: number }) {
   )
 }
 
-/** The $10K spread of a pool: basis points, or where it would be, "Can’t absorb $10K". */
-function spreadCell(p: PoolSummary) {
-  const v = p.spread10kBps
-  if (v !== null && Math.round(Math.abs(v)) < SPREAD_UNABSORBED_BPS) return bps(v)
-  if (v === null && p.health.unratedReason === 'unpriced')
-    return <Unknown reason={UNKNOWN_REASON.spread} />
-  return cantAbsorb(10_000)
+/** The $10K spread of a priced pool: basis points, or where it would be, "Can’t absorb $10K". */
+function spreadText(v: number | null): string {
+  return v !== null && Math.round(Math.abs(v)) < SPREAD_UNABSORBED_BPS ? bps(v) : cantAbsorb(10_000)
 }
 
-/** The value of one metric of a pool, as its column (and the phone row) shows it. */
-export function metricCell(p: PoolSummary, key: PoolsSortKey | 'price' | 'updated', now = 0) {
+export type CellKey = PoolsSortKey | 'price' | 'updated'
+
+/**
+ * Why a pool's value in this column is "—" (D6), or null when the column shows a value. A null
+ * spread is "—" only for a pool with no USD price; otherwise the pool cannot absorb $10K.
+ */
+export function unknownReason(p: PoolSummary, key: CellKey): string | null {
   switch (key) {
     case 'health':
       // The total of a pool with no grade is not a grade: the chip beside it says so.
-      return p.health.rated ? (
-        score(p.health.total)
-      ) : (
-        <Unknown reason={unratedShort(p.health.unratedReason)} />
-      )
+      return p.health.rated ? null : unratedShort(p.health.unratedReason)
     case 'depth':
-      return p.depth2Usd === null ? <Unknown reason={UNKNOWN_REASON.depth} /> : usd(p.depth2Usd)
+      return p.depth2Usd === null ? UNKNOWN_REASON.depth : null
     case 'spread':
-      return spreadCell(p)
+      return p.spread10kBps === null && p.health.unratedReason === 'unpriced'
+        ? UNKNOWN_REASON.spread
+        : null
     case 'volume':
-      return p.volume24hUsd === null ? (
-        <Unknown reason={UNKNOWN_REASON.volume} />
-      ) : (
-        usd(p.volume24hUsd)
-      )
+      return p.volume24hUsd === null ? UNKNOWN_REASON.volume : null
     case 'gap':
-      return p.gapScore === null ? <Unknown reason={UNKNOWN_REASON.gap} /> : score(p.gapScore)
+      return p.gapScore === null ? UNKNOWN_REASON.gap : null
     case 'tvl':
-      return p.tvlUsd === null ? <Unknown reason={tvlReason(p.pool.dex)} /> : usd(p.tvlUsd)
+      return p.tvlUsd === null ? tvlReason(p.pool.dex) : null
     case 'top':
-      return p.ownerTop1Share === null ? (
-        <Unknown reason={UNKNOWN_REASON.top} />
-      ) : (
-        shareOf(p.ownerTop1Share)
-      )
+      return p.ownerTop1Share === null ? UNKNOWN_REASON.top : null
+    case 'price':
+      return p.price === null ? UNKNOWN_REASON.price : null
+    case 'updated':
+      return p.updatedAt === null ? UNKNOWN_REASON.updated : null
+  }
+}
+
+/** The value of one metric of a pool, as its column (and the phone row) shows it. */
+export function metricCell(p: PoolSummary, key: CellKey, now = 0) {
+  const why = unknownReason(p, key)
+  if (why !== null) return <Unknown reason={why} />
+  switch (key) {
+    case 'health':
+      return score(p.health.total)
+    case 'depth':
+      return usd(p.depth2Usd)
+    case 'spread':
+      return spreadText(p.spread10kBps)
+    case 'volume':
+      return usd(p.volume24hUsd)
+    case 'gap':
+      return score(p.gapScore)
+    case 'tvl':
+      return usd(p.tvlUsd)
+    case 'top':
+      return shareOf(p.ownerTop1Share)
     case 'price':
       // From the pool's base token (N2): cbBTC / USDC's 0.00001522 reads 65,712.95.
-      return p.price === null ? (
-        <Unknown reason={UNKNOWN_REASON.price} />
-      ) : (
-        price(basePrice(p.price))
-      )
+      return price(basePrice(p.price))
     case 'updated':
-      return p.updatedAt === null ? (
-        <Unknown reason={UNKNOWN_REASON.updated} />
-      ) : (
-        ago(p.updatedAt, now)
-      )
+      return ago(p.updatedAt, now)
   }
 }

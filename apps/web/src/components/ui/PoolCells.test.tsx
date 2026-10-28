@@ -3,9 +3,11 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PoolSummary } from '../../api/types.js'
 import { NB } from '../../lib/format.js'
+import { UNKNOWN_REASON } from '../../lib/poolsTable.js'
 import { BASIS_MARK, BASIS_MARK_LABEL } from '../../lib/rating.js'
-import { DEMO_POOLS } from '../charts/chartFixtures.js'
+import { DEMO_POOLS, summary } from '../charts/chartFixtures.js'
 import { HealthCell, metricCell } from './PoolCells.js'
+import { PoolsTable } from './PoolsTable.js'
 
 afterEach(cleanup)
 
@@ -103,5 +105,70 @@ describe('metricCell', () => {
       </MemoryRouter>,
     )
     expect(container.textContent).toBe('—')
+  })
+})
+
+describe('unknown values (D6)', () => {
+  it('draws a null top LP share as a dash named by its reason, not a tab stop', () => {
+    const base = DEMO_POOLS[0]
+    if (!base) throw new Error('no fixture pool')
+    const { container } = render(
+      <MemoryRouter>{metricCell({ ...base, ownerTop1Share: null }, 'top')}</MemoryRouter>,
+    )
+    const dash = screen.getByRole('img', { name: `Unknown: ${UNKNOWN_REASON.top}` })
+    expect(dash.textContent).toBe('—')
+    expect(dash.getAttribute('title')).toBe(UNKNOWN_REASON.top)
+    expect(container.querySelector('button, a, [tabindex]')).toBeNull()
+  })
+})
+
+describe('PoolsTable: one name per pool', () => {
+  const slip = (address: string, tickSpacing: number): PoolSummary => {
+    const p = summary(
+      `aerodrome-slipstream:${address}`,
+      ['WETH', 'cbBTC'],
+      'aerodrome-slipstream',
+      1_000,
+      1_000,
+    )
+    return { ...p, pool: { ...p.pool, tickSpacing } }
+  }
+  const rows = [
+    slip(`0x${'a'.repeat(40)}`, 10),
+    slip(`0x${'b'.repeat(40)}`, 10),
+    slip(`0x${'c'.repeat(40)}`, 50),
+    summary('uniswap-v3:0xd', ['WETH', 'USDC'], 'uniswap-v3', 1_000, 1_000),
+  ]
+  const table = (phone: boolean) =>
+    render(
+      <MemoryRouter>
+        <PoolsTable
+          rows={rows}
+          state={{ sort: 'depth', dir: 'desc', cols: [] }}
+          now={0}
+          phone={phone}
+          onSort={() => undefined}
+          label="Pools"
+        />
+      </MemoryRouter>,
+    )
+
+  it('names each link by its pair and second line, and tells same-named pools apart', () => {
+    const slipName = `WETH / cbBTC, Aerodrome Slipstream, 0.05${NB}%`
+    for (const phone of [false, true]) {
+      const { unmount } = table(phone)
+      const names = screen.getAllByRole('link').map((a) => a.getAttribute('aria-label'))
+      expect(names).toEqual([
+        `${slipName}, 0xaaaa…aaaa`,
+        `${slipName}, 0xbbbb…bbbb`,
+        `${slipName}, tick spacing 50`,
+        `WETH / USDC, Uniswap v3, 0.05${NB}%`,
+      ])
+      // The second line shows the same words, so sighted readers can tell the rows apart too.
+      const lines = [...document.querySelectorAll('.pd')].map((el) => el.textContent)
+      expect(lines[2]).toBe(`Aerodrome Slipstream, 0.05${NB}%, tick spacing 50`)
+      expect(lines[3]).toBe(`Uniswap v3, 0.05${NB}%`)
+      unmount()
+    }
   })
 })

@@ -92,13 +92,17 @@
   overflow-wrap: anywhere;
 }
 .not-found .actions,
-.service-down .actions {
+.service-down .actions,
+.page-error .actions {
   margin-top: var(--s5);
 }
-.service-down {
+/* The data service is down, or a page could not be drawn: a display sentence and a way on. */
+.service-down,
+.page-error {
   padding-block: var(--s6) var(--s7);
 }
-.service-down .answer {
+.service-down .answer,
+.page-error .answer {
   margin-top: var(--s5);
   max-width: 36ch;
 }

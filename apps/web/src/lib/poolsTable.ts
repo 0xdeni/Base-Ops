@@ -7,8 +7,8 @@
  * pools; both must be sortable because on phones the row's value is the sort metric (TB7).
  * Formatting only: every value and every order is the API's.
  */
-import type { PoolSort, PoolSummary, SortDir } from '../api/types.js'
-import { ago, dated, NB, SNAPSHOT_CLOCK } from './format.js'
+import type { PoolMetaDto, PoolSort, PoolSummary, SortDir } from '../api/types.js'
+import { ago, dated, NB, pairLabel, poolDesc, SNAPSHOT_CLOCK, shortAddress } from './format.js'
 import { sortSummaries } from './sort.js'
 
 export type PoolsSortKey = PoolSort
@@ -157,4 +157,27 @@ export function tvlReason(dex: string): string {
   return dex === 'uniswap-v4'
     ? 'Uniswap v4 pools share one singleton contract, so pool TVL is not reported.'
     : 'TVL is unknown: a token in this pool has no USD price.'
+}
+
+/**
+ * What tells apart pools of one list that would read the same (pair, DEX, fee, stable): the tick
+ * spacing when no other pool of the group has it ("tick spacing 50"), else the short address or
+ * v4 pool id ("0x1234…abcd"). Pools with a name of their own are absent.
+ */
+export function poolTieBreaks(pools: readonly PoolMetaDto[]): Map<string, string> {
+  const groups = new Map<string, PoolMetaDto[]>()
+  for (const p of pools) {
+    const name = `${pairLabel(p.token0, p.token1)}, ${poolDesc(p)}`
+    groups.set(name, [...(groups.get(name) ?? []), p])
+  }
+  const out = new Map<string, string>()
+  for (const group of groups.values()) {
+    if (group.length < 2) continue
+    for (const p of group) {
+      const spacing = p.tickSpacing
+      const unique = spacing !== null && group.filter((q) => q.tickSpacing === spacing).length === 1
+      out.set(p.id, unique ? `tick spacing ${spacing}` : shortAddress(p.address ?? p.poolId))
+    }
+  }
+  return out
 }
