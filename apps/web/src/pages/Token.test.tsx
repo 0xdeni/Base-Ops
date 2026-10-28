@@ -273,6 +273,12 @@ describe('Token page: states', () => {
     )
     expect(await screen.findByRole('heading', { level: 1, name: 'token not found' })).toBeTruthy()
     expect(screen.getByText(missing)).toBeTruthy()
+    // What is covered, and where to look instead.
+    expect(screen.getByText(/covers the tokens of the pools it lists under Pools/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Browse pools' }).getAttribute('href')).toBe('/pools')
+    expect(screen.getByRole('link', { name: 'How it is measured' }).getAttribute('href')).toBe(
+      '/methodology',
+    )
   })
 })
 

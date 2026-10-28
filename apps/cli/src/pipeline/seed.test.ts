@@ -10,12 +10,13 @@ import {
   setClock,
   TOKENS,
 } from '@depthwatch/chain'
-import { type Address, NATIVE_ETH } from '@depthwatch/core'
+import { type Address, NATIVE_ETH, type TokenInfo } from '@depthwatch/core'
 import { type Database, IN_MEMORY, openDatabase } from '@depthwatch/db'
 import { custom, type Transport } from 'viem'
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadConfig, parseCliArgs } from '../config.js'
 import { createLogger } from '../log.js'
+import { pipelineSteps } from '../start/start.js'
 import { createPipelineContext, syncKeys } from './context.js'
 import { runIteration } from './run.js'
 import { seedStep } from './seed.js'
@@ -50,21 +51,42 @@ const POOLS: SeedWorldPool[] = [
   },
 ]
 
+type Fail = (method: string, n: number, params: unknown) => Error | undefined
+
+/** A protocol's own token, not among the reference tokens, and its Uniswap v3 pool with WETH. */
+const PROJECT: TokenInfo = { address: addr(0xbeef), symbol: 'PRJ', name: 'Project', decimals: 18 }
+const PROJECT_POOL = addr(0x3002)
+/** The seed world with PROJECT among its tokens; the reader's reference list stays without it. */
+const PROJECT_WORLD = {
+  addresses: resolveAddresses({ referenceTokens: [...addresses.referenceTokens, PROJECT] }),
+  pools: [
+    ...POOLS,
+    {
+      dex: 'uniswap-v3',
+      tokens: [PROJECT.address, WETH.address],
+      fee: 3_000,
+      address: PROJECT_POOL,
+      createdAtBlock: 30_000_000n,
+    } as const,
+  ],
+}
+
 /** The seed world behind a transport that counts requests by method; `fail` may refuse one. */
 function counted(
   counts: Map<string, number>,
-  fail: (method: string, n: number) => Error | undefined = () => undefined,
+  fail: Fail = () => undefined,
+  world: Parameters<typeof registerSeedWorld>[1] = { addresses, pools: POOLS },
 ): Transport {
   const fixture = createFixture()
   setClock(fixture, { latestBlock: HEAD, latestTimestamp: 1_800_000_000 })
-  registerSeedWorld(fixture, { addresses, pools: POOLS })
+  registerSeedWorld(fixture, world)
   const inner = createFixtureTransport(fixture)
   return (config) => {
     const live = inner(config)
     const request = async ({ method, params }: { method: string; params?: unknown }) => {
       const n = counts.get(method) ?? 0
       counts.set(method, n + 1)
-      const error = fail(method, n)
+      const error = fail(method, n, params)
       if (error) throw error
       return live.request({ method, params } as never)
     }
@@ -80,11 +102,12 @@ afterEach(() => {
 function context(
   db: Database,
   flags: Parameters<typeof loadConfig>[1] = { seed: true },
-  fail?: (method: string, n: number) => Error | undefined,
+  fail?: Fail,
+  world?: Parameters<typeof registerSeedWorld>[1],
 ) {
   const counts = new Map<string, number>()
   const lines: string[] = []
-  const chain = createChainReader({ transport: counted(counts, fail), addresses })
+  const chain = createChainReader({ transport: counted(counts, fail, world), addresses })
   const log = createLogger({ write: (line) => lines.push(line), now: () => new Date(0) })
   const ctx = createPipelineContext({ db, chain, config: loadConfig({}, flags), log })
   return { ctx, counts, lines }
@@ -154,6 +177,53 @@ describe('seedStep', () => {
     const searched = resumed.counts.get('eth_getCode') ?? 0
     expect(searched).toBeLessThanOrEqual(probesFor(addresses.aerodromeV2.startBlock, HEAD))
     expect(db.pools.get(`aerodrome-v2:${V2}`)?.createdAtBlock).toBe(9_000_000n)
+  })
+
+  it('marks only the seeded DEXes and fails naming the one whose factory views failed', async () => {
+    const db = freshDb()
+    const v2Factory = addresses.aerodromeV2.poolFactory.slice(2)
+    const broken = context(db, { seed: true }, (method, _n, params) =>
+      method === 'eth_call' && JSON.stringify(params).includes(v2Factory)
+        ? new Error('execution reverted')
+        : undefined,
+    )
+    await expect(seedStep(broken.ctx)).rejects.toThrow(
+      /seeding failed for aerodrome-v2 \(2 pools of the other DEXes stored\)/,
+    )
+    expect(
+      db.pools
+        .list({})
+        .map((p) => p.dex)
+        .sort(),
+    ).toEqual(['uniswap-v3', 'uniswap-v4'])
+    for (const dex of ['uniswap-v3', 'uniswap-v4', 'aerodrome-slipstream'] as const)
+      expect(db.syncState.getBigInt(syncKeys.seed(dex))).toBe(HEAD)
+    expect(db.syncState.getBigInt(syncKeys.seed('aerodrome-v2'))).toBeUndefined()
+    expect(broken.lines.some((l) => /WARN {2}seed failed dex=aerodrome-v2/.test(l))).toBe(true)
+    // `start` seeds again while a DEX has no marker; the next seed adds only the missing pool.
+    expect(pipelineSteps(broken.ctx, () => 0).needsSeed()).toBe(true)
+    const again = context(db)
+    expect(await seedStep(again.ctx)).toMatchObject({ found: 3, added: 1 })
+    expect(db.syncState.getBigInt(syncKeys.seed('aerodrome-v2'))).toBe(HEAD)
+    expect(pipelineSteps(again.ctx, () => 0).needsSeed()).toBe(false)
+  })
+
+  it('seeds the pairs of the --seed-token addresses too', async () => {
+    const db = freshDb()
+    const plain = context(db, { seed: true }, undefined, PROJECT_WORLD)
+    expect(await seedStep(plain.ctx)).toMatchObject({ found: 3 })
+    expect(db.pools.get(`uniswap-v3:${PROJECT_POOL}`)).toBeUndefined()
+
+    const upper = `0x${PROJECT.address.slice(2).toUpperCase()}`
+    const flags = parseCliArgs(['discover', '--seed', '--seed-token', upper]).flags
+    const extra = context(db, flags, undefined, PROJECT_WORLD)
+    expect(await seedStep(extra.ctx)).toMatchObject({ found: 4, added: 1 })
+    const pool = db.pools.get(`uniswap-v3:${PROJECT_POOL}`)
+    expect(pool?.createdAtBlock).toBe(30_000_000n)
+    expect([pool?.token0.symbol, pool?.token1.symbol].sort()).toEqual(['PRJ', 'WETH'])
+    expect(
+      extra.lines.some((l) => l.includes(`seeding from factory views`) && l.includes('tokens=5')),
+    ).toBe(true)
   })
 
   it('replaces the log scan in run --seed, so a logs-less endpoint still discovers', async () => {

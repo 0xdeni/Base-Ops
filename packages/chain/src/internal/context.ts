@@ -50,6 +50,8 @@ export interface ReaderContext {
   onCallRetry: ((event: BackoffEvent) => void) | undefined
   /** Upper bound of calls per Multicall3 `aggregate3`. */
   maxCallsPerMulticall: number
+  /** `aggregate3` requests one `multicallBatched` call keeps in flight; further groups wait. */
+  maxConcurrentMulticalls: number
   tokenCache: Map<Address, TokenInfo>
   timestampCache: Map<bigint, number>
   /**

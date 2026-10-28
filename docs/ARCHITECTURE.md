@@ -232,8 +232,9 @@ resolved once per token through multicall and cached in `tokens`.
 ### Seeded discovery: factory views and archive state
 
 `discover --seed` (`ChainReader.seedPools`, `packages/chain/src/seed/`) sends no `eth_getLogs`.
-It asks each DEX for the pools of every pair of the reference tokens in `addresses.ts`, at one
-block (the head), through Multicall3 (at most 500 calls per request):
+It asks each DEX for the pools of every pair of the reference tokens in `addresses.ts`, plus any
+tokens given with `--seed-token` / `DEPTHWATCH_SEED_TOKENS`, at one block (the head), through
+Multicall3 (at most 500 calls per request):
 - Uniswap v3: `feeAmountTickSpacing` for the candidate tiers (seven are enabled on Base: 100,
   200, 300, 400, 500, 3000, 10000), then `getPool(token0, token1, fee)` per pair and tier.
 - Aerodrome v2: `PoolFactory.getPool(token0, token1, stable)`, stable and volatile.
@@ -246,7 +247,10 @@ With the 14 reference tokens (13 ERC-20s and native ETH) that is 78 ERC-20 pairs
 currency pairs: 546 v3, 156 Aerodrome v2, 364 v4 and one Slipstream call per pair and enabled
 spacing of each factory (1,716 with the 22 spacings the three factories enable today), about ten
 multicalls in all, plus token metadata and fees for the pools found. Every non-zero answer goes
-through the same PoolMeta builder as the creation log would.
+through the same PoolMeta builder as the creation log would. The four DEXes are asked
+independently: one whose factory reads fail is reported (`SeedResult.failed`) and gets no
+`seed:<dex>:lastBlock`, while the others' pools are dated and stored; the command then exits 1
+and the next seed asks that DEX again.
 
 The creation block of each new pool is found exactly by binary search between its factory's
 `startBlock` and the head: a contract pool exists at block N when `eth_getCode` at N is not empty;
@@ -276,7 +280,10 @@ the searched blocks exactly.
 Three to four `eth_call`s per pool (`slot0`, `liquidity`, two `balanceOf`; or `getReserves` plus
 `stable`), packed 500 per Multicall3 request. 10,000 pools are roughly 70 multicalls. This is the
 only step that touches every pool, so its cost grows with the number of pools on Base, not with
-how many are tracked.
+how many are tracked. One batched read keeps at most four of its multicalls in flight
+(`maxConcurrentMulticalls`); its further groups wait, so a large read (a first positions scan
+reads every token a position manager touched) queues instead of bursting at a rate-limited
+endpoint.
 
 ### State: tick-bitmap walks
 

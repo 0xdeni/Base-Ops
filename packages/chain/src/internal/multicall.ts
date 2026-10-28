@@ -1,7 +1,10 @@
 /**
  * Multicall3 batching on top of viem's `publicClient.multicall`. Calls are split into groups of at
  * most `maxCallsPerMulticall` (DESIGN: ≤ 500) and sent with `batchSize: 0` so viem does not
- * re-chunk by calldata size; every call is `allowFailure` and failures are reported per call.
+ * re-chunk by calldata size; every call is `allowFailure` and failures are reported per call. At
+ * most `maxConcurrentMulticalls` groups of one call are in flight (./concurrency.ts), so a read of
+ * thousands of positions queues its groups instead of bursting them at a rate-limited endpoint;
+ * results are written back by group, in call order.
  *
  * viem reports a failure of the `aggregate3` request itself (transport error, RPC outage, missing
  * fixture entry) as a failure of every call in that group. Those are rethrown here, so callers that
@@ -11,6 +14,7 @@
  */
 import { ContractFunctionExecutionError, type ContractFunctionParameters } from 'viem'
 import { type BackoffEvent, callWithBackoff } from './backoff.js'
+import { runLimited } from './concurrency.js'
 import type { ReaderContext } from './context.js'
 import { errorSummary } from './errorText.js'
 
@@ -48,29 +52,29 @@ export async function multicallBatched(
   for (let i = 0; i < calls.length; i += ctx.maxCallsPerMulticall)
     groups.push(calls.slice(i, i + ctx.maxCallsPerMulticall))
   const at = blockNumber === undefined ? '' : ` @ ${blockNumber}`
-  const settled = await Promise.all(
-    groups.map((contracts, g) => {
-      const part = groups.length > 1 ? ` (group ${g + 1}/${groups.length})` : ''
-      const what = `${opts.what ?? `eth_call aggregate3 ×${contracts.length}${at}`}${part}`
-      return callWithBackoff(
-        ctx,
-        what,
-        async () => {
-          const group = await ctx.client.multicall({
-            contracts,
-            allowFailure: true,
-            batchSize: 0,
-            multicallAddress: ctx.addresses.multicall3,
-            ...(blockNumber === undefined ? {} : { blockNumber }),
-          })
-          const err = groupLevelError(group)
-          if (err) throw err
-          return group
-        },
-        opts.onRetry,
-      )
-    }),
-  )
+  const settled: (readonly CallResult[])[] = new Array(groups.length)
+  const tasks = groups.map((contracts, g) => async () => {
+    const part = groups.length > 1 ? ` (group ${g + 1}/${groups.length})` : ''
+    const what = `${opts.what ?? `eth_call aggregate3 ×${contracts.length}${at}`}${part}`
+    settled[g] = await callWithBackoff(
+      ctx,
+      what,
+      async () => {
+        const group = await ctx.client.multicall({
+          contracts,
+          allowFailure: true,
+          batchSize: 0,
+          multicallAddress: ctx.addresses.multicall3,
+          ...(blockNumber === undefined ? {} : { blockNumber }),
+        })
+        const err = groupLevelError(group)
+        if (err) throw err
+        return group
+      },
+      opts.onRetry,
+    )
+  })
+  await runLimited(tasks, ctx.maxConcurrentMulticalls)
   return settled
     .flat()
     .map((r) =>
