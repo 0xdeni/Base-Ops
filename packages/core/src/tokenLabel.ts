@@ -41,6 +41,24 @@ export function buildSharedSymbols(tokens: readonly LabelledToken[]): SharedSymb
   return { bySymbol, bySymbolName }
 }
 
+/**
+ * A copy of `shared` with `tokens` indexed too; `shared` is left as it is. The API labels a pool's
+ * two tokens against it when they share a symbol (the Aero AERO/AERO pool, two copycats), so they
+ * are told apart even when neither is in a scored pool.
+ */
+export function withTokens(shared: SharedSymbols, tokens: readonly LabelledToken[]): SharedSymbols {
+  const bySymbol = new Map(shared.bySymbol)
+  const bySymbolName = new Map(shared.bySymbolName)
+  const put = (index: Map<string, ReadonlySet<Address>>, key: string, address: Address) =>
+    index.set(key, new Set([...(index.get(key) ?? []), address]))
+  for (const token of tokens) {
+    const address = token.address.toLowerCase() as Address
+    put(bySymbol, symbolKey(token.symbol), address)
+    put(bySymbolName, symbolNameKey(token.symbol, token.name), address)
+  }
+  return { bySymbol, bySymbolName }
+}
+
 /** True when `index` holds an address other than `address` under `key`. */
 function heldByOther(
   index: ReadonlyMap<string, ReadonlySet<Address>>,

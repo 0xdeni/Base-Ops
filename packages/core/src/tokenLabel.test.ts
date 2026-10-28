@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { buildSharedSymbols, symbolKey, symbolNameKey, tokenLabel } from './tokenLabel.js'
+import {
+  buildSharedSymbols,
+  symbolKey,
+  symbolNameKey,
+  tokenLabel,
+  withTokens,
+} from './tokenLabel.js'
 import type { Address } from './types.js'
 
 const token = (address: string, symbol: string, name: string) => ({
@@ -53,5 +59,18 @@ describe('tokenLabel', () => {
     expect(tokenLabel(AERO, buildSharedSymbols([shouting]))).toBe('AERO')
     expect(tokenLabel(AERO, shared)).toBe('AERO (Aero)')
     expect(tokenLabel(AERO_AERODROME, shared)).toBe('AERO (Aerodrome)')
+  })
+
+  it('withTokens adds tokens to a copy of the index, leaving the index as it was', () => {
+    const shared = buildSharedSymbols([USDC])
+    const pair = withTokens(shared, [AERO, AERO_AERODROME])
+    expect(tokenLabel(AERO, pair)).toBe('AERO (Aero)')
+    expect(tokenLabel(AERO_AERODROME, pair)).toBe('AERO (Aerodrome)')
+    expect(tokenLabel(USDC, pair)).toBe('USDC')
+    expect(tokenLabel(AERO, shared)).toBe('AERO')
+    expect(shared.bySymbol.has(symbolKey('AERO'))).toBe(false)
+    // An address already indexed under the key is not counted twice.
+    const again = withTokens(buildSharedSymbols([AERO]), [AERO])
+    expect(tokenLabel(AERO, again)).toBe('AERO')
   })
 })

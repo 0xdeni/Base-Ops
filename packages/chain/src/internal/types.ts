@@ -117,4 +117,10 @@ export interface DexAdapter {
   ): Promise<Position[]>
   /** Contracts holding positions for depositors (a gauge), lowercase; absent = none. */
   custodians?(ctx: ReaderContext, pool: PoolMeta, blockNumber?: bigint): Promise<Address[]>
+  /**
+   * Stored pools' PoolMeta built again as discovery builds them, at the head; a pool its factory
+   * no longer reports is left out. Present where PoolMeta holds a reading that can change after
+   * discovery and that the state reads check (Aero Slipstream: `hooks`); absent = nothing to redo.
+   */
+  refreshMetas?(ctx: ReaderContext, pools: readonly PoolMeta[]): Promise<PoolMeta[]>
 }

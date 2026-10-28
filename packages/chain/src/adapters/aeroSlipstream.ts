@@ -8,8 +8,9 @@
  * - Discovery and seeding read, with each pool's fee, `getPoolSwapHook(pool)` and the reviewed
  *   hook's `dynamicFeeConfig(pool)`. `hooks` is the pool's hook when it is not the deployment's
  *   `swapHook`, or when the hook charges the pool's first transaction of each block an initial
- *   fee (`initialFeeEnabled`, or a config that cannot be read), else null. A non-null `hooks`
- *   makes the pool hooked (core `isHookedPool`): indexed, but its depth is not modelled.
+ *   fee (`initialFeeEnabled`, or a config that cannot be read), else null. A non-zero `hooks`
+ *   makes the pool hooked (core `isHookedPool`): indexed, but its depth is not modelled; the zero
+ *   address (a factory that returns no hook) does not.
  * - Every state read sends, per deployment, `isPool`, `getPoolSwapHook` and `dynamicFeeConfig` in
  *   its first multicall. For the deployment that knows the pool the hook must still be
  *   `hooks ?? swapHook` and, when `hooks` is null, the initial fee must still be off; otherwise

@@ -5,11 +5,13 @@
  * together with the rebuilt `prices` table.
  *
  * Fees are read with the state, at the snapshot block: each snapshot stores the fee its depth and
- * spread used (`PoolSnapshot.feePips`), and a pool whose stored fee differs (a Slipstream fee
- * that moves every block, an Aerodrome or Aero v2 override) gets the new one in the same
- * transaction, so the fee shown is the latest snapshot's. A state read that finds an Aero pool's
- * configuration changed (`PoolConfigChangedError`: fee module, swap hook, initial fee) fails that
- * pool like any other read; the others are stored.
+ * spread used (`PoolSnapshot.feePips`), and every snapshotted pool's row gets that fee in the same
+ * transaction (`pools.setFees`, the fee column alone, so a `discover --seed` that rewrote a pool's
+ * `hooks` meanwhile is not undone), so the fee shown is the latest snapshot's. A state read that
+ * finds an Aero pool's configuration changed (`PoolConfigChangedError`: fee module, swap hook,
+ * initial fee) fails that pool like any other read, logged with its remedy (`poolConfigFix`); the
+ * others are stored. A pool without a usable mid price (a zero reserve: an empty pool tracked
+ * through `--pool` or a mandate) has no price to store: it is logged and skipped, not a failure.
  *
  * Uniswap v4 pools hold no reserves of their own (singleton PoolManager), so their TVL is unknown
  * (null) and they are ranked by the USD value of their ±2 % depth instead. A Uniswap v4 pool with a
@@ -27,7 +29,7 @@
  * Under `depthwatch start` the stop signal ends the state reads (no further pool starts) and
  * nothing is stored: a stop mid-snapshot leaves no partial snapshot in the history.
  */
-import { isPoolConfigChangedError, type PoolOverview } from '@depthwatch/chain'
+import { isPoolConfigChangedError, type PoolOverview, poolConfigFix } from '@depthwatch/chain'
 import {
   type Address,
   computeConcentration,
@@ -46,6 +48,7 @@ import {
   priceDeviationBps,
   tvlUsd,
 } from '@depthwatch/core'
+import type { PoolFee } from '@depthwatch/db'
 import { errorMessage, type Logger } from '../log.js'
 import { type AlertsResult, deliverAlerts } from './alerts.js'
 import { type PipelineContext, settleConcurrent, syncKeys, throwIfStopped } from './context.js'
@@ -89,6 +92,8 @@ export interface SnapshotResult {
   alerts: number
   /** Snapshotted pools whose stored fee changed to the one read at this block. */
   fees: number
+  /** Tracked pools without a usable mid price (a zero reserve): logged, not snapshotted. */
+  empty: number
   failed: Array<{ item: string; error: string }>
 }
 
@@ -159,6 +164,12 @@ export function selectTracked(
     taken++
   }
   return [...selected].sort()
+}
+
+/** Whether the state has a mid price to store: false for a pool with a zero reserve. */
+export function hasUsableMid(pool: PoolMeta, state: PoolState): boolean {
+  const price = midPrice(state, pool.token0.decimals, pool.token1.decimals)
+  return Number.isFinite(price) && price > 0
 }
 
 /**
@@ -253,6 +264,7 @@ export async function snapshotStep(
     sampleFailures: 0,
     alerts: 0,
     fees: 0,
+    empty: 0,
     failed: [],
   }
   if (pools.length === 0) {
@@ -303,9 +315,10 @@ export async function snapshotStep(
     const error = errorMessage(failure.error)
     result.failed.push({ item: failure.item, error })
     if (isPoolConfigChangedError(failure.error))
-      log.warn('pool configuration changed; not snapshotted (review, then discover --seed)', {
+      log.warn('pool configuration changed; not snapshotted', {
         pool: failure.item,
         error,
+        fix: poolConfigFix(failure.error.change),
       })
     else log.warn('readState failed', { pool: failure.item, error })
   }
@@ -315,15 +328,20 @@ export async function snapshotStep(
   const mandatesByPool = activeMandatesByPool(db, mandated)
   const snapshots: PoolSnapshot[] = []
   const samples: MmSample[] = []
-  const refreshed: PoolMeta[] = []
+  const fees: PoolFee[] = []
   for (const { pool, state } of states.ok) {
     const view = viewById.get(pool.id)
     if (view === undefined) continue
+    if (!hasUsableMid(pool, state)) {
+      result.empty++
+      log.info('empty pool, not snapshotted', { pool: pool.id })
+      continue
+    }
     const positions = storedPositions(db, pool)
     const custodians = storedCustodians(db, pool.id)
     try {
       snapshots.push(buildSnapshot(pool, view, state, prices, positions, bandPct, custodians))
-      if (state.feePips !== pool.feePips) refreshed.push({ ...pool, feePips: state.feePips })
+      fees.push({ id: pool.id, feePips: state.feePips })
     } catch (error) {
       const message = errorMessage(error)
       result.failed.push({ item: pool.id, error: message })
@@ -352,7 +370,7 @@ export async function snapshotStep(
   const entries = priceEntries(prices)
   db.transaction(() => {
     result.snapshots = db.snapshots.insertMany(snapshots)
-    result.fees = db.pools.upsertMany(refreshed)
+    result.fees = db.pools.setFees(fees)
     result.samples = db.mmSamples.insertMany(samples)
     db.prices.replaceAll(entries, latest.timestamp)
     db.syncState.setBigInt(syncKeys.snapshot(), latest.number)
@@ -364,6 +382,7 @@ export async function snapshotStep(
     sampleFailures: result.sampleFailures,
     prices: entries.length,
     fees: result.fees,
+    empty: result.empty,
     failed: result.failed.length,
     block: latest.number,
   })

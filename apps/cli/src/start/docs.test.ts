@@ -4,12 +4,15 @@
  * image and a hosting platform set unset), the README "Environment" table and the docs/DEPLOY.md
  * schedule table give each schedule variable its default, and `--help` names every schedule
  * flag. The Docker documents publish the port on loopback only and drop privileges for good.
- * DEPLOY.md's upgrade notes quote the refusal an older build gives the current schema version and
- * name the DEX ids an explicit `--dex` list has to add.
+ * DEPLOY.md's upgrade notes quote the refusal an older build gives the current schema version,
+ * name the DEX ids an explicit `--dex` list has to add and give a changed Aero hook and a changed
+ * fee module the remedies the snapshot step logs (`poolConfigFix`); DEPLOY.md and the entrypoint
+ * name `discover --seed` as the one live command safe beside `start`.
  */
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { poolConfigFix } from '@depthwatch/chain'
 import { DEXES } from '@depthwatch/core'
 import { SCHEMA_VERSION } from '@depthwatch/db'
 import { describe, expect, it } from 'vitest'
@@ -111,5 +114,24 @@ describe('docs/DEPLOY.md: upgrading', () => {
     expect(upgrading).toContain('`start` covers every DEX by default, now six.')
     for (const reason of ['swap hook changed', 'initial fee enabled', 'fee module changed'])
       expect(upgrading).toContain(reason)
+  })
+
+  it('gives hook changes and a fee module change the remedies the snapshot step logs', () => {
+    const module = poolConfigFix('fee module changed')
+    for (const text of [upgrading, module]) {
+      expect(text).toMatch(/`?aeroV2\.volatileFeeModule`? \/ `?stableFeeModule`?/)
+      expect(text).toMatch(/`?discover --seed`? does not help/)
+    }
+    for (const change of ['swap hook changed', 'initial fee enabled'] as const)
+      expect(poolConfigFix(change)).toContain('then run discover --seed')
+    expect(upgrading).toContain('It reads the hook of every stored Aero Slipstream pool again')
+  })
+
+  it('names discover --seed as the one live command safe beside start', () => {
+    expect(deploy.replace(/\s+/g, ' ')).toContain(
+      '`discover --seed` is the one live command that is safe beside `start`',
+    )
+    const entrypoint = read('deploy', 'docker-entrypoint.sh').replace(/\s+#?\s*/g, ' ')
+    expect(entrypoint).toContain('never a live command beside `start` but `discover --seed`')
   })
 })

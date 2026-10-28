@@ -36,6 +36,7 @@ export {
   isPoolConfigChangedError,
   type PoolConfigChange,
   PoolConfigChangedError,
+  poolConfigFix,
 } from './internal/poolErrors.js'
 export {
   bitmapPosition,

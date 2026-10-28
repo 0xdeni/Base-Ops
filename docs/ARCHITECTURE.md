@@ -257,7 +257,10 @@ Multicall3 (at most 500 calls per request):
 - Slipstream, Aerodrome's three deployments and Aero's: `tickSpacings()` of each CLFactory, then
   `getPool(token0, token1, tickSpacing)`. For an Aero Slipstream pool the builder also reads its
   swap hook (`getPoolSwapHook`) and the hook's `dynamicFeeConfig`, for every pool it finds, new or
-  stored, so a rerun picks up a changed hook.
+  stored. Stored Aero Slipstream pools outside the seeded pairs (found by log discovery, or
+  tracked with `--pool` or a mandate) are read again too (`ChainReader.refreshPoolMetas`: the
+  factory's `getPool` for the stored key, then the same build), so a rerun picks up a changed hook
+  on every stored pool.
 - Uniswap v4: StateView `getSlot0` of the PoolKey id for (currency0, currency1, fee,
   tickSpacing, no hooks) over (100, 1), (500, 10), (3000, 60) and (10000, 200), native ETH as
   `address(0)`; a pool counts once its sqrtPriceX96 is not zero.
@@ -323,10 +326,16 @@ factory with `getReserves`; an Aero Slipstream read sends the CLFactory's `isPoo
 `tickSpacing`. A fee module other than the pinned one, another swap hook, or a hook that charges
 each block's first swap an initial fee throws `PoolConfigChangedError` (`fee module changed`,
 `swap hook changed`, `initial fee enabled`): the snapshot fails that pool instead of publishing
-depth modelled on a setup nobody reviewed, and `discover --seed` reads the hooks again once
-docs/research/base-contracts.md is updated ([DEPLOY.md](DEPLOY.md#upgrading)). Every Slipstream
-pool's `fee()`, Aerodrome's and Aero's, is a reading at the snapshot block, which the snapshot
-stores with it (`PoolSnapshot.feePips`) and writes back to the pool row.
+depth modelled on a setup nobody reviewed, and logs the remedy (`poolConfigFix`,
+[DEPLOY.md](DEPLOY.md#upgrading)). For a hook, `discover --seed` reads the hook of every stored
+Aero Slipstream pool again and stores a pool off the reviewed setup as hooked (price only). A fee
+module is pinned in code (`aeroV2.volatileFeeModule` / `stableFeeModule`), so seeding and log
+discovery of Aero v2 fail the same way until a new build pins the reviewed module. Every
+Slipstream pool's `fee()`, Aerodrome's and Aero's, is a reading at the snapshot block, which the
+snapshot stores with it (`PoolSnapshot.feePips`) and writes to the pool row's fee column alone
+(`pools.setFees`), so a seed that rewrote the row meanwhile keeps its write; once a pool has a
+snapshot, discovery and seeding leave its fee alone. A tracked pool without a usable mid price (a
+zero reserve) has no price to store: the snapshot logs it as empty and skips it.
 
 ### Volume: chunked `getLogs` on many addresses
 

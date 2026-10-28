@@ -11,9 +11,23 @@
  *   initial fee, which `fee()` at a block without a swap does not show.
  *
  * A state read that throws it fails that pool's snapshot; a discovery or seeding read fails the
- * DEX. `depthwatch discover --seed` reads the hooks again once the change has been reviewed.
+ * DEX. The remedy differs (`poolConfigFix`, what the snapshot step logs): `depthwatch discover
+ * --seed` reads the hook of every stored Aero Slipstream pool again, seeded pair or not, and stores
+ * a pool off the reviewed setup as hooked (price only); a fee module is pinned in code, so seeding
+ * and log discovery of Aero v2 fail the same way until a new build pins the reviewed module.
  */
 export type PoolConfigChange = 'fee module changed' | 'swap hook changed' | 'initial fee enabled'
+
+/** What an operator does about a change: the `fix` of the snapshot step's log line. */
+export function poolConfigFix(change: PoolConfigChange): string {
+  if (change === 'fee module changed')
+    return (
+      'review the new module, then pin it in aeroV2.volatileFeeModule / stableFeeModule ' +
+      '(packages/chain/src/addresses.ts, docs/research/base-contracts.md) in a new build; ' +
+      'discover --seed does not help'
+    )
+  return 'review the hook, then run discover --seed, which stores the pool as hooked (price only)'
+}
 
 export class PoolConfigChangedError extends Error {
   override readonly name = 'PoolConfigChangedError'

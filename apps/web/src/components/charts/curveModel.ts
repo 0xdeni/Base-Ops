@@ -4,11 +4,13 @@
  * log-spaced x and a linear y from 0. Pure, so the geometry is testable without layout.
  */
 import type { PoolSnapshotDto } from '../../api/types.js'
-import { amount, DASH, NB, pct, usd } from '../../lib/format.js'
+import { amount, DASH, NB, pct, tokenText, unitText, usd } from '../../lib/format.js'
 import { linear, logPctX, niceStepUp } from '../../lib/scale.js'
 
 interface Token {
   symbol: string
+  /** The API's display label (`tokenText`). */
+  label?: string
   decimals: number
 }
 
@@ -27,9 +29,10 @@ export interface CurvePoint {
   reached: boolean
 }
 
-function tokenText(raw: string, token: Token): string {
+/** The amount with its unit (`unitText`: labelled when the pool's other token shares the symbol). */
+function amountText(raw: string, token: Token, other: Token): string {
   const text = amount(raw, token.decimals)
-  return text === DASH ? DASH : `${text}${NB}${token.symbol}`
+  return text === DASH ? DASH : `${text}${NB}${unitText(token, other)}`
 }
 
 /** The ticks along x (CH3). */
@@ -56,7 +59,7 @@ export function curvePoints(snapshot: PoolSnapshotDto, token0: Token, token1: To
         side: 'sell',
         pct: -row.pct,
         usd: row.downUsd,
-        amount: raw ? tokenText(raw.down.amountIn, token0) : DASH,
+        amount: raw ? amountText(raw.down.amountIn, token0, token1) : DASH,
         reached: raw ? raw.down.reached : true,
       })
     if (row.upUsd !== null)
@@ -64,7 +67,7 @@ export function curvePoints(snapshot: PoolSnapshotDto, token0: Token, token1: To
         side: 'buy',
         pct: row.pct,
         usd: row.upUsd,
-        amount: raw ? tokenText(raw.up.amountIn, token1) : DASH,
+        amount: raw ? amountText(raw.up.amountIn, token1, token0) : DASH,
         reached: raw ? raw.up.reached : true,
       })
   }
@@ -181,7 +184,7 @@ export function emptyNote(points: readonly CurvePoint[], token0: Token, token1: 
   const buy = points.some((p) => p.side === 'buy')
   if (sell === buy) return `No liquidity sits within 5${NB}% of the price at this snapshot.`
   const unpriced = sell ? token1 : token0
-  return `No liquidity sits within 5${NB}% of the price on the ${sell ? 'sell' : 'buy'} side at this snapshot; ${unpriced.symbol} has no USD price.`
+  return `No liquidity sits within 5${NB}% of the price on the ${sell ? 'sell' : 'buy'} side at this snapshot; ${tokenText(unpriced)} has no USD price.`
 }
 
 /** The x of a tick label, clamped 16 px inside the edges. */

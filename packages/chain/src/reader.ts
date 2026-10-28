@@ -100,6 +100,12 @@ export interface ChainReader {
    * state (see seed/index.ts). The PoolMeta equal what `discoverPools` yields for the same pools.
    */
   seedPools(opts?: SeedPoolsOptions): Promise<SeedResult>
+  /**
+   * Stored pools' PoolMeta read again at the head as discovery builds them (stored tokens, tick
+   * spacing and creation block kept), for DEXes whose PoolMeta holds a reading the state reads
+   * check (Aero Slipstream: `hooks`). Other DEXes' pools, and pools no factory reports, are left out.
+   */
+  refreshPoolMetas(pools: readonly PoolMeta[]): Promise<PoolMeta[]>
   readTokens(addresses: Address[]): Promise<TokenInfo[]>
   /** One multicall-batched pass over all pools at `blockNumber` (default: latest). */
   readOverview(pools: PoolMeta[], blockNumber?: bigint): Promise<PoolOverview[]>
@@ -318,6 +324,18 @@ export function createChainReader(opts: CreateChainReaderOptions = {}): ChainRea
     discoverPools: (dex, fromBlock, toBlock) => ADAPTERS[dex].discover(ctx, fromBlock, toBlock),
     async seedPools(seedOpts = {}) {
       return seedPools(ctx, await resolveBlock(seedOpts.blockNumber), seedOpts)
+    },
+    async refreshPoolMetas(pools) {
+      const metas = await Promise.all(
+        [...groupByDex([...pools])].map(
+          ([dex, entries]) =>
+            ADAPTERS[dex].refreshMetas?.(
+              ctx,
+              entries.map((e) => e.pool),
+            ) ?? [],
+        ),
+      )
+      return metas.flat()
     },
     readTokens: (tokens) => readTokensWithCache(ctx, tokens),
     async readOverview(pools, blockNumber) {

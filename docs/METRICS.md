@@ -36,7 +36,8 @@ page ever disagree, this page and the core tests are what gets fixed first.
 - **The fee is read at the snapshot's block.** Each state read carries the pool's LP fee as the
   pool answers it at that block; depth and spread use that fee, the snapshot stores it
   (`PoolSnapshot.feePips`; `null` in snapshots stored before schema version 7), and the pool's
-  `feePips` is the latest snapshot's. For most pools it is a fixed tier. A Slipstream pool's
+  `feePips` is the latest snapshot's (for a pool never snapshotted, the reading at discovery or
+  seeding). For most pools it is a fixed tier. A Slipstream pool's
   `fee()`, Aerodrome or Aero, is a reading that can change from one block to the next
   (`hasDynamicFee`): on Aerodrome it asks the deployment's DynamicSwapFeeModule, on Aero the
   pool's swap hook, which fixes one fee per block at its first swap, `min(baseFee + dynamic part,
@@ -116,8 +117,12 @@ side whose token has no USD price is `null`.
   normalised units.
 
 **Edge cases.** A pool with no usable mid (a reserve is zero) reports zero amounts with
-`reached = false` on every level. `p` must lie in (0, 100). Pools whose known tick range is
-narrower than the target move report `reached = false` rather than a guess. A stable pool whose
+`reached = false` on every level (`computeDepth`). The snapshot step stores nothing for such a
+pool: a snapshot needs a price. It logs the pool as empty ("empty pool, not snapshotted") and
+skips it without counting it as failed; only a pool requested with `--pool` or named by a
+mandate gets there, since TVL ranking never selects an empty pool. `p` must lie in (0, 100).
+Pools whose known tick range is narrower than the target move report `reached = false` rather
+than a guess. A stable pool whose
 reserves are too small for the contract's math (below ~1e-6 tokens the invariant's derivative
 floors to 0 and the contract reverts, the state a drained pool is left in) and a concentrated pool
 with a 100 % LP fee (Uniswap v4 `MAX_LP_FEE`, nothing can move the price) both report zero
@@ -418,7 +423,8 @@ unrated, `grade` is `null` and `unratedReason` says why, tested in this order:
   allow-list of hooks that leave swaps unchanged may be added later. Aero Slipstream pools are
   checked at discovery and at every state read: a pool whose hook changed after discovery fails
   its snapshot ("swap hook changed", "initial fee enabled") until `depthwatch discover --seed`
-  reads it again.
+  reads it again, which it does for every stored Aero Slipstream pool, seeded pair or not; the
+  pool is then `hooked`, or modelled again when its initial fee was turned off.
 - `unpriced`: a side's USD depth is `null` (its token has no USD price, or the snapshot has no
   ±2 % level).
 - `one-sided`: both sides are known, the deeper one holds at least the floor and the thinner one
@@ -675,7 +681,10 @@ and `down = human(down.amountIn)`, the token0 that moves it 2 % down:
 
 **Two AEROs.** Aerodrome's AERO (0x9401…8631) and Aero's AERO (0x3f5b…a4ee) are two tokens with
 the same symbol. Aero's migration contract converts the old one into the new one, one way, but
-that is no price peg, so there is no edge between them: each is priced from its own pools.
+that is no price peg, so there is no synthetic edge between them as there is between ETH and
+WETH. A pool that pairs the two (Aero v2's stable AERO/AERO pool, `aero-v2:0x7986…6c1b`) is an
+ordinary edge at its own price, weighted by its ±2 % depth like any other: an AERO is priced
+through it only when that is its widest route, otherwise from its own pools.
 
 USD prices are what is being derived, so the search weighs each edge when it reaches it from a
 settled token, in one pass: the settled token's side at that token's USD price, the other side at

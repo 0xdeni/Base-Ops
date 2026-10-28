@@ -66,6 +66,17 @@ function Row({ term, children }: { term: ReactNode; children: ReactNode }) {
   )
 }
 
+/**
+ * The fee as last read: the latest snapshot's, or, for a pool never snapshotted (or whose snapshot
+ * predates the stored fee), the reading at discovery. A dynamic fee says which.
+ */
+function feeRow(pool: PoolDetail['pool'], latest: PoolDetail['latest']): string {
+  const snapshotFee = latest?.feePips ?? null
+  const shown = fee(snapshotFee ?? pool.feePips)
+  if (!hasDynamicFee(pool)) return shown
+  return `${shown}, dynamic (read at ${snapshotFee === null ? 'discovery' : 'the latest snapshot'})`
+}
+
 export function PoolAbout({ detail }: { detail: PoolDetail }) {
   const now = useDataNow()
   const { pool, latest, gap } = detail
@@ -78,11 +89,7 @@ export function PoolAbout({ detail }: { detail: PoolDetail }) {
           {dexLabel(pool.dex)}, {KIND[pool.kind]}
           {pool.stable ? ', stable pair' : ''}
         </Row>
-        <Row term="Fee">
-          {hasDynamicFee(pool)
-            ? `${fee(pool.feePips)}, dynamic (read at the latest snapshot)`
-            : fee(pool.feePips)}
-        </Row>
+        <Row term="Fee">{feeRow(pool, latest)}</Row>
         <Row
           term={
             <Glossary

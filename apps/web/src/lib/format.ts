@@ -5,6 +5,9 @@
  */
 import { DEXES, type Dex, type HealthGrade, hasDynamicFee, type TokenInfo } from '@depthwatch/core'
 import { groupDigits, rawToDecimal } from './raw.js'
+import { type NamedToken, unitText } from './tokenNames.js'
+
+export { type NamedToken, pairLabel, tokenText, unitText } from './tokenNames.js'
 
 /** No-break space: between a number and its unit or % (N7). */
 export const NB = ' '
@@ -195,10 +198,17 @@ export function amount(raw: string | null | undefined, decimals: number): string
   return `${sign}${body}`
 }
 
-/** `amount` plus the token's symbol: "1,250 USDC". */
-export function tokenAmount(raw: string | null | undefined, token: TokenInfo): string {
+/**
+ * `amount` plus the token as its unit: "1,250 USDC". With the pool's `other` token, the unit is
+ * `unitText`, so an amount in an AERO/AERO pool says which AERO.
+ */
+export function tokenAmount(
+  raw: string | null | undefined,
+  token: TokenInfo & NamedToken,
+  other?: NamedToken,
+): string {
   const text = amount(raw, token.decimals)
-  return text === DASH ? DASH : `${text}${NB}${token.symbol}`
+  return text === DASH ? DASH : `${text}${NB}${other ? unitText(token, other) : token.symbol}`
 }
 
 /** Fee in pips (1e-6): "0.05 %", "0.3 %", "1 %". */
@@ -209,7 +219,8 @@ export function fee(feePips: number): string {
 
 /**
  * A pool's fee where it names the pool: "0.3 %", or "0.0465 % dynamic" for a DEX whose fee can
- * change every block (core `hasDynamicFee`: both Slipstreams), where it is the latest snapshot's.
+ * change every block (core `hasDynamicFee`: both Slipstreams), where it is the latest snapshot's
+ * (the reading at discovery for a pool never snapshotted).
  */
 export function feeText(pool: { dex: string; feePips: number }): string {
   return `${fee(pool.feePips)}${hasDynamicFee(pool) ? ' dynamic' : ''}`
@@ -338,25 +349,6 @@ export function poolDesc(
 ): string {
   const desc = `${dexLabel(pool.dex)}, ${feeText(pool)}${pool.stable ? ', stable pair' : ''}`
   return tieBreak ? `${desc}, ${tieBreak}` : desc
-}
-
-/** A token where it is named: what the API labels "AERO (Aerodrome)" beside another AERO. */
-export interface NamedToken {
-  symbol: string
-  /** The API's display label; a server older than labels sends none. */
-  label?: string
-}
-
-/**
- * A token's name in titles and pairs: the API's `label`, which tells apart tokens sharing a
- * symbol (Aerodrome's and Aero's AERO), else the symbol. Unit suffixes keep the bare symbol.
- */
-export function tokenText(token: NamedToken): string {
-  return token.label ?? token.symbol
-}
-
-export function pairLabel(token0: NamedToken, token1: NamedToken) {
-  return `${tokenText(token0)} / ${tokenText(token1)}`
 }
 
 /** Grade bands (C4): A–B ok (circle), C warn (square), D–F bad (triangle). */
