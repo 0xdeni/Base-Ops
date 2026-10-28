@@ -2,7 +2,7 @@
   "name": "depthwatch",
   "version": "0.1.0",
   "private": true,
-  "description": "Depthwatch: an open liquidity observatory for Base. Depth at ±1/2/5%, effective spread, LP concentration, liquidity persistence and a Liquidity Health Score for every Uniswap v3/v4 and Aerodrome pool on Base.",
+  "description": "Depthwatch: an open liquidity observatory for Base. Depth at ±1/2/5%, effective spread, LP concentration, liquidity persistence and a Liquidity Health Score for Uniswap v3/v4 and Aerodrome pools on Base: every pool of those factories with log discovery, or the pools between the reference tokens with discover --seed.",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.28.0",

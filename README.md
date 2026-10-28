@@ -1,8 +1,10 @@
 # Depthwatch
 
-An open liquidity observatory for Base mainnet. Depthwatch indexes every Uniswap v3, Uniswap v4 and
-Aerodrome (v2 AMM and Slipstream concentrated) pool on Base and publishes, per pool, how much
-capital it takes to move the price by 1, 2 and 5 percent in each direction, the effective spread a
+An open liquidity observatory for Base mainnet. Depthwatch indexes Uniswap v3, Uniswap v4 and
+Aerodrome (v2 AMM and Slipstream concentrated) pools on Base: every pool of those factories with
+log discovery, or the pools between the 14 reference tokens (plus any `--seed-token`) with
+`discover --seed`. It publishes, per pool, how much capital it takes to move the price by 1, 2
+and 5 percent in each direction, the effective spread a
 trader pays on a $1k / $10k / $100k / $1M round trip with fees included, how concentrated the
 liquidity is by tick range and by owner, how stable that depth has been over the last 24 hours and
 7 days, and a single 0–100 Liquidity Health Score, graded A–F for the pools deep enough to be
@@ -23,7 +25,8 @@ math is unit-tested against hand-computed values and a brute-force simulator, an
 end to end against recorded fixtures, but coverage of the long tail of pools, USD pricing of thinly
 traded tokens and RPC cost at full scale are still being measured. Numbers from a live deployment
 should be read with that in mind until the validation milestone in [docs/ROADMAP.md](docs/ROADMAP.md)
-is reached.
+is reached. What has run on mainnet so far, and what it cost, is in
+[Measured on Base, 2026-10-25](#measured-on-base-2026-10-25).
 
 ## What it measures
 
@@ -46,11 +49,14 @@ adjusted; fees are in pips (1e-6); the "up" side is buy pressure on token0 paid 
 pools themselves, anchored at USDC and other stables, so a token with no deep route to a stable has
 no USD price and its USD metrics are null rather than guessed.
 
-## Screenshot
+## The dashboard
 
-_Screenshot placeholder: the overview page (stats strip, top pools table sorted by health, gaps
-feed) will be added here once the dashboard has run against mainnet data. Until then,
-`pnpm depthwatch demo` serves the same UI from the synthetic fixture set._
+The overview page opens on the depth within ±2 % of the price summed over the scored pools, the
+depth butterfly of the pools that hold it, three facts (24 h volume, median health, biggest gap)
+and previews of the gaps feed and the market-maker scorecards. `pnpm depthwatch demo` serves it
+from the synthetic fixture set with no RPC endpoint. `depthwatch export` and
+`pnpm --filter @depthwatch/web build:static` turn a live database into a static copy that names
+the block it was read at and says that it does not update.
 
 ## Quick start
 
@@ -58,14 +64,21 @@ Requirements: Node ≥ 22.13 (see `.nvmrc`) and pnpm 10 (`corepack enable` is en
 
 ```sh
 pnpm install
-cp .env.example .env        # set DEPTHWATCH_RPC_URL to a Base mainnet JSON-RPC endpoint
+cp .env.example .env             # set DEPTHWATCH_RPC_URL to a Base mainnet JSON-RPC endpoint
 
-pnpm depthwatch discover    # incremental factory log scan; upserts pools, stores sync state
-pnpm depthwatch snapshot    # overview of all pools, USD prices, TVL ranking, full depth for top N
-pnpm depthwatch volume      # last 24 h of Swap events for tracked pools, hourly buckets in USD
-pnpm depthwatch score       # persistence 24h/7d, health score and gap score per tracked pool
-pnpm depthwatch serve       # REST API on :8787, plus the dashboard when apps/web/dist exists
+pnpm depthwatch discover --seed  # pools of the reference tokens from factory views, no eth_getLogs
+pnpm depthwatch snapshot         # every pool's overview, USD prices, TVL rank, full depth for top N
+pnpm depthwatch volume           # last 24 h of Swap events for tracked pools, hourly buckets in USD
+pnpm depthwatch score            # persistence 24h/7d, health score and gap score per tracked pool
+pnpm depthwatch serve            # REST API on :8787, plus the dashboard when apps/web/dist exists
 ```
+
+A first seed is about 13,400 requests (about 10 minutes on Alchemy's free tier, some 45 minutes
+at the public endpoint's 5 requests a second); a rerun takes seconds. A plain
+`pnpm depthwatch discover` finds every pool of the indexed factories from their logs instead: from
+the factories' deployment blocks that is about 97,000 `eth_getLogs` at the default 2,000-block
+chunks, more than 5 hours on the public endpoint, and an interrupted scan resumes where it
+stopped.
 
 The CLI reads `./.env` when it exists (variables already set in the environment win) and flags win
 over both; `pnpm depthwatch --help` lists them. `discover`, `snapshot`, `volume`, `positions`,
@@ -155,8 +168,8 @@ multicalls and block headers stay on `DEPTHWATCH_RPC_URL`; with one URL nothing 
   as an ordinary error: a `run` pass logs the failed step and goes on.
 - **Range limits.** A logs endpoint that cannot serve the `DEPTHWATCH_LOG_CHUNK` span, such as
   Alchemy's free tier (10 blocks) against the default 2,000, stops the command after the first
-  request of each log scan (one per DEX for `volume`; `positions` starts no further pool after
-  the first refusal) with an error that names the provider's limit and the two fixes: set
+  request of each log scan (one per event source for `volume`; `positions` starts no further pool
+  after the first refusal) with an error that names the provider's limit and the two fixes: set
   `DEPTHWATCH_LOGS_RPC_URL` to an endpoint that accepts larger ranges, or, for small scans, set
   `DEPTHWATCH_LOG_CHUNK` to the limit.
 - **On a 10-block plan** (Alchemy's free tier), seed instead of scanning factory logs, then run
@@ -170,32 +183,59 @@ multicalls and block headers stay on `DEPTHWATCH_RPC_URL`; with one URL nothing 
   ```
 
   or `DEPTHWATCH_LOG_CHUNK=10 depthwatch run --seed --once`. At 10 blocks per request, volume
-  costs one `eth_getLogs` per 10 blocks per DEX: the first pass reads 24 h (about 18,000 requests,
-  about 1.4 M compute units with four DEXes tracked; on Base in October 2026, with 200 pools
-  tracked and about 265,000 swaps, it took 37 minutes, a fifth of the requests answered HTTP 429
-  and retried with backoff). A later pass starts at the hour that held the previous pass's head,
-  so it rereads up to an hour: about 100 requests per DEX five minutes after the last pass, about
-  300 an hour after. Keeping volume current therefore reads every block at
-  least once, at least about 17,300 requests (about 1.3 M units) a day with four DEXes, and a
-  5-minute loop rereads so much that it costs about ten times that. A looping `run` does not fit a
-  30 M-unit/month free plan: run single passes when you need fresh numbers (a month covers about
-  20 daily ones).
+  costs one `eth_getLogs` per 10 blocks per event source (three: Uniswap v3 and Slipstream share
+  one): the first pass reads 24 h, about 13,600 requests and about 1.0 M compute units with all
+  four DEXes tracked (the measured pass, read before the two shared a filter, is in
+  [Measured on Base](#measured-on-base-2026-10-25)). A later pass starts at the hour that held the
+  previous pass's head, so it rereads up to an hour: about 100 requests per event source five
+  minutes after the last pass, about 300 an hour after. Keeping volume current therefore reads
+  every block at least once per source, at least about 13,000 requests (about 1.0 M units) a day,
+  and a 5-minute loop rereads so much that it costs about ten times that. A looping `run` does not
+  fit a 30 M-unit/month free plan: run single passes when you need fresh numbers (a month covers
+  fewer than 30 daily ones).
 
   `discover --seed` asks each DEX's factory (StateView for Uniswap v4) for every pair of the
   reference tokens in `packages/chain/src/addresses.ts` and of the tokens given with `--seed-token`
   (`DEPTHWATCH_SEED_TOKENS`, e.g. a project's own token), and dates each new pool exactly by binary
   search over archive state, about 26 requests per pool, storing every 50 pools so an interrupted
   seed resumes. A DEX whose factory reads fail does not hold the others back: their pools are
-  stored, the failure is logged and the next seed asks that DEX again. On Base in October 2026
-  that was 580 pools in 9.5 minutes and about 13,400 requests (some 350,000 compute units), once;
-  a rerun takes seconds. `positions` is unavailable on such a plan, and pools outside the seeded
-  pairs are only found by the log-based `discover`: both need a logs endpoint that takes
-  2,000-block spans, such as `https://mainnet.base.org` from a host with its own IP.
+  stored, the failure is logged and the next seed asks that DEX again. On Base on 2026-10-25 that
+  was 580 pools in about 10 minutes and 13,399 search requests (some 349,000 compute units, see
+  [Measured on Base](#measured-on-base-2026-10-25)), once; a rerun takes seconds. `positions` is
+  unavailable on such a plan, and pools outside the seeded pairs are only found by the log-based
+  `discover`: both need a logs endpoint that takes 2,000-block spans, such as
+  `https://mainnet.base.org` from a host with its own IP.
   `discover` saves its cursor every 50 chunks, so an interrupted scan resumes where it stopped;
   seeding never moves that cursor.
 
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#rate-limits-range-limits-and-free-plans) has the
 request counts.
+
+### Measured on Base, 2026-10-25
+
+One pass of the pipeline ran against Base mainnet on 2026-10-25 through Alchemy's free tier, with
+every HTTP request counted:
+- **`discover --seed`**: 2,782 candidate pairs gave 580 pools (Uniswap v3 227, Uniswap v4 165,
+  Aerodrome v2 87, Slipstream 101) at head 53,061,869, in 616 s. Dating them took 13,399 search
+  requests; 15,388 HTTP requests in all, 1,968 of them answered HTTP 429 and retried; about
+  349,000 compute units.
+- **`snapshot`** over the 492 tracked pools (of the 580): about 1,150 requests, about 29,000
+  compute units and under a minute per pass.
+- **`volume`** at 10-block chunks over 24 h (blocks 53,016,926 to 53,062,226): 492 pools, 267,572
+  swaps in 3,501 hourly buckets, in 36.5 minutes; 22,323 HTTP requests, 18,131 served and 4,192
+  answered HTTP 429 and retried, about 1.36 M compute units. That pass read four scans, one per
+  DEX; Uniswap v3 and Slipstream have shared one filter since, so the same pass is now about
+  13,600 requests and about 1 M units
+  ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#rate-limits-range-limits-and-free-plans)).
+- **Quoter cross-checks** at block 53,063,332, $10k and $100k each way, matched the stored average
+  prices on Uniswap v3, Slipstream and Aerodrome v2 pools; on Uniswap v4 they found the protocol
+  fee, which the swap walk has charged since
+  ([docs/research/base-contracts.md](docs/research/base-contracts.md) §2.8).
+
+What this did not cover, so the status above stands: only pools between the reference tokens
+(the seed; no factory-log discovery), 24 h of volume, no LP ownership (`positions` needs a logs
+endpoint that takes 2,000-block spans), no 7-day run and no swap cross-check
+([docs/ROADMAP.md](docs/ROADMAP.md), week 4).
 
 ### CLI commands
 
@@ -345,9 +385,9 @@ registers two demo mandates, one within KPI and one breached.
 
 Three layers, each only started once the previous one has users. Details, week-by-week milestones,
 acceptance criteria and explicit non-goals are in [docs/ROADMAP.md](docs/ROADMAP.md).
-1. **Observatory (this repository, weeks 1–4).** Index every Aerodrome and Uniswap v3/v4 pool on
-   Base; depth, spread, concentration, persistence, health score, gaps feed; public API and
-   dashboard; validated against mainnet.
+1. **Observatory (this repository, weeks 1–4).** Index Aerodrome and Uniswap v3/v4 pools on Base
+   (every pool of their factories with log discovery); depth, spread, concentration, persistence,
+   health score, gaps feed; public API and dashboard; validated against mainnet.
 2. **Market-maker scorecards (weeks 5–8; engineering delivered, see above).** A project registers
    its market maker's addresses and KPIs (minimum depth, maximum spread, target uptime) and gets a
    live public scorecard computed from the same data. Onboarding of the first projects is open.

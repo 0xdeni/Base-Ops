@@ -1,7 +1,9 @@
 # Depthwatch design (the contract between packages)
 
-Depthwatch is an open liquidity observatory for **Base mainnet only**. It indexes every Uniswap v3,
-Uniswap v4 and Aerodrome (v2 AMM + Slipstream concentrated) pool, and publishes per pool:
+Depthwatch is an open liquidity observatory for **Base mainnet only**. It indexes Uniswap v3,
+Uniswap v4 and Aerodrome (v2 AMM + Slipstream concentrated) pools: every pool of those factories
+with log discovery (`discover`), or the pools between the reference tokens (and any
+`--seed-token`) with `discover --seed`. It publishes per pool:
 - **Depth at ±1 / 2 / 5 %**: how much capital it takes to move the price by that much, each side.
 - **Effective spread** at $1k / $10k / $100k / $1M round-trip notional, fees included.
 - **LP concentration**: structural (tick-range HHI) and ownership (top-1 / top-3 share, HHI over owners).

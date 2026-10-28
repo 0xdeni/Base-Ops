@@ -46,7 +46,11 @@ Read `source` before anything else:
   `depthwatch` pipeline.
 
 The project status is MVP: the math is unit-tested against hand-computed values, but numbers
-from a live deployment have not yet been validated against Base mainnet at scale.
+from a live deployment have not yet been validated against Base mainnet at scale. Which pools a
+deployment covers depends on how its operator discovers them: factory log scans find every pool
+of the four DEXes, `depthwatch discover --seed` only the pools between the reference tokens (the
+major Base tokens plus any the operator adds). A pool missing from `/api/pools` may simply not be
+indexed; `GET /api/stats` counts the pools found, tracked and scored.
 
 ## Conventions and units
 
