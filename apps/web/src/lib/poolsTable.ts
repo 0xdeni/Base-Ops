@@ -1,5 +1,5 @@
 /**
- * The pools table's model, shared by Pools and Token (docs/design/visual-v3.md §5.8, TB4, TB6,
+ * The pools table's model, shared by Pools and Token (docs/design/visual-v4.md §5.8, TB4, TB6,
  * TB7): the sort keys and their labels, the optional columns, the order (nulls last in both
  * directions), the `sort` / `dir` / `cols` URL state, and the reason an unknown value gives (D6).
  *
@@ -8,20 +8,20 @@
  * the sort metric (TB7). Formatting only: every value is the API's.
  */
 import type { PoolSort, PoolSummary, SortDir } from '../api/types.js'
-import { ago, NB } from './format.js'
+import { ago, dated, NB, SNAPSHOT_CLOCK } from './format.js'
 import { sortSummaries } from './sort.js'
 
 export type PoolsSortKey = PoolSort | 'spread' | 'top'
 export type OptionalColumn = 'tvl' | 'gap' | 'top' | 'price' | 'updated'
 
-/** Header and sort-sheet labels, in the sheet's order. */
+/** Header and sort-sheet labels, in the sheet's order (§5.10), then the top LP share. */
 export const SORT_LABEL: Readonly<Record<PoolsSortKey, string>> = {
   health: 'Health',
   depth: `Depth ±2${NB}%`,
   spread: 'Spread at $10K',
   volume: `24${NB}h volume`,
-  gap: 'Gap score',
   tvl: 'TVL',
+  gap: 'Gap score',
   top: 'Top LP share',
 }
 export const SORT_KEYS = Object.keys(SORT_LABEL) as PoolsSortKey[]
@@ -45,6 +45,28 @@ export const OPTIONAL_COLUMNS: ReadonlyArray<{ key: OptionalColumn; label: strin
   { key: 'price', label: 'Price' },
   { key: 'updated', label: 'Updated' },
 ]
+
+/**
+ * Whether any of these pools has its top LP share measured. Where none has (LP ownership was not
+ * indexed), the share is neither a sort nor a column: it would be "—" on every row.
+ */
+export function hasTopShare(pools: readonly PoolSummary[]): boolean {
+  return pools.some((p) => p.ownerTop1Share !== null)
+}
+
+/**
+ * The sort keys and optional columns offered: every one, less the top LP share when no pool has
+ * it, unless it is already chosen (a shared link), so the choice stays visible and undoable.
+ */
+export function offeredSorts(topShare: boolean, sort: PoolsSortKey): PoolsSortKey[] {
+  return SORT_KEYS.filter((k) => k !== 'top' || topShare || sort === 'top')
+}
+export function offeredColumns(
+  topShare: boolean,
+  cols: readonly OptionalColumn[],
+): ReadonlyArray<{ key: OptionalColumn; label: string }> {
+  return OPTIONAL_COLUMNS.filter((c) => c.key !== 'top' || topShare || cols.includes('top'))
+}
 
 const API_SORTS: ReadonlySet<string> = new Set<PoolSort>([
   'health',
@@ -147,13 +169,15 @@ export function glyphMax(pools: readonly PoolSummary[]): number {
 
 /**
  * The caption's freshness (TB6): one value repeated on every row becomes "All pools updated 2 min
- * ago"; otherwise the oldest and newest, and the per-row values sit in the Updated column.
+ * ago"; otherwise the oldest and newest, and the per-row values sit in the Updated column. On a
+ * published snapshot the time carries its year ("All pools updated 25 Oct 2026, 11:30 UTC").
  */
 export function updatedCaption(pools: readonly PoolSummary[], now: number): string {
   const times = pools.map((p) => p.updatedAt).filter((t): t is number => t !== null)
   if (!times.length) return ''
-  const oldest = ago(Math.min(...times), now)
-  const newest = ago(Math.max(...times), now)
+  const at = (ts: number) => (now === SNAPSHOT_CLOCK ? dated(ts) : ago(ts, now))
+  const oldest = at(Math.min(...times))
+  const newest = at(Math.max(...times))
   if (oldest === newest) return `All pools updated ${newest}`
   return `Updated ${oldest} to ${newest}`
 }

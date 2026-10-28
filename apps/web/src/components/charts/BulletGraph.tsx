@@ -1,8 +1,9 @@
 /**
- * The bullet graph (CH8, docs/design/visual-v3.md §5.9): a 6 px `text-1` bar on a `border-subtle`
- * track with a 2 × 14 `text-2` target tick; 96 px in lists, up to 220 px in facts. Scorecard depth
- * bullets scale to 1.5× the KPI, so the tick sits at two thirds (`depthBullet`); uptime bullets
- * scale 0–100 % with the tick at the target.
+ * The bullet graph (CH8, docs/design/visual-v4.md §5.6): a 10 px bar to the value with a 3 × 20
+ * target tick. In the ink block (scorecard facts) it is a Gray 80 track with an `--on-ink` fill, up
+ * to 240 px wide; in light rows an ink fill on a `--surface-2` track, 96 px wide. Depth bullets
+ * scale to 1.25 × the larger of the KPI and the value (`depthBullet`), so neither ever touches the
+ * end; uptime bullets scale 0–100 % with the tick at the target.
  */
 import { vars } from './useChartWidth.js'
 import './glyphs.css'
@@ -13,9 +14,9 @@ export interface BulletScale {
   max: number
 }
 
-/** A depth bullet: the KPI tick at two thirds of a 1.5 × KPI track. */
+/** A depth bullet: the track ends at 1.25 × the larger of the KPI and the value. */
 export function depthBullet(value: number | null, kpi: number): BulletScale {
-  return { value, target: kpi, max: kpi * 1.5 }
+  return { value, target: kpi, max: 1.25 * Math.max(kpi, value ?? 0) }
 }
 
 /** The fill and tick positions as fractions of the track. */
@@ -38,7 +39,7 @@ export function BulletGraph({
   max?: number
   /** The accessible sentence: "7 day uptime 42.9 % against a 95 % target". */
   label: string
-  /** Fill the fact column (up to 220 px) instead of 96 px. */
+  /** Fill the fact column (up to 240 px) instead of 96 px. */
   wide?: boolean
 }) {
   const f = bulletFractions({ value, target, max })
@@ -49,7 +50,7 @@ export function BulletGraph({
       aria-label={label}
       style={vars({ '--v': f.v, '--t': f.t })}
     >
-      <i className="b-fill" />
+      <i className="b-fill" data-bar="" />
       <b className="b-tick" />
     </span>
   )

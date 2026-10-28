@@ -1,13 +1,17 @@
 /**
- * Methodology (`/methodology`, ia-v3 §4.8, docs/design/visual-v3.md §6.8): "How was this
- * computed?" The h1, the provenance answer, then the focal metric index (`#index`): seven terms,
- * one plain line each, each linking to its section. Below it, the sections `#depth` … `#scorecards`
- * in prose at 66ch, each with a schematic where it explains faster than words and its exact
- * formula behind "Show formula" (L2), then "Reproduce any number". From 1200 px a sticky "On this
- * page" list holds the left column; below 1200 px it is a disclosure under the answer.
+ * Methodology (`/methodology`, ia-v3 §4.8, docs/design/visual-v4.md §6.9): "How was this
+ * computed?" The title section (the eyebrow, the lowercase title "method" and the provenance
+ * answer at its right); the band with one lead; seven metric blocks, the first three stacked over
+ * the band's lower edge, each a lowercase heading and one plain line that jumps to its section
+ * (`#index` holds them). Then the conventions, and the sections `#depth` … `#scorecards` in prose
+ * at 66ch, each with a schematic where it explains faster than words and its exact formula behind
+ * "Show formula" (L2), then "Reproduce any number". From 1200 px a sticky "On this page" list holds
+ * the left column; below 1200 px it is a disclosure above the sections.
  */
 import { useRef } from 'react'
 import { REPO_URL } from '../components/Layout.js'
+import { Band } from '../components/ui/Band.js'
+import { blockClass } from '../components/ui/Block.js'
 import { DisclosurePanel, DisclosureTrigger, useDisclosure } from '../components/ui/Disclosure.js'
 import { useMediaQuery } from '../lib/useMediaQuery.js'
 import { type MetricSection, REPRODUCE, SECTIONS } from './docs/content.js'
@@ -17,7 +21,7 @@ import './docs/docs.css'
 
 export { SECTIONS } from './docs/content.js'
 
-/** The sticky "On this page" column applies from 75em (1200 px, §3.4). */
+/** The sticky "On this page" column applies from 75em (1200 px, §3.5). */
 export const WIDE_QUERY = '(min-width: 75em)'
 
 export const METRICS_DOC = `${REPO_URL}/blob/main/docs/METRICS.md`
@@ -26,33 +30,29 @@ export const SCORECARDS_DOC = `${REPO_URL}/blob/main/docs/SCORECARDS.md`
 export const METHODOLOGY_ANSWER =
   'Every number comes from public pool state, using each contract’s own swap math, and can be reproduced from the repository.'
 
+/** The metric blocks stacked over the band (§6.9). */
+const OVER = 3
+
 function MetricIndex() {
   const href = useAnchorHref()
   return (
-    <section id="index" className="doc-index" aria-label="Metric index">
-      <dl>
-        {SECTIONS.map((s) => (
-          <div key={s.id}>
-            <dt>
-              <a
-                className="tlink doc-term touch-hit"
-                href={href(s.id)}
-                data-anchor={s.id}
-                data-jump-focus
-              >
-                {s.short}
-              </a>
-            </dt>
-            <dd>{s.definition}</dd>
-          </div>
+    <section id="index" className="wrap overlap doc-index" aria-label="Metric index">
+      <ul className="grid">
+        {SECTIONS.map((s, i) => (
+          <li key={s.id} className={i < SECTIONS.length - 1 ? 'c4' : 'c12'}>
+            <a
+              className={blockClass({ over: i < OVER, dest: true, className: 'doc-metric' })}
+              href={href(s.id)}
+              data-anchor={s.id}
+              data-jump-focus
+              data-over={i < OVER ? '' : undefined}
+            >
+              <h2 className="h2">{s.short.toLowerCase()}</h2>
+              <span className="take">{s.definition}</span>
+            </a>
+          </li>
         ))}
-      </dl>
-      <p className="doc-conv">
-        Read every number the same way: a price is the second token per first token, the buy side
-        lifts it and the sell side pushes it down, on every page. A price under 1 is written the
-        other way round, from the second token, and its sides stay as they are; a missing value
-        means unknown, never zero. Nothing is estimated.
-      </p>
+      </ul>
     </section>
   )
 }
@@ -86,7 +86,7 @@ function Reproduce() {
     <section id={REPRODUCE.id} className="doc-sec" aria-labelledby={h}>
       <div className="doc-sec-head">
         <h2 className="h2" id={h} tabIndex={-1} data-jump-focus>
-          {REPRODUCE.short}
+          {REPRODUCE.title}
         </h2>
       </div>
       <div className="doc-prose">
@@ -116,21 +116,47 @@ export function Methodology() {
   const wide = useMediaQuery(WIDE_QUERY)
   useAnchors(root)
   return (
-    <div ref={root} className="wrap page doc-page">
+    <div ref={root} className="doc">
       <title>Methodology – Depthwatch</title>
-      <div className="title-block">
-        <h1 className="h1">Methodology</h1>
-      </div>
-      <p className="answer answer-block">{METHODOLOGY_ANSWER}</p>
-      {wide ? null : <OnThisPageDisclosure />}
+      <section className="wrap ttl" aria-labelledby="doc-title">
+        <p className="eyebrow eb-row" data-in="">
+          <span>Methodology</span>
+        </p>
+        <div className="ttl-grid">
+          <h1 className="title" id="doc-title" data-rise="">
+            method
+          </h1>
+          <p className="answer" data-rise="">
+            {METHODOLOGY_ANSWER}
+          </p>
+        </div>
+      </section>
+      <Band label="Metrics" className="doc-band">
+        <p className="lead" data-in="">
+          Seven metrics, each defined once in{' '}
+          <a className="plink" href={METRICS_DOC} target="_blank" rel="noreferrer">
+            docs/METRICS.md
+          </a>{' '}
+          and computed once in packages/core.
+        </p>
+      </Band>
       <MetricIndex />
-      <div className={`doc-body${wide ? ' is-wide' : ''}`}>
-        {wide ? <OnThisPageAside /> : null}
-        <div className="doc-secs">
-          {SECTIONS.map((s) => (
-            <Section key={s.id} section={s} />
-          ))}
-          <Reproduce />
+      <div className="wrap doc-rest">
+        <p className="prose doc-conv">
+          Read every number the same way: a price is the second token per first token, the buy side
+          lifts it and the sell side pushes it down, on every page. A price under 1 is written the
+          other way round, from the second token, and its sides stay as they are; a missing value
+          means unknown, never zero. Nothing is estimated.
+        </p>
+        {wide ? null : <OnThisPageDisclosure />}
+        <div className={`doc-body${wide ? ' is-wide' : ''}`}>
+          {wide ? <OnThisPageAside /> : null}
+          <div className="doc-secs">
+            {SECTIONS.map((s) => (
+              <Section key={s.id} section={s} />
+            ))}
+            <Reproduce />
+          </div>
         </div>
       </div>
     </div>

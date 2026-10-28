@@ -1,9 +1,12 @@
 /**
- * Segmented control (K4, docs/design/visual-v3.md §5.3, §4 row 15): parallel views only (time
- * window, DEX filter on desktop, List / Table, the sheet's order control). A `radiogroup` with
- * roving tabindex; arrow keys, Home and End move the selection instantly. The thumb is one raised
- * layer clipped to the selected item (`clip-path: inset(0 R 0 L round 4px)`), so both edges travel
- * over 200 ms `--ease-in-out` without radius distortion; keyboard moves are 0 ms.
+ * Segmented control (docs/design/visual-v4.md §5.4, §4.4): parallel views only (Rating, the
+ * history and scorecard windows, List / Table, the sheet's order control). A `--surface-2` track
+ * with 3 px padding, 34 px items (44 on touch), 14 px / 700; the selected item is `--text-1` on the
+ * canvas with an edge and a small Blue-tinted shadow. On the band (`onBand`, or inside `.band`) the
+ * track is white at 14 % and the selected item Blue on white. A `radiogroup` with a roving tab
+ * stop; arrow keys, Home and End move the selection instantly. The thumb is one layer clipped to
+ * the selected item (`clip-path: inset(0 R 0 L round 9px)`), so both edges travel over 200 ms
+ * `--ease-in-out` without radius distortion; keyboard moves and reduced motion are instant.
  */
 import { type KeyboardEvent, type ReactNode, useCallback, useLayoutEffect, useRef } from 'react'
 import { isKeyboardClick } from '../../lib/motion.js'
@@ -24,6 +27,8 @@ export interface SegmentedControlProps<T extends string> {
   onChange: (value: T, meta: { keyboard: boolean }) => void
   /** Full width with equal items (the phone sheet's order control). */
   full?: boolean
+  /** The band variant: a white 14 % track, Blue text on a white thumb. */
+  onBand?: boolean
   className?: string
 }
 
@@ -33,6 +38,7 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   full = false,
+  onBand = false,
   className,
 }: SegmentedControlProps<T>) {
   const groupRef = useRef<HTMLDivElement | null>(null)
@@ -46,8 +52,9 @@ export function SegmentedControl<T extends string>({
     const cur = group?.querySelector<HTMLElement>('[aria-checked="true"]')
     if (!group || !thumb || !cur) return
     if (!animated) group.setAttribute('data-instant', '')
-    const inner = group.clientWidth - 4
-    const l = cur.offsetLeft - 2
+    // The thumb layer is inset by the track's 3 px padding.
+    const inner = group.clientWidth - 6
+    const l = cur.offsetLeft - 3
     const r = inner - (l + cur.offsetWidth)
     thumb.style.setProperty('--l', `${l}px`)
     thumb.style.setProperty('--r', `${r}px`)
@@ -99,7 +106,7 @@ export function SegmentedControl<T extends string>({
   return (
     <div
       ref={groupRef}
-      className={`seg${full ? ' is-full' : ''}${className ? ` ${className}` : ''}`}
+      className={`seg${full ? ' is-full' : ''}${onBand ? ' is-band' : ''}${className ? ` ${className}` : ''}`}
       role="radiogroup"
       aria-label={label}
     >
@@ -107,7 +114,7 @@ export function SegmentedControl<T extends string>({
         <i />
       </span>
       {options.map((o, i) => (
-        // biome-ignore lint/a11y/useSemanticElements: a custom radio, so the clipped thumb can travel between items (K4)
+        // biome-ignore lint/a11y/useSemanticElements: a custom radio, so the clipped thumb can travel between items
         <button
           key={o.value}
           type="button"

@@ -1,13 +1,14 @@
 /**
- * The pools table (TB1–TB8, docs/design/visual-v3.md §5.8), shared by Pools (its focal element) and
- * Token (its Pools section).
+ * The pools table (docs/design/visual-v4.md §5.8), shared by Pools and Token, set in a table sheet
+ * (a flush block) by its page.
  *
- * Desktop: a 40 px sticky header whose sortable cells are buttons (`aria-sort` on the sorted one),
- * 64 px rows whose pool link stretches over the row (one tab stop), the default columns (pool,
- * health, depth ±2 % with its row glyph on one shared scale, spread at $10K, 24 h volume) and the
- * optional ones from Columns. A table wider than the page scrolls inside its wrapper instead of
- * the page. Phones (TB7): the pool cell, the value of the current sort metric and the grade
- * glyph, under a head row that names the metric.
+ * Desktop: a 44 px sticky header over a 2 px `--text-1` rule whose sortable cells are buttons
+ * (`aria-sort` on the sorted one), 64 px rows at 15 px / 600 whose pool link stretches over the row
+ * (one tab stop), the default columns (pool, health, depth ±2 % with its row glyph on one shared
+ * scale, spread at $10K, 24 h volume) and the optional ones from Columns. A table wider than its
+ * sheet scrolls inside its wrapper instead of the page. Phones: rows of at least 64 px with the
+ * pool cell, the value of the current sort metric (15 px / 750) and the glyph or chip, under a
+ * head row that names the metric; the page decides how many rows show.
  */
 import { Fragment, useRef } from 'react'
 import type { PoolSummary } from '../../api/types.js'

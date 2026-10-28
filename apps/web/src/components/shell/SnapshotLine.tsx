@@ -1,5 +1,5 @@
 /**
- * The snapshot line (docs/design/visual-v3.md §5.1, web-v2.md §4): in the demo line's slot, a
+ * The snapshot line (docs/design/visual-v4.md §5.1, web-v2.md §4): in the demo line's slot, a
  * static build of a `live` bundle says that the page is a snapshot of Base mainnet, when it was
  * read (UTC, with the year, since it may be read much later) and that it does not update. Below
  * 840 px a shorter sentence keeps it on one line, and below 360 px it drops the year (both

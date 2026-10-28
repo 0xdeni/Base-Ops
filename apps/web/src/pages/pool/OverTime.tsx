@@ -1,10 +1,11 @@
 /**
- * "Over time" (ia-v3 §4.3 section 4, docs/design/visual-v3.md §6.3): the 24 h / 7 d window control
- * with "Times in UTC", then the depth ±2 % and spread at $10K small multiples sharing one x axis.
- * The 7 d series is drawn under both windows, so 24 h is its tail and a window switch morphs the
- * same points (§4 row 9; instant from the keyboard). The window lives in the URL (`window`). The
- * takeaway reads persistence; Details holds the persistence table and the health, TVL and price
- * series (L2).
+ * "over time" (ia-v3 §4.3 section 4, docs/design/visual-v4.md §5.9.6, §6.4): the 24 h / 7 d window
+ * control, then the depth ±2 % and spread at $10K small multiples sharing one x axis fitted to the
+ * snapshots, and the caption that states the span they cover. The 7 d series is drawn under both
+ * windows, so 24 h is its tail and a window switch morphs the same points (§4.3; instant from the
+ * keyboard). The window lives in the URL (`window`). The finding reads persistence, or says when
+ * the snapshots are too few to measure it; Details holds the persistence table and the health, TVL
+ * and price series (L2).
  */
 import { type ReactNode, useState } from 'react'
 import { usePoolHistory } from '../../api/hooks.js'
@@ -20,10 +21,10 @@ import { SegmentedControl } from '../../components/ui/SegmentedControl.js'
 import { SectionError, Skeleton, useDelayedPending } from '../../components/ui/States.js'
 import { TableScroll } from '../../components/ui/TableScroll.js'
 import { TextChange } from '../../components/ui/TextChange.js'
-import { bps, count, NB, price, score, uptime, usd, usdTick } from '../../lib/format.js'
+import { bps, count, NB, price, score, uptime, usd } from '../../lib/format.js'
 import { baseQuote } from '../../lib/orient.js'
 import { useIsPhone } from '../../lib/useMediaQuery.js'
-import { persistenceParts } from './poolText.js'
+import { overTimeCaption, persistenceParts, tooFewTakeaway } from './poolText.js'
 
 const DAY = 86_400
 const WINDOW_LABEL: Readonly<Record<HistoryWindow, string>> = {
@@ -35,35 +36,26 @@ const WINDOW_SHORT: Readonly<Record<HistoryWindow, string>> = {
   '7d': `7${NB}d`,
 }
 
-const spreadTick = (v: number) => (v < 100 ? v.toFixed(1) : String(Math.round(v)))
-
-function mainSeries(
-  p: PersistenceMetrics | null,
-  w: HistoryWindow,
-): MultipleSeries<HistoryPoint>[] {
-  const band =
-    p && p.depthUsdP10 !== null && p.depthUsdMedian !== null
-      ? ([p.depthUsdP10, p.depthUsdMedian] as const)
-      : null
+/**
+ * The two multiples. Each y range is cropped to its own data and labelled at both ends in the
+ * head's own format ("$29.5M", "$29M"), so a 2 % range never reads as a swing without its numbers
+ * and a bracket end never contradicts the head (§5.9.6). The spread is never cropped below 2 % of
+ * its median, and a spread that moves less than its 0.1 bps precision draws level.
+ */
+function mainSeries(): MultipleSeries<HistoryPoint>[] {
   return [
     {
       key: 'depth',
-      label: `Depth ±2${NB}%`,
-      height: 160,
+      label: `Depth ±2${NB}%, both sides`,
       value: (pt) => pt.depth2Usd,
       format: usd,
-      tick: usdTick,
-      band,
-      bandLabel: `p10 to median, ${WINDOW_SHORT[w]}`,
     },
     {
       key: 'spread',
       label: 'Spread at $10K',
-      height: 120,
       value: (pt) => pt.spread10kBps,
       format: bps,
-      tick: spreadTick,
-      minSpan: 0.2,
+      minSpan: 0.02,
     },
   ]
 }
@@ -97,7 +89,6 @@ function moreSeries(
       height: 120,
       value: (pt) => pt.tvlUsd,
       format: usd,
-      tick: usdTick,
       minSpan: 0.05,
     })
   out.push({
@@ -194,39 +185,45 @@ export function OverTime({
       ? [data.from, data.to]
       : [data.to - DAY, data.to]
     : null
+  // The snapshots inside the window, and how many the other window holds.
+  const times = (from: number) =>
+    (data?.points ?? []).filter((pt) => pt.timestamp >= from - 1).map((pt) => pt.timestamp)
+  const shown = data && domain ? times(domain[0]) : []
+  const other = data ? times(win === '7d' ? data.to - DAY : data.from).length : 0
   const takeaway = parts ? (
     <>
       Depth stayed above half its median in <TextChange value={parts.uptime} animate={!keyboard} />{' '}
       of <TextChange value={parts.samples} animate={!keyboard} /> snapshots.
     </>
-  ) : (p?.samples ?? 0) >= 3 ? (
-    'Snapshots cover too little of the window to judge how steady the depth is.'
   ) : (
-    'Too few snapshots yet to judge how steady the depth is.'
+    tooFewTakeaway(p?.samples ?? 0, shown)
   )
   let body: ReactNode
   if (history.isError && !data) {
     body = <SectionError what="history" onRetry={() => void history.refetch()} />
   } else if (!data || !domain) {
-    const h = phone ? 280 : 372
+    const h = phone ? 296 : 340
     body = loading ? <Skeleton height={h} /> : <div style={{ height: h }} />
   } else if (data.points.length < 2) {
     body = <p className="muted">Not enough snapshots yet to draw a series.</p>
   } else {
     body = (
-      <SmallMultiples
-        points={data.points}
-        series={mainSeries(p, win)}
-        domain={domain}
-        windowLabel={WINDOW_LABEL[win]}
-        instant={keyboard}
-      />
+      <>
+        <SmallMultiples
+          points={data.points}
+          series={mainSeries()}
+          domain={domain}
+          windowLabel={WINDOW_LABEL[win]}
+          instant={keyboard}
+        />
+        <p className="cap pool-ts-cap">{overTimeCaption(shown, other)}</p>
+      </>
     )
   }
   return (
     <Section
       id="s-time"
-      title="Over time"
+      title="over time"
       takeaway={takeaway}
       details={{
         content: (
@@ -260,7 +257,6 @@ export function OverTime({
             onWindow(w)
           }}
         />
-        <span className="small faint">Times in UTC</span>
       </div>
       {body}
     </Section>

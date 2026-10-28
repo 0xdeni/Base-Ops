@@ -280,11 +280,12 @@ it, and `apps/api/src/routes/webhookSecret.test.ts` fails when any part of it sh
 
 Routes (docs/design/ia-v3.md §2): `/` (the answer, the depth butterfly, facts, gap and scorecard previews), `/pools`,
 `/pools/:id` (mirrored depth curve, health, cost to trade, providers, over time, mandates), `/gaps`, `/tokens/:address`,
-`/mm`, `/mm/:id`, `/methodology`. The visual and interaction spec is docs/design/visual-v3.md. Charts are hand-written
-SVG and HTML: no chart library, because library defaults conflict with the chart rules and cannot draw the field of
-light (visual-v3.md §7); the standard library and React cover them. Light and dark theme via `prefers-color-scheme`,
-tokens on `:root` (`src/styles/tokens.css`), fonts self-hosted under `public/fonts`. Data via TanStack Query against
-`/api`; the static build (`pnpm build:static`) reads an exported bundle on hash routes. `VITE_MOCK=1` serves from
+`/mm`, `/mm/:id`, `/methodology`. The visual and interaction spec is docs/design/visual-v4.md, which supersedes
+visual-v3.md where they differ. Charts are hand-written SVG and HTML: no chart library, because library defaults
+conflict with the chart rules (visual-v4.md §7.1); the standard library and React cover them. Light and dark theme
+via `prefers-color-scheme`, tokens on `:root` (`src/styles/tokens.css`), fonts self-hosted under `public/fonts`. Data
+via TanStack Query against `/api`; the static build (`pnpm build:static`) reads an exported bundle on hash routes.
+`VITE_MOCK=1` serves from
 in-repo mock JSON so the UI runs without a backend (the dev server also falls back to it when the API is down); a production
 build contains no mock data and, when `/api/health` does not answer, shows "The data service is not answering." with a
 "Try again" button instead of made-up pools (docs/design/web-v2.md §4). The bundle (`StaticBundle` in `apps/api/src/dto.ts`, mirrored in

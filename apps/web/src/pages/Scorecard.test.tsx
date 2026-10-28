@@ -11,6 +11,7 @@ import {
   MOCK_MM_OK_POOL,
 } from '../api/mock.js'
 import { MOCK_MM_OWNER_SLIP } from '../api/mockScorecards.js'
+import type { ApiClient } from '../api/types.js'
 import { poolHref } from '../lib/format.js'
 
 const NOW = 1_760_000_000
@@ -24,8 +25,7 @@ function LocationProbe() {
   return null
 }
 
-function renderAt(path: string) {
-  const client = createMockClient({ now: NOW })
+function renderAt(path: string, client: ApiClient = createMockClient({ now: NOW })) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <Providers client={client} mock dataNow={NOW} queryClient={queryClient}>
@@ -50,70 +50,81 @@ function factLabels(): string[] {
   return [...facts.querySelectorAll('dt')].map((dt) => dt.textContent ?? '')
 }
 
+/** Every fact value, in order. */
+function factValues(): string[] {
+  const facts = document.querySelector('.sc-facts')
+  if (!facts) throw new Error('facts not rendered')
+  return [...facts.querySelectorAll('dd .num')].map((v) => v.textContent ?? '')
+}
+
 async function chart(): Promise<HTMLElement> {
   return screen.findByRole('img', { name: /^Market-maker depth per side over/ })
 }
 
-describe('/mm/:id title block and answer (ia-v3 §4.6)', () => {
-  it('starts with the back link, the mandate name, its status chip and the meta line', async () => {
+describe('/mm/:id title section and answer (visual-v4 §6.7)', () => {
+  it('starts with the back link, the eyebrow, the mandate name, its status chip and the pool', async () => {
     renderAt(`/mm/${MOCK_MM_OK_ID}`)
     const h1 = await screen.findByRole('heading', {
       level: 1,
       name: /^Demo Markets . Slipstream WETH\/AERO$/,
     })
-    expect(h1).toBeTruthy()
+    expect(h1.className).toContain('display')
     const back = document.querySelector('a.back')
     expect(back?.textContent).toBe('Scorecards')
     expect(back?.getAttribute('href')).toBe('/mm')
-    // The chip sits after the h1 on desktop and leads the meta line on phones (CSS picks one).
-    expect(document.querySelectorAll('.status-chip')).toHaveLength(2)
-    expect(document.querySelector('.status-chip')?.textContent).toBe('Within KPI')
-    const meta = document.querySelector('.sc-sub')
-    expect(meta?.textContent).toMatch(/Demo Markets on WETH \/ AERO, Aerodrome Slipstream, 0\.3.%/)
-    const pool = within(meta as HTMLElement).getByRole('link', { name: 'WETH / AERO' })
-    expect(pool.getAttribute('href')).toBe(poolHref(MOCK_MM_OK_POOL))
+    expect(document.querySelector('.sc-eb')?.textContent).toMatch(
+      /^Scorecard Demo Markets on WETH \/ AERO, Aerodrome Slipstream 0\.3.%$/,
+    )
+    // One filled chip, under the title (K5).
+    const chips = document.querySelectorAll('.status-chip')
+    expect(chips).toHaveLength(1)
+    expect(chips[0]?.textContent).toBe('Within KPI')
+    const note = document.querySelector('.sc-note') as HTMLElement
+    expect(note.textContent).toBe(
+      'Measured on the liquidity Demo Markets holds in the WETH / AERO pool.',
+    )
+    expect(within(note).getByRole('link').getAttribute('href')).toBe(poolHref(MOCK_MM_OK_POOL))
   })
 
-  it('answers with the current streak and since when', async () => {
+  it('answers with what the latest sample says against the per-side KPI', async () => {
     renderAt(`/mm/${MOCK_MM_OK_ID}`)
     expect(
-      await screen.findByText(/^Within KPI for 58 consecutive samples, since 4.Oct, 14:53.UTC\.$/),
+      await screen.findByText('Both sides are within the $50K KPI at the latest sample.'),
     ).toBeTruthy()
-  })
-
-  it('drops the "since" clause when a spread KPI adds a fourth fact', async () => {
+    cleanup()
     renderAt(`/mm/${MOCK_MM_BREACHED_ID}`)
-    expect(await screen.findByText('Breached for 19 consecutive samples.')).toBeTruthy()
+    const answer = await screen.findByText(/^Both sides are below the \$25K KPI: /)
+    expect(answer.className).toContain('answer')
+    expect(answer.textContent).toBe(
+      `Both sides are below the $25K KPI: $8.81K and $9.01K sit within 2${NB}% of the price.`,
+    )
     expect(document.querySelector('.status-chip')?.textContent).toBe('Breached')
   })
 })
 
-describe('/mm/:id focal chart and facts', () => {
-  it('draws the market-maker chart over 7 d by default with Show data under it', async () => {
-    renderAt(`/mm/${MOCK_MM_OK_ID}`)
-    expect((await chart()).getAttribute('aria-label')).toMatch(/over 7 days against the \$50K KPI/)
-    const windows = screen.getByRole('radiogroup', { name: 'Time window' })
-    expect(
-      within(windows)
-        .getByRole('radio', { name: `7${NB}d` })
-        .getAttribute('aria-checked'),
-    ).toBe('true')
-    expect(screen.getByRole('checkbox', { name: 'Whole-pool depth' })).toBeTruthy()
-    const showData = screen.getByRole('button', { name: 'Show data' })
-    fireEvent.click(showData, { detail: 0 })
-    expect(showData.getAttribute('aria-expanded')).toBe('true')
-    expect(screen.getByRole('table', { name: 'Samples per UTC day' })).toBeTruthy()
+describe('/mm/:id KPI chart on the band and facts', () => {
+  it('draws the latest sample per side against the KPI on the band, with its time', async () => {
+    renderAt(`/mm/${MOCK_MM_BREACHED_ID}`)
+    const kpi = await screen.findByRole('img', { name: /^Sell side \$8\.81K, below the \$25K KPI/ })
+    expect(kpi.closest('.band')).toBeTruthy()
+    expect(kpi.getAttribute('aria-label')).toMatch(/Buy side \$9\.01K, below it by/)
+    const band = screen.getByRole('region', { name: /^Depth within ±2.% against the KPI, / })
+    expect(band.querySelector('.band-ground')).toBeTruthy()
+    expect(band.textContent).toMatch(/Shortfall against the KPI: /)
   })
 
-  it('labels each fact with its comparison (ia-v3 §4.6)', async () => {
+  it('labels each fact with its comparison, the uptime count first', async () => {
     renderAt(`/mm/${MOCK_MM_OK_ID}`)
     await chart()
     expect(factLabels()).toEqual([
       'sell side now, within the $50K KPI',
       'buy side now, within the $50K KPI',
-      `uptime, 7${NB}d, meets the 95${NB}% target`,
+      `samples within KPI in 7${NB}d: uptime 96.4${NB}%, target 95${NB}%`,
     ])
-    // "KPI" is a glossary term at rest.
+    expect(factValues()[2]).toBe('80 of 83')
+    // The facts row is one ink block over the band; "KPI" is a glossary term at rest.
+    expect(document.querySelector('.sc-facts')?.closest('.overlap')).toBeTruthy()
+    expect(document.querySelector('.sc-facts')?.className).toContain('ink')
     expect(screen.getAllByRole('button', { name: 'KPI' })).toHaveLength(2)
     expect(screen.queryByRole('img', { name: 'Below KPI' })).toBeNull()
   })
@@ -124,13 +135,12 @@ describe('/mm/:id focal chart and facts', () => {
     expect(factLabels()).toEqual([
       'sell side now, below the $25K KPI',
       'buy side now, below the $25K KPI',
-      `uptime, 7${NB}d, below the 90${NB}% target`,
+      `samples within KPI in 7${NB}d: uptime 24${NB}%, target 90${NB}%`,
       `spread at $10K now, within the 40.0${NB}bps KPI`,
     ])
+    expect(document.querySelector('.sc-facts')?.className).toContain('is-four')
     expect(screen.getAllByRole('img', { name: 'Below KPI' })).toHaveLength(2)
     expect(screen.getByRole('img', { name: 'Below target' })).toBeTruthy()
-    expect(screen.getByText('$8.81K')).toBeTruthy()
-    expect(screen.getByText('$9.01K')).toBeTruthy()
   })
 
   it('rewrites the facts while scrubbing with the arrow keys, and restores them on Escape', async () => {
@@ -148,20 +158,43 @@ describe('/mm/:id focal chart and facts', () => {
     expect(factLabels()[0]).toBe('sell side now, within the $50K KPI')
     expect(screen.getAllByRole('button', { name: 'KPI' })).toHaveLength(2)
   })
+})
+
+describe('/mm/:id depth over time, the first section', () => {
+  it('leads the sheet with the time chart over 7 d, the streak and Show data', async () => {
+    renderAt(`/mm/${MOCK_MM_OK_ID}`)
+    expect((await chart()).getAttribute('aria-label')).toMatch(/over 7 days against the \$50K KPI/)
+    const time = section('depth over time')
+    expect(time.closest('.secs')?.querySelector('section')).toBe(time)
+    expect(
+      within(time).getByText(/^Within KPI for 58 consecutive samples, since 4.Oct, 14:53.UTC\.$/),
+    ).toBeTruthy()
+    const windows = within(time).getByRole('radiogroup', { name: 'Time window' })
+    expect(
+      within(windows)
+        .getByRole('radio', { name: `7${NB}d` })
+        .getAttribute('aria-checked'),
+    ).toBe('true')
+    expect(within(time).getByRole('checkbox', { name: 'Whole-pool depth' })).toBeTruthy()
+    const showData = within(time).getByRole('button', { name: 'Show data' })
+    fireEvent.click(showData, { detail: 0 })
+    expect(showData.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('table', { name: 'Samples per UTC day' })).toBeTruthy()
+  })
 
   it('keeps the window in the URL (?window=, replace) and follows it in the sections', async () => {
     renderAt(`/mm/${MOCK_MM_OK_ID}`)
     await chart()
-    expect(within(section('Uptime')).getByText(/over 7 days/)).toBeTruthy()
+    expect(within(section('uptime')).getByText(/over 7 days/)).toBeTruthy()
     fireEvent.click(screen.getByRole('radio', { name: `24${NB}h` }), { detail: 1 })
     expect(search).toBe('?window=24h')
     expect((await chart()).getAttribute('aria-label')).toMatch(/over 24 hours/)
     expect(
-      within(section('Uptime')).getByText(
+      within(section('uptime')).getByText(
         `12 of 12 samples within KPI over 24 hours (target 95 %).`,
       ),
     ).toBeTruthy()
-    expect(within(section('Breaches')).getByText('No breaches in 24 hours.')).toBeTruthy()
+    expect(within(section('breaches')).getByText('No breaches in 24 hours.')).toBeTruthy()
     fireEvent.click(screen.getByRole('radio', { name: `7${NB}d` }), { detail: 1 })
     expect(search).toBe('')
   })
@@ -173,7 +206,7 @@ describe('/mm/:id focal chart and facts', () => {
       'true',
     )
     expect(
-      within(section('Uptime')).getByText(
+      within(section('uptime')).getByText(
         `93 of 96 samples within KPI over 30 days (target 95 %).`,
       ),
     ).toBeTruthy()
@@ -184,7 +217,7 @@ describe('/mm/:id sections', () => {
   it('shows the uptime strip and all three windows behind Details', async () => {
     renderAt(`/mm/${MOCK_MM_OK_ID}`)
     await chart()
-    const up = section('Uptime')
+    const up = section('uptime')
     expect(
       within(up).getByText(`80 of 83 samples within KPI over 7 days (target 95 %).`),
     ).toBeTruthy()
@@ -203,8 +236,12 @@ describe('/mm/:id sections', () => {
   it('collapses breached samples into episodes, with the raw samples behind Show samples', async () => {
     renderAt(`/mm/${MOCK_MM_OK_ID}`)
     await chart()
-    const br = section('Breaches')
-    expect(within(br).getByText(`1 breach episode in 7 days, the longest 4 h.`)).toBeTruthy()
+    const br = section('breaches')
+    expect(
+      within(br).getByText(
+        `1 breach episode in 7 days, the longest 4 h. Alerts fire after 3 in a row.`,
+      ),
+    ).toBeTruthy()
     expect(within(br).getByText(`4 h, 3 samples, sell side`)).toBeTruthy()
     expect(within(br).getByText('$42K')).toBeTruthy()
     fireEvent.click(within(br).getByRole('button', { name: 'Show samples' }), { detail: 0 })
@@ -214,11 +251,38 @@ describe('/mm/:id sections', () => {
     expect(rows[0]?.textContent).toMatch(/Sell side\$60K\$42K/)
   })
 
-  it('lists five episodes, then "Show all N episodes"', async () => {
+  it('lists three episodes, then "Show all N episodes"', async () => {
+    // Every fourth sample of the mock series breached on the sell side: one episode each.
+    const base = createMockClient({ now: NOW })
+    const client: ApiClient = {
+      ...base,
+      scorecardSamples: async (id, query) => {
+        const res = await base.scorecardSamples(id, query)
+        return {
+          ...res,
+          points: res.points.map((p, i) =>
+            i % 4 === 0 ? { ...p, withinKpi: false, breaches: ['depthDown'] } : p,
+          ),
+        }
+      },
+    }
+    renderAt(`/mm/${MOCK_MM_OK_ID}`, client)
+    await chart()
+    const br = section('breaches')
+    const total = Number(
+      /^(\d+) breach episodes/.exec(br.querySelector('.takeaway')?.textContent ?? '')?.[1],
+    )
+    expect(total).toBeGreaterThan(3)
+    expect(br.querySelectorAll('.sc-ep-row')).toHaveLength(3)
+    const more = within(br).getByRole('button', { name: `Show all ${total} episodes` })
+    fireEvent.click(more, { detail: 0 })
+    expect(br.querySelectorAll('.sc-ep-row')).toHaveLength(total)
+  })
+
+  it('reads the ongoing episode of the breached mandate', async () => {
     renderAt(`/mm/${MOCK_MM_BREACHED_ID}`)
     await chart()
-    const br = section('Breaches')
-    expect(within(br).getByText(`1 breach episode in 7 days, the longest 36 h.`)).toBeTruthy()
+    const br = section('breaches')
     expect(within(br).getByText(`36 h, ongoing, 19 samples, both sides`)).toBeTruthy()
     expect(within(br).queryByRole('button', { name: /^Show all/ })).toBeNull()
   })
@@ -226,7 +290,7 @@ describe('/mm/:id sections', () => {
   it('reads the worst moments against the KPI, with the block in Details', async () => {
     renderAt(`/mm/${MOCK_MM_BREACHED_ID}`)
     await chart()
-    const worst = section('Worst moments')
+    const worst = section('worst moments')
     expect(within(worst).getByText('Lowest buy-side depth')).toBeTruthy()
     expect(within(worst).getByText('Lowest sell-side depth')).toBeTruthy()
     expect(within(worst).getByText('Widest spread')).toBeTruthy()
@@ -240,38 +304,44 @@ describe('/mm/:id sections', () => {
     expect(within(worst).getAllByText('36,087,456').length).toBeGreaterThan(0)
   })
 
-  it('collapses the spread without a KPI and reveals both measured series', async () => {
+  it('keeps the measured spread behind the time row when the mandate has no spread KPI', async () => {
     renderAt(`/mm/${MOCK_MM_OK_ID}`)
     await chart()
-    const spread = section('Spread')
-    expect(within(spread).getByText('This mandate has no spread KPI.')).toBeTruthy()
-    fireEvent.click(within(spread).getByRole('button', { name: 'Show measured spread' }), {
+    expect(screen.queryByRole('heading', { level: 2, name: 'spread' })).toBeNull()
+    const time = section('depth over time')
+    fireEvent.click(within(time).getByRole('button', { name: 'Show measured spread' }), {
       detail: 0,
     })
-    expect(within(spread).getByText('Market-maker spread at $10K')).toBeTruthy()
-    expect(within(spread).getByText('Whole-pool spread at $10K')).toBeTruthy()
+    expect(within(time).getByText('This mandate has no spread KPI.')).toBeTruthy()
+    expect(within(time).getByText('Market-maker spread at $10K')).toBeTruthy()
+    expect(within(time).getByText('Whole-pool spread at $10K')).toBeTruthy()
   })
 
   it('shows the spread series at once when the mandate has a spread KPI', async () => {
     renderAt(`/mm/${MOCK_MM_BREACHED_ID}`)
     await chart()
-    const spread = section('Spread')
+    const spread = section('spread')
     expect(within(spread).getByText(`KPI: at most 40.0 bps at $10K.`)).toBeTruthy()
     expect(within(spread).getByText('Market-maker spread at $10K')).toBeTruthy()
-    expect(within(spread).queryByRole('button', { name: 'Show measured spread' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Show measured spread' })).toBeNull()
     // The KPI is a dashed line on the market maker's spread only, labelled in the right pad.
-    await waitFor(() => expect(spread.querySelectorAll('.mult-ref')).toHaveLength(1))
+    await waitFor(() => expect(spread.querySelectorAll('.sm-ref')).toHaveLength(1))
     expect(within(spread).getByText('KPI 40.0')).toBeTruthy()
   })
 
   it('previews the API badge, copies the snippets and hides the code behind Show code', async () => {
     renderAt(`/mm/${MOCK_MM_OK_ID}`)
     await chart()
-    const embed = section('Embed badge')
+    const embed = section('embed badge')
     expect(await within(embed).findByTestId('badge-preview')).toBeTruthy()
     expect(within(embed).getByRole('button', { name: 'Copy HTML' })).toBeTruthy()
     expect(within(embed).getByRole('button', { name: 'Copy Markdown' })).toBeTruthy()
     expect(within(embed).getByText('Cached for 5 minutes.')).toBeTruthy()
+    expect(
+      within(embed).getByText(
+        'Show the live status on a project page. The badge is the API’s own SVG.',
+      ),
+    ).toBeTruthy()
     expect(within(embed).queryByText('Badge URL')).toBeNull()
     fireEvent.click(within(embed).getByRole('button', { name: 'Show code' }), { detail: 0 })
     expect(within(embed).getByText('Badge URL')).toBeTruthy()
@@ -283,7 +353,7 @@ describe('/mm/:id sections', () => {
   it('lists the mandate: addresses on Basescan with copy, KPIs, attribution, alerts', async () => {
     renderAt(`/mm/${MOCK_MM_OK_ID}`)
     await chart()
-    const about = section('Mandate')
+    const about = section('mandate')
     // Always open from 840 px (CSS); jsdom sees the phone disclosure, so open it.
     fireEvent.click(within(about).getByRole('button', { name: 'Mandate details' }), { detail: 0 })
     const address = within(about).getByRole('link', { name: '0x00000000…0000b1' })
@@ -303,7 +373,7 @@ describe('/mm/:id sections', () => {
   it('keeps the breached mandate pool linked from the Mandate list', async () => {
     renderAt(`/mm/${MOCK_MM_BREACHED_ID}`)
     await chart()
-    const about = section('Mandate')
+    const about = section('mandate')
     fireEvent.click(within(about).getByRole('button', { name: 'Mandate details' }), { detail: 0 })
     expect(within(about).getByRole('link', { name: 'USDC / AERO' }).getAttribute('href')).toBe(
       poolHref(MOCK_MM_BREACHED_POOL),
@@ -315,7 +385,7 @@ describe('/mm/:id not found', () => {
   it('says what was not found, shows the id and links to the scorecards', async () => {
     renderAt('/mm/no-such-mandate')
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Scorecard not found' }),
+      await screen.findByRole('heading', { level: 1, name: 'scorecard not found' }),
     ).toBeTruthy()
     expect(screen.getByText('no-such-mandate')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Browse scorecards' }).getAttribute('href')).toBe('/mm')

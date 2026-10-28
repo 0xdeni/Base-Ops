@@ -1,7 +1,7 @@
 /**
- * The app bar (docs/design/visual-v3.md §5.1): 56 px and sticky on desktop; on phones a 52 px bar
- * plus the same <nav> as a 44 px tab strip. It never hides. Its hairline fades in once the page
- * has scrolled past 36 px (the demo line plus 8, §4 row 18).
+ * The app bar (docs/design/visual-v4.md §5.1): 64 px and sticky from 840 px; on phones a 56 px bar
+ * plus the same <nav> as a 44 px tab strip, which never hides. Its hairline fades in once the page
+ * has scrolled past 8 px (§4.2).
  */
 import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
@@ -9,7 +9,7 @@ import { Freshness } from './Freshness.js'
 import { Wordmark } from './Logo.js'
 import { Nav } from './Nav.js'
 
-export const SCROLLED_PX = 36
+export const SCROLLED_PX = 8
 
 export function AppBar({ navAnimate }: { navAnimate: boolean }) {
   const ref = useRef<HTMLElement | null>(null)

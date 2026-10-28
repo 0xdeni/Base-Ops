@@ -6,12 +6,12 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="Depthwatch: depth, spread, concentration and health for every Base liquidity pool."
+      content="Depthwatch: how deep Base liquidity is right now. Depth, spread, health and gaps for Uniswap and Aerodrome pools on Base mainnet."
     />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f9fc" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e131c" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0b0d" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <!-- Self-hosted fonts (docs/design/visual-v3.md §3.2): preload the sans face only. -->
+    <!-- Self-hosted fonts (docs/design/visual-v4.md §3.3): preload the sans face only. -->
     <link
       rel="preload"
       href="/fonts/hanken-grotesk-var.woff2"
@@ -21,7 +21,7 @@
     />
     <script>
       // Review modes for screenshots and tests only; the product follows the system (PH2).
-      // ?theme=dark|light pins the scheme, ?nofonts=1 drops the web faces (§3.2 fallback check).
+      // ?theme=dark|light pins the scheme, ?nofonts=1 drops the web faces (the fallback check).
       try {
         const q = new URLSearchParams(location.search)
         const t = q.get('theme')

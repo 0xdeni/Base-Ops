@@ -1,6 +1,6 @@
 /**
- * The pools table's cells (docs/design/visual-v3.md §5.8), shared by Pools, Token and the Gaps
- * table: health is the grade glyph plus the truncated score in a 2ch column (N6), depth the 80 × 20
+ * The pools table's cells (docs/design/visual-v4.md §5.8), shared by Pools, Token and the Gaps
+ * table: health is the grade glyph plus the truncated score in a 2ch column (N6), depth the 84 × 20
  * row glyph plus the value 16 px apart, and an unknown value is "—" with its reason (D6).
  * Formatting only: every value comes from the API.
  */

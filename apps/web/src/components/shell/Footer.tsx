@@ -1,6 +1,8 @@
 /**
- * Footer (ia-v3 §3.3, docs/design/visual-v3.md §5.1): the wordmark and the promise, the links
- * Methodology, API and GitHub, and the data source named once (D7). A two-column grid on phones.
+ * The footer (docs/design/visual-v4.md §5.1): the ink block in both themes. From 1024 px one row of
+ * three columns: the wordmark at 28 px; the promise, "Built on Base" in plain text and the data
+ * source named once (D7), in `--on-ink-2`; the links Methodology, API and GitHub as 44 px targets
+ * (44 × 44 on a coarse pointer). Phones stack them in that order.
  */
 import { Link } from 'react-router-dom'
 import { Wordmark } from './Logo.js'
@@ -17,36 +19,42 @@ export const API_DOCS_HREF = `${import.meta.env.BASE_URL}AGENTS.md`
 export type DataSourceKind = 'demo' | 'mock' | 'live' | 'snapshot'
 
 const DATA_LINE: Readonly<Record<DataSourceKind, string>> = {
-  demo: 'Data: synthetic demo world',
-  mock: 'Data: in-repo mock',
+  demo: 'Data: a synthetic demo world',
+  mock: 'Data: the in-repo mock',
   live: 'Data: Base mainnet',
-  snapshot: 'Data: Base mainnet snapshot',
+  snapshot: 'Data: a Base mainnet snapshot',
 }
+
+export const FOOTER_PROMISE =
+  'Open source and read-only. No token, no custody. Built on Base: it indexes Uniswap and Aerodrome pools on Base mainnet.'
 
 export function Footer({ source }: { source: DataSourceKind }) {
   return (
     <footer className="foot">
       <div className="wrap foot-inner">
-        <div className="foot-a">
-          <Link className="brand" to="/" aria-label="Depthwatch home">
-            <Wordmark />
-          </Link>
-          <p>Open source and read-only. No token, no custody.</p>
-        </div>
+        <Link className="brand" to="/" aria-label="Depthwatch home">
+          <Wordmark size={28} />
+        </Link>
+        <p className="foot-say">
+          {FOOTER_PROMISE} <span className="foot-data">{DATA_LINE[source]}</span>.
+        </p>
         <ul className="foot-links">
           <li>
-            <Link to="/methodology">Methodology</Link>
+            <Link className="touch-hit" to="/methodology">
+              Methodology
+            </Link>
           </li>
           <li>
-            <a href={API_DOCS_HREF}>API</a>
+            <a className="touch-hit" href={API_DOCS_HREF}>
+              API
+            </a>
           </li>
           <li>
-            <a href={REPO_URL} rel="noopener">
+            <a className="touch-hit" href={REPO_URL} rel="noopener">
               GitHub
             </a>
           </li>
         </ul>
-        <p className="foot-data">{DATA_LINE[source]}</p>
       </div>
     </footer>
   )

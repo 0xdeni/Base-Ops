@@ -1,15 +1,19 @@
 /**
- * The row depth glyph (CH8, docs/design/visual-v3.md §5.9): an 80 × 20 butterfly for table rows,
- * on the table's shared scale (`max`, the largest side of any row). Sell left of x 40, buy right,
- * 6 px high at y 7, each `max(1, v / max × 38)` wide when non-zero; a 1 × 12 `border` spine. It is
- * decorative (`aria-hidden`): the row's depth value sits beside it.
+ * The row depth glyph (CH8, docs/design/visual-v4.md §5.8): an 84 × 20 butterfly for table rows, on
+ * the table's shared scale (`max`, the largest side of any row). A 2 px ink spine at the centre,
+ * the sell bar (Cerulean) left of it and the buy bar (Yellow, with its 1 px ink edge in light)
+ * right, 12 px high, each `max(2, v / max × 40)` px wide when non-zero. It is decorative
+ * (`aria-hidden`): the row's depth value sits beside it.
  */
 import './glyphs.css'
 
-/** A side's width in px; 0 for an unknown or zero side, at least 1 otherwise. */
+/** The longest a side draws, px: half the glyph less the spine. */
+export const GLYPH_SIDE_PX = 40
+
+/** A side's width in px; 0 for an unknown or zero side, at least 2 otherwise. */
 export function glyphWidth(v: number | null, max: number): number {
   if (v === null || !(v > 0) || !(max > 0)) return 0
-  return Math.max(1, Math.min(1, v / max) * 38)
+  return Math.max(2, Math.min(1, v / max) * GLYPH_SIDE_PX)
 }
 
 export function RowDepthGlyph({
@@ -21,13 +25,10 @@ export function RowDepthGlyph({
   buy: number | null
   max: number
 }) {
-  const ws = glyphWidth(sell, max)
-  const wb = glyphWidth(buy, max)
   return (
-    <svg className="glyph" viewBox="0 0 80 20" width={80} height={20} aria-hidden="true">
-      <rect x={(40 - ws).toFixed(2)} y={7} width={ws.toFixed(2)} height={6} className="g-sell" />
-      <rect x={40} y={7} width={wb.toFixed(2)} height={6} className="g-buy" />
-      <rect x={39.5} y={4} width={1} height={12} className="g-spine" />
-    </svg>
+    <span className="glyph" aria-hidden="true">
+      <i className="s" data-bar="" style={{ width: `${glyphWidth(sell, max).toFixed(2)}px` }} />
+      <i className="b" data-bar="" style={{ width: `${glyphWidth(buy, max).toFixed(2)}px` }} />
+    </span>
   )
 }

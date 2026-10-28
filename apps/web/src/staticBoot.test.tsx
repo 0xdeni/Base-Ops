@@ -70,7 +70,7 @@ describe('static build startup', () => {
     expect(await screen.findByRole('table', { name: 'Pools' })).toBeTruthy()
     expect(screen.getByRole('note').textContent).toMatch(/^Demo data: a synthetic week of Base/)
     const footer = screen.getByRole('contentinfo')
-    expect(within(footer).getByText('Data: synthetic demo world')).toBeTruthy()
+    expect(within(footer).getByText('Data: a synthetic demo world')).toBeTruthy()
     const nav = screen.getByRole('navigation', { name: 'Primary' })
     expect(within(nav).getByRole('link', { name: 'Gaps' }).getAttribute('href')).toBe('#/gaps')
     expect(within(nav).getByRole('link', { name: 'Pools' }).getAttribute('aria-current')).toBe(
@@ -103,10 +103,10 @@ describe('static build startup', () => {
       '#/methodology',
     )
     // A glossary term's "How it is measured" link keeps its Methodology anchor inside the hash.
-    const term = await screen.findByRole('button', { name: 'health' })
+    const term = await screen.findByRole('button', { name: 'KPIs' })
     act(() => term.focus())
     const tip = await screen.findByRole('tooltip')
-    expect(within(tip).getByRole('link').getAttribute('href')).toBe('#/methodology#health')
+    expect(within(tip).getByRole('link').getAttribute('href')).toBe('#/methodology#scorecards')
   })
 
   it('shows the badge preview and the server note in the Embed block', async () => {
@@ -130,7 +130,7 @@ describe('static build startup', () => {
     // The app's query client retries once (about a second) before showing the 404.
     const heading = await screen.findByRole(
       'heading',
-      { name: 'Pool not found' },
+      { name: 'pool not found' },
       { timeout: 4000 },
     )
     expect(heading).toBeTruthy()
@@ -143,7 +143,7 @@ describe('static build startup', () => {
 
   it('states that a live bundle is a dated snapshot that does not update, with its note', async () => {
     await boot('#/gaps', async () => LIVE)
-    expect(await screen.findByRole('heading', { name: 'Liquidity gaps' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { level: 1, name: 'gaps' })).toBeTruthy()
     const line = screen.getByRole('note', { name: 'Data source' })
     expect(line.querySelector('.snap-wide')?.textContent).toBe(
       `Snapshot of Base mainnet, ${AT_DATED}. This page does not update.`,
@@ -162,11 +162,11 @@ describe('static build startup', () => {
       `Read at block 36,123,456. Exported ${AT_DATED}.`,
     ])
     expect(
-      within(screen.getByRole('contentinfo')).getByText('Data: Base mainnet snapshot'),
+      within(screen.getByRole('contentinfo')).getByText('Data: a Base mainnet snapshot'),
     ).toBeTruthy()
     // Freshness gives the absolute snapshot time, never an age, and no live (ok) dot.
     const fresh = await screen.findByRole('button', { name: `Data freshness: as of ${AT_FULL}` })
-    expect(fresh.textContent).toBe(`As of ${AT_FULL}`)
+    expect(fresh.textContent).toBe('Block 36,123,456')
     expect(fresh.querySelector('.fresh-dot')?.className).toBe('fresh-dot is-snapshot')
     fireEvent.click(fresh, { detail: 0 })
     const pop = screen.getByRole('dialog', { name: 'Data freshness' })
@@ -239,7 +239,7 @@ describe('static build startup', () => {
     expect(screen.getByRole('navigation', { name: 'Primary' })).toBeTruthy()
     expect(screen.getByText('Connecting…').className).toBe('fresh is-connecting')
     expect(screen.getByRole('contentinfo')).toBeTruthy()
-    expect(screen.getByRole('heading', { level: 1, name: 'Liquidity gaps' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'gaps' })).toBeTruthy()
     await act(async () => {
       release(DEMO)
       await started

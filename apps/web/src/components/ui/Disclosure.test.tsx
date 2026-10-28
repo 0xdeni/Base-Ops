@@ -1,7 +1,8 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { EASE } from '../../lib/motion.js'
 import { Disclosure } from './Disclosure.js'
-import { AboutSection, Section } from './Section.js'
+import { AboutSection, Section, SectionsSheet } from './Section.js'
 
 type Call = {
   keyframes: Keyframe[]
@@ -33,7 +34,7 @@ afterEach(() => {
 
 const trigger = () => screen.getByRole('button')
 
-describe('Disclosure (K10, §4 row 14)', () => {
+describe('Disclosure (§5.3, §4.4)', () => {
   it('is a button with aria-expanded and aria-controls; its panel follows it in the DOM', () => {
     render(<Disclosure label="Show data">numbers</Disclosure>)
     const btn = trigger()
@@ -50,21 +51,17 @@ describe('Disclosure (K10, §4 row 14)', () => {
     expect(screen.getByText('numbers')).toBeTruthy()
   })
 
-  it('opens over 200 ms and closes over 150 ms with --ease-out for a pointer', () => {
+  it('fades in and settles from -8 px over 200 ms --ease-out for a pointer; closes at once', () => {
     render(<Disclosure label="Details">rows</Disclosure>)
     fireEvent.click(trigger(), { detail: 1 })
     expect(calls).toHaveLength(1)
-    expect(calls[0]?.options).toMatchObject({
-      duration: 200,
-      easing: 'cubic-bezier(0.23, 1, 0.32, 1)',
-    })
-    expect(Object.keys(calls[0]?.keyframes[0] ?? {})).toEqual(['height', 'opacity'])
+    expect(calls[0]?.options).toMatchObject({ duration: 200, easing: EASE.out })
+    expect(calls[0]?.keyframes).toEqual([
+      { opacity: 0, transform: 'translateY(-8px)' },
+      { opacity: 1, transform: 'none' },
+    ])
     fireEvent.click(trigger(), { detail: 1 })
-    expect(calls).toHaveLength(2)
-    expect(calls[1]?.options.duration).toBe(150)
-    // The panel stays in the layout until the exit animation finishes.
-    expect(screen.getByText('rows')).toBeTruthy()
-    act(() => calls[1]?.anim.onfinish?.())
+    expect(calls).toHaveLength(1)
     expect(screen.queryByText('rows')).toBeNull()
   })
 
@@ -109,7 +106,7 @@ describe('Disclosure (K10, §4 row 14)', () => {
   })
 })
 
-describe('Section (D4, K10)', () => {
+describe('the sections sheet (§5.7)', () => {
   it('puts the Details trigger in the heading and opens its panel under the visual', () => {
     render(
       <Section
@@ -134,7 +131,23 @@ describe('Section (D4, K10)', () => {
     ).toBeTruthy()
   })
 
-  it('makes the About list a phone disclosure named after the section', () => {
+  it('sets the sections as rows of one sheet', () => {
+    render(
+      <SectionsSheet>
+        <Section id="a" title="health">
+          <div />
+        </Section>
+        <Section id="b" title="cost to trade">
+          <div />
+        </Section>
+      </SectionsSheet>,
+    )
+    const sheet = document.querySelector('.secs') as HTMLElement
+    expect([...sheet.children].map((c) => c.className)).toEqual(['sec', 'sec'])
+    expect(sheet.getAttribute('role')).toBeNull()
+  })
+
+  it('makes the About list a panel after the sheet, and a phone disclosure named after it', () => {
     render(
       <AboutSection id="about" title="About this pool">
         <dl className="about">
@@ -146,7 +159,7 @@ describe('Section (D4, K10)', () => {
       </AboutSection>,
     )
     const section = screen.getByRole('region', { name: 'About this pool' })
-    expect(section.className).toContain('is-about')
+    expect(section.className).toBe('blk blk--panel sec-about is-about')
     expect(within(section).getByRole('button', { name: 'About this pool' })).toBeTruthy()
     expect(within(section).getByText('Fee')).toBeTruthy()
   })
