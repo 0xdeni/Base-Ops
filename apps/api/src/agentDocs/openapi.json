@@ -345,7 +345,7 @@
       "PoolSort": {
         "name": "sort",
         "in": "query",
-        "description": "health total, ±2 % depth, 24 h volume, gap score or TVL; null values sort last in both directions, and unrated pools come after the rated ones when sorting by health.",
+        "description": "health total, ±2 % depth, 24 h volume, gap score or TVL; null values sort last in both directions, unrated pools come after the rated ones when sorting by health, and stale quotes after the others when sorting by depth.",
         "schema": { "type": "string", "enum": ["health", "depth", "volume", "gap", "tvl"], "default": "health" }
       },
       "Dir": {
@@ -431,8 +431,8 @@
       },
       "UnratedReason": {
         "type": ["string", "null"],
-        "enum": ["thin", "one-sided", "unpriced", null],
-        "description": "Why a pool has no grade, null when it is rated: thin (neither ±2 % side holds $5,000), one-sided (the deeper side does, the thinner does not) or unpriced (a side has no USD price)."
+        "enum": ["hooked", "unpriced", "one-sided", "thin", null],
+        "description": "Why a pool has no grade, null when it is rated: hooked (a Uniswap v4 pool with a hook: depth, spread and concentration are not computed), unpriced (a side has no USD price), one-sided (the deeper ±2 % side holds $5,000, the thinner does not) or thin (neither side does)."
       },
       "HealthResponse": {
         "type": "object",
@@ -458,7 +458,7 @@
           "tracked": { "type": "integer" },
           "scored": { "type": "integer" },
           "rated": { "type": "integer", "description": "Scored pools that are rated: both ±2 % sides known and the thinner at least $5,000." },
-          "depth2Usd": { "type": "number", "description": "Sum of ±2 % depth (USD) over scored pools." },
+          "depth2Usd": { "type": "number", "description": "Sum of ±2 % depth (USD) over scored pools, stale quotes (staleQuote) left out." },
           "volume24hUsd": { "type": ["number", "null"], "description": "Sum of 24 h volume (USD) over scored pools with a known volume; null when none has one." },
           "medianHealth": { "$ref": "#/components/schemas/NullableNumber", "description": "Median health total over rated pools only; null when none is rated." }
         }
@@ -472,7 +472,7 @@
           "tracked": { "type": "integer" },
           "scored": { "type": "integer" },
           "rated": { "type": "integer" },
-          "depth2Usd": { "type": "number" },
+          "depth2Usd": { "type": "number", "description": "Sum of ±2 % depth (USD) over the DEX's scored pools, stale quotes (staleQuote) left out." },
           "volume24hUsd": { "type": ["number", "null"] },
           "medianHealth": { "$ref": "#/components/schemas/NullableNumber" }
         }
@@ -515,7 +515,7 @@
       },
       "PoolSummary": {
         "type": "object",
-        "required": ["pool", "price", "tvlUsd", "depth2Usd", "depth2UpUsd", "depth2DownUsd", "spread10kBps", "health", "gapScore", "volume24hUsd", "ownerTop1Share", "updatedAt"],
+        "required": ["pool", "price", "tvlUsd", "depth2Usd", "depth2UpUsd", "depth2DownUsd", "spread10kBps", "priceDeviationBps", "staleQuote", "health", "gapScore", "volume24hUsd", "ownerTop1Share", "updatedAt"],
         "properties": {
           "pool": { "$ref": "#/components/schemas/PoolMeta" },
           "price": { "$ref": "#/components/schemas/NullableNumber", "description": "token1 per token0, decimal adjusted, from the newest snapshot." },
@@ -524,6 +524,8 @@
           "depth2UpUsd": { "$ref": "#/components/schemas/NullableNumber", "description": "Buy side of the ±2 % depth: USD of token1 that lifts the price 2 %, the newest snapshot's depthUsd[pct = 2].upUsd. null when token1 has no USD price or the pool has no snapshot." },
           "depth2DownUsd": { "$ref": "#/components/schemas/NullableNumber", "description": "Sell side of the ±2 % depth: USD of token0 that pushes the price down 2 %, the newest snapshot's depthUsd[pct = 2].downUsd. null when token0 has no USD price or the pool has no snapshot." },
           "spread10kBps": { "$ref": "#/components/schemas/NullableNumber", "description": "Round-trip effective spread at $10,000, bps, fees included." },
+          "priceDeviationBps": { "$ref": "#/components/schemas/NullableNumber", "description": "The newest snapshot's priceDeviationBps: |price / (token0Usd / token1Usd) − 1| × 10,000. null when a token has no USD price or the pool has no snapshot (or one stored before the field existed)." },
+          "staleQuote": { "type": "boolean", "description": "True when priceDeviationBps is at least 500: the pool quotes a price 5 % or more away from the market's. Its depth is left out of the stats' depth sums and sorts last on depth." },
           "health": {
             "type": "object",
             "required": ["total", "grade", "rated", "unratedReason"],
@@ -609,7 +611,7 @@
       },
       "PoolSnapshot": {
         "type": "object",
-        "required": ["poolId", "blockNumber", "timestamp", "price", "token0Usd", "token1Usd", "tvlUsd", "activeLiquidity", "depth", "depthUsd", "spreads", "concentration"],
+        "required": ["poolId", "blockNumber", "timestamp", "price", "token0Usd", "token1Usd", "tvlUsd", "activeLiquidity", "depth", "depthUsd", "spreads", "concentration", "priceDeviationBps"],
         "properties": {
           "poolId": { "type": "string" },
           "blockNumber": { "$ref": "#/components/schemas/DecimalString" },
@@ -622,7 +624,8 @@
           "depth": { "type": "array", "items": { "$ref": "#/components/schemas/DepthLevel" } },
           "depthUsd": { "type": "array", "items": { "$ref": "#/components/schemas/DepthLevelUsd" } },
           "spreads": { "type": "array", "items": { "$ref": "#/components/schemas/SpreadPoint" } },
-          "concentration": { "anyOf": [{ "$ref": "#/components/schemas/ConcentrationMetrics" }, { "type": "null" }] }
+          "concentration": { "anyOf": [{ "$ref": "#/components/schemas/ConcentrationMetrics" }, { "type": "null" }] },
+          "priceDeviationBps": { "$ref": "#/components/schemas/NullableNumber", "description": "|price / (token0Usd / token1Usd) − 1| × 10,000; a stale quote from 500. null when a token has no USD price, and in snapshots stored before the field existed." }
         }
       },
       "HealthScore": {

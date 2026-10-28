@@ -1,4 +1,4 @@
-import type { PoolMeta } from '@depthwatch/core'
+import { type PoolMeta, priceDeviationBps } from '@depthwatch/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type Database, openDatabase } from '../database.js'
 import {
@@ -134,6 +134,7 @@ describe('ScoresRepo', () => {
       ownerTop1Share: 0.3,
       depth2UpUsd: 500_000,
       depth2DownUsd: 500_000,
+      priceDeviationBps: priceDeviationBps(3000, 3000.25, 1),
     })
     expect(db.scores.getRow(C.id)?.latest).toBeNull()
     expect(db.scores.getRow(C.id)?.tracked).toBe(false)

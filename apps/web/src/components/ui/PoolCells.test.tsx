@@ -4,12 +4,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { PoolSummary } from '../../api/types.js'
 import { NB } from '../../lib/format.js'
 import { DEMO_POOLS } from '../charts/chartFixtures.js'
-import { HealthCell, metricCell } from './PoolCells.js'
+import { DepthCell, HealthCell, metricCell } from './PoolCells.js'
 
 afterEach(cleanup)
 
 const rated = { total: 71.4, grade: 'B', rated: true, unratedReason: null } as const
-const unrated = (unratedReason: 'thin' | 'one-sided' | 'unpriced') =>
+const unrated = (unratedReason: 'thin' | 'one-sided' | 'unpriced' | 'hooked') =>
   ({ total: 38.2, grade: null, rated: false, unratedReason }) as const
 
 describe('HealthCell', () => {
@@ -25,6 +25,7 @@ describe('HealthCell', () => {
       thin: 'Too thin to rate',
       'one-sided': 'Too thin on one side',
       unpriced: 'No USD price',
+      hooked: 'Hooked pool',
     } as const
     for (const [reason, words] of Object.entries(reasons)) {
       const { container, unmount } = render(
@@ -69,5 +70,50 @@ describe('metricCell', () => {
       </MemoryRouter>,
     )
     expect(container.textContent).toBe('—')
+  })
+
+  it('gives a hooked pool "—" for depth and spread, with the hooked reason', async () => {
+    const hooked = pool({
+      depth2Usd: null,
+      depth2UpUsd: null,
+      depth2DownUsd: null,
+      spread10kBps: null,
+      health: unrated('hooked'),
+    })
+    for (const key of ['depth', 'spread'] as const) {
+      const { container, unmount } = render(<MemoryRouter>{metricCell(hooked, key)}</MemoryRouter>)
+      expect(container.textContent).toBe('—')
+      fireEvent.focus(within(container).getByRole('button'))
+      expect((await screen.findByRole('tooltip')).textContent).toContain('Hooked pool')
+      unmount()
+    }
+  })
+})
+
+describe('DepthCell', () => {
+  const base = DEMO_POOLS[0]
+  if (!base) throw new Error('no fixture pool')
+
+  it('adds the "Stale price" chip to a stale quote, with how far off it is', async () => {
+    const stale = { ...base, priceDeviationBps: 38_601_331, staleQuote: true }
+    const { container } = render(
+      <MemoryRouter>
+        <DepthCell pool={stale} max={20_000_000} />
+      </MemoryRouter>,
+    )
+    const chip = within(container).getByRole('button', { name: 'Stale price' })
+    fireEvent.focus(chip)
+    expect((await screen.findByRole('tooltip')).textContent).toContain(
+      `Stale price: 386,013${NB}% off the market`,
+    )
+  })
+
+  it('has no chip for a pool at the market price', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <DepthCell pool={base} max={20_000_000} />
+      </MemoryRouter>,
+    )
+    expect(within(container).queryByRole('button', { name: 'Stale price' })).toBeNull()
   })
 })

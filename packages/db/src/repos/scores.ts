@@ -1,11 +1,4 @@
-import {
-  DEXES,
-  type Dex,
-  type GapMetrics,
-  type HealthScore,
-  type PersistenceMetrics,
-  type PoolMeta,
-} from '@depthwatch/core'
+import type { GapMetrics, HealthScore, PersistenceMetrics, PoolMeta } from '@depthwatch/core'
 import type { SqlContext } from '../context.js'
 import {
   type BindValue,
@@ -27,7 +20,18 @@ import {
   rowToPoolMeta,
   whereSql,
 } from './poolRow.js'
+import {
+  type DexStats,
+  LATEST_JOIN,
+  median,
+  medianRatedHealth,
+  RATED_SQL,
+  STALE_SQL,
+  statsByDex,
+} from './scoreStats.js'
 import { depth2SideSql, spread10kPointSql } from './snapshots.js'
+
+export { type DexStats, median }
 
 export interface PoolScore {
   poolId: string
@@ -49,7 +53,7 @@ export type SortDir = 'asc' | 'desc'
 export interface TopByOptions extends PoolFilter {
   /**
    * Defaults to 'desc'. Nulls sort last in both directions; sorting by health also puts unrated
-   * pools after the rated ones in both directions.
+   * pools after the rated ones in both directions, sorting by depth stale quotes after the others.
    */
   dir?: SortDir
   /** True keeps only rated pools, false only unrated ones; both when undefined. */
@@ -86,22 +90,6 @@ export interface GapsOptions {
   minVolumeUsd?: number
 }
 
-export interface DexStats {
-  dex: Dex
-  /** Pools discovered for the dex. */
-  pools: number
-  tracked: number
-  /** Pools with a score row. */
-  scored: number
-  /** Scored pools that are rated (docs/METRICS.md, "Rated and unrated pools"). */
-  rated: number
-  depth2UsdSum: number
-  /** Sum over scored pools with a known 24 h volume; null when none has one (unknown is not 0). */
-  volume24hUsdSum: number | null
-  /** Median health total over rated pools; null when none are rated. */
-  medianHealth: number | null
-}
-
 const UPSERT = `INSERT INTO scores (
     pool_id, timestamp, health_json, gap_json, persistence_24h_json, persistence_7d_json,
     volume_24h_usd, depth2_usd, health_total, gap_score
@@ -123,22 +111,13 @@ const LATEST_SELECT = `sn.id AS sn_id, sn.block_number AS sn_block_number,
   sn.depth2_usd AS sn_depth2_usd, ${spread10kPointSql('sn.spreads_json')} AS sn_spread10k_point,
   sn.owner_top1_share AS sn_owner_top1_share,
   ${depth2SideSql('sn.depth_usd_json', 'upUsd')} AS sn_depth2_up_usd,
-  ${depth2SideSql('sn.depth_usd_json', 'downUsd')} AS sn_depth2_down_usd`
-
-/**
- * Whether the stored score is rated: the flag lives in `health_json`. A row scored before ratings
- * existed has none and counts as unrated until `score` runs again.
- */
-const RATED_SQL = `COALESCE(json_extract(s.health_json, '$.rated'), 0) = 1`
+  ${depth2SideSql('sn.depth_usd_json', 'downUsd')} AS sn_depth2_down_usd,
+  sn.price_deviation_bps AS sn_price_deviation_bps`
 
 const SCORE_FROM = `scores s
   JOIN pools p ON p.id = s.pool_id
   JOIN tokens t0 ON t0.address = p.token0
   JOIN tokens t1 ON t1.address = p.token1`
-
-const LATEST_JOIN = `LEFT JOIN snapshots sn ON sn.id = (
-    SELECT x.id FROM snapshots x WHERE x.pool_id = s.pool_id ORDER BY x.timestamp DESC, x.id DESC LIMIT 1
-  )`
 
 const JOINED_SELECT = `SELECT ${POOL_SELECT}, ${SCORE_SELECT}, ${LATEST_SELECT} FROM ${SCORE_FROM} ${LATEST_JOIN}`
 
@@ -189,6 +168,7 @@ function rowToLatest(row: Row, poolId: string): SnapshotSummary | null {
     ownerTop1Share: colNumberOrNull(row, 'sn_owner_top1_share'),
     depth2UpUsd: colNumberOrNull(row, 'sn_depth2_up_usd'),
     depth2DownUsd: colNumberOrNull(row, 'sn_depth2_down_usd'),
+    priceDeviationBps: colNumberOrNull(row, 'sn_price_deviation_bps'),
   }
 }
 
@@ -200,18 +180,6 @@ export function rowToScoredPool(row: Row): ScoredPoolRow {
     score: rowToPoolScore(row),
     latest: rowToLatest(row, pool.id),
   }
-}
-
-/** Median of an ascending list; null for an empty list. */
-export function median(sorted: readonly number[]): number | null {
-  const n = sorted.length
-  if (n === 0) return null
-  const mid = Math.floor(n / 2)
-  const upper = sorted[mid]
-  const lower = sorted[mid - 1]
-  if (upper === undefined) return null
-  if (n % 2 === 1 || lower === undefined) return upper
-  return (lower + upper) / 2
 }
 
 export class ScoresRepo {
@@ -262,11 +230,17 @@ export class ScoresRepo {
     const [limit, offset] = page(options.limit, options.offset, DEFAULT_LIMIT)
     const where = whereSql(clauses)
     // Unrated pools follow the rated ones whichever way health is sorted: their totals are not
-    // comparable with a grade.
-    const unratedLast = sort === 'health' ? `CASE WHEN ${RATED_SQL} THEN 0 ELSE 1 END, ` : ''
+    // comparable with a grade. Stale quotes follow the others on depth: their depth is measured
+    // at a price nobody trades (docs/METRICS.md, "Stale quotes").
+    const groupFirst =
+      sort === 'health'
+        ? `CASE WHEN ${RATED_SQL} THEN 0 ELSE 1 END, `
+        : sort === 'depth'
+          ? `CASE WHEN ${STALE_SQL} THEN 1 ELSE 0 END, `
+          : ''
     const items = this.ctx
       .all(
-        `${JOINED_SELECT} ${where} ORDER BY ${unratedLast}${column} ${direction} NULLS LAST, s.pool_id ASC LIMIT ? OFFSET ?`,
+        `${JOINED_SELECT} ${where} ORDER BY ${groupFirst}${column} ${direction} NULLS LAST, s.pool_id ASC LIMIT ? OFFSET ?`,
         [...params, limit, offset],
       )
       .map(rowToScoredPool)
@@ -289,63 +263,7 @@ export class ScoresRepo {
 
   /** Per-dex totals, in DEXES order (dexes without pools included with zeros). */
   statsByDex(): DexStats[] {
-    const stats = new Map<string, DexStats>()
-    const statsFor = (dex: string): DexStats => {
-      let entry = stats.get(dex)
-      if (!entry) {
-        entry = {
-          dex: dex as Dex,
-          pools: 0,
-          tracked: 0,
-          scored: 0,
-          rated: 0,
-          depth2UsdSum: 0,
-          volume24hUsdSum: null,
-          medianHealth: null,
-        }
-        stats.set(dex, entry)
-      }
-      return entry
-    }
-    for (const dex of DEXES) statsFor(dex)
-
-    const poolRows = this.ctx.all(
-      'SELECT dex, COUNT(*) AS pools, COALESCE(SUM(tracked), 0) AS tracked FROM pools GROUP BY dex',
-    )
-    for (const row of poolRows) {
-      const entry = statsFor(colText(row, 'dex'))
-      entry.pools = colNumber(row, 'pools')
-      entry.tracked = colNumber(row, 'tracked')
-    }
-
-    const healthByDex = new Map<string, number[]>()
-    const scoreRows = this.ctx.all(
-      `SELECT p.dex AS dex, s.health_total AS health, s.depth2_usd AS depth2,
-          s.volume_24h_usd AS volume, ${RATED_SQL} AS rated
-        FROM scores s JOIN pools p ON p.id = s.pool_id ORDER BY p.dex, s.health_total`,
-    )
-    for (const row of scoreRows) {
-      const dex = colText(row, 'dex')
-      const entry = statsFor(dex)
-      entry.scored += 1
-      entry.depth2UsdSum += colNumberOrNull(row, 'depth2') ?? 0
-      // An unknown volume is not 0: the sum stays null until one pool has a known volume.
-      const volume = colNumberOrNull(row, 'volume')
-      if (volume !== null) entry.volume24hUsdSum = (entry.volume24hUsdSum ?? 0) + volume
-      // The health median is over rated pools only: an unrated total is not a grade.
-      if (colNumber(row, 'rated') !== 1) continue
-      entry.rated += 1
-      const totals = healthByDex.get(dex) ?? []
-      totals.push(colNumber(row, 'health'))
-      healthByDex.set(dex, totals)
-    }
-    for (const [dex, totals] of healthByDex) statsFor(dex).medianHealth = median(totals)
-
-    const known = DEXES.map((dex) => statsFor(dex))
-    const extra = [...stats.values()]
-      .filter((entry) => !DEXES.includes(entry.dex))
-      .sort((a, b) => a.dex.localeCompare(b.dex))
-    return [...known, ...extra]
+    return statsByDex(this.ctx)
   }
 
   count(): number {
@@ -355,10 +273,7 @@ export class ScoresRepo {
 
   /** Median health total over rated pools (all DEXes); null when none is rated. */
   medianRatedHealth(): number | null {
-    const rows = this.ctx.all(
-      `SELECT s.health_total AS health FROM scores s WHERE ${RATED_SQL} ORDER BY s.health_total`,
-    )
-    return median(rows.map((row) => colNumber(row, 'health')))
+    return medianRatedHealth(this.ctx)
   }
 
   delete(poolId: string): boolean {

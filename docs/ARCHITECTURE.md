@@ -81,10 +81,12 @@ Each step reads what the previous one stored, so any step can be rerun on its ow
    `slot0` and `liquidity` for concentrated pools, `getReserves` for Aerodrome v2, `getSlot0` /
    `getLiquidity` from StateView for v4, plus token balances for TVL. Calls are batched through
    Multicall3, at most 500 calls per request.
-3. **prices**. Every overview with a positive price becomes a `PriceEdge` (token0, token1, price,
-   weight ≈ liquidity proxy). `derivePrices` runs a widest-path search from the anchors (USDC = 1,
-   other stables = 1): the route chosen for a token is the one whose weakest pool is strongest, so
-   a USD price comes through the deepest route and a token with no route to a stable gets no price.
+3. **prices**. Every overview with a positive price and depth on both sides of it becomes a
+   `PriceEdge` (token0, token1, price, its ±2 % depth sides); a hooked Uniswap v4 pool is no edge.
+   `derivePrices` runs a widest-path search from the anchors (USDC = 1, other stables = 1),
+   weighing each edge in USD by its thinner side when it reaches it: the route chosen for a token
+   is the one whose weakest pool is strongest, so a USD price comes through the deepest route and
+   a token with no route to a stable gets no price.
    The result is stored in `prices` with the `via` chain of pool ids, plus `wrap:weth` for the
    native ETH ↔ WETH step.
 4. **rank**. Pools are ranked by `tvlUsd` and the top N (`DEPTHWATCH_TOP_POOLS`, default 200) are

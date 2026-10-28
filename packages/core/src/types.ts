@@ -241,11 +241,12 @@ export const HEALTH_MAX: Readonly<HealthComponents> = Object.freeze({
 export type HealthGrade = 'A' | 'B' | 'C' | 'D' | 'F'
 
 /**
- * Why a pool has no grade (docs/METRICS.md, "Rated and unrated pools"): `unpriced` when a side's
- * USD depth is unknown, `one-sided` when the deeper side holds the rating floor and the thinner
- * does not, `thin` when neither does.
+ * Why a pool has no grade (docs/METRICS.md, "Rated and unrated pools"), tested in this order:
+ * `hooked` for a Uniswap v4 pool with a hook (not modelled: no depth, spread or concentration),
+ * `unpriced` when a side's USD depth is unknown, `one-sided` when the deeper side holds the rating
+ * floor and the thinner does not, `thin` when neither does.
  */
-export type UnratedReason = 'thin' | 'one-sided' | 'unpriced'
+export type UnratedReason = 'hooked' | 'unpriced' | 'one-sided' | 'thin'
 
 export interface HealthScore {
   /** 0..100. Present for unrated pools too. */
@@ -270,6 +271,8 @@ export interface HealthInputs {
   ownerTop1Share: number | null
   rangeHhi: number | null
   persistence: PersistenceMetrics | null
+  /** A Uniswap v4 pool with a hook (`isHookedPool`): unrated with reason `hooked`. Default false. */
+  hooked?: boolean
 }
 
 export interface GapMetrics {
@@ -318,18 +321,30 @@ export interface PoolSnapshot {
   depthUsd: DepthLevelUsd[]
   spreads: SpreadPoint[]
   concentration: ConcentrationMetrics | null
+  /**
+   * |price / (token0Usd / token1Usd) − 1| × 10 000 (`priceDeviationBps`, docs/METRICS.md "Stale
+   * quotes"); null when a token has no USD price, and in snapshots stored before the field existed.
+   */
+  priceDeviationBps: number | null
 }
 
+/**
+ * An edge of the price graph (docs/METRICS.md, "USD prices"). A pool edge carries its ±2 % depth
+ * sides and `derivePrices` weighs it in USD when it reaches it from a settled token:
+ * `min(upToken1 × token1Usd, downToken0 × token0Usd)`, so a pool empty on one side is no route. An
+ * edge without sides (the ETH ↔ WETH wrap edge) has a fixed `weight` instead.
+ */
 export interface PriceEdge {
   token0: Address
   token1: Address
   /** token1 per token0, human. */
   price: number
-  /**
-   * Liquidity proxy used to prefer deep routes. The pipeline uses the thinner side of the pool's
-   * ±2 % depth (docs/METRICS.md, USD prices), so a pool empty on one side is not a route.
-   */
-  weight: number
+  /** Human token1 that pushes the price up by 2 % (the up side's input). */
+  upToken1?: number
+  /** Human token0 that pushes the price down by 2 % (the down side's input). */
+  downToken0?: number
+  /** Fixed weight (USD) of an edge without sides; ignored when the sides are given. */
+  weight?: number
   source: string
 }
 
@@ -337,7 +352,7 @@ export interface DerivedPrice {
   usd: number
   /** Pool ids / sources walked from the anchor. */
   via: string[]
-  /** Bottleneck weight along the path. */
+  /** Bottleneck weight along the path, USD (Infinity for anchors). */
   weight: number
 }
 

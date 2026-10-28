@@ -47,6 +47,12 @@ Key conventions it encodes:
   (`toPublicMandate`), which has `alertWebhookConfigured: boolean` instead.
 - `DepthLevel.up` is the token1 needed to push the price up by pct (buy pressure on token0);
   `DepthLevel.down` is the token0 needed to push it down (sell pressure).
+- `PriceEdge` carries either a pool's ±2 % depth sides (`upToken1`, `downToken0`: human token1 and token0 amounts),
+  weighed in USD by `derivePrices` when it reaches the edge, or a fixed `weight` (the ETH ↔ WETH wrap edge).
+- `UnratedReason` is `'hooked' | 'unpriced' | 'one-sided' | 'thin'`; `HealthInputs.hooked` (optional, default false) marks
+  a Uniswap v4 pool with a hook, whose `PoolSnapshot` holds no depth levels, spread points or concentration.
+- `PoolSnapshot.priceDeviationBps` is the stale-quote measure (docs/METRICS.md, Stale quotes): `null` when a token has
+  no USD price, and in snapshots stored before the field existed.
 
 ## Core math (packages/core)
 
@@ -73,8 +79,11 @@ computeEffectiveSpread(state: PoolState, token0: TokenInfo, token1: TokenInfo, t
 computeConcentration(state: ConcentratedState, positions: Position[] | null, bandPct?: number): ConcentrationMetrics
 computeConcentrationForReserves(state: ConstantProductState | StableSwapState): ConcentrationMetrics   // rangeHhi = 1, activeRangeShare = 1, owners null (or from LP token holders when provided later)
 computePersistence(samples: Array<{ timestamp: number; depthUsd: number | null }>, windowHours: number, now: number): PersistenceMetrics
-computeHealthScore(inputs: HealthInputs): HealthScore   // inputs: depth2UpUsd, depth2DownUsd, spread10kBps, ownerTop1Share, rangeHhi, persistence
-rateDepth(upUsd: number | null, downUsd: number | null): { rated: boolean; unratedReason: UnratedReason | null }
+computeHealthScore(inputs: HealthInputs): HealthScore   // inputs: depth2UpUsd, depth2DownUsd, spread10kBps, ownerTop1Share, rangeHhi, persistence, hooked?
+rateDepth(upUsd: number | null, downUsd: number | null, opts?: { hooked?: boolean }): { rated: boolean; unratedReason: UnratedReason | null }
+isHookedPool(pool: Pick<PoolMeta, 'hooks'>): boolean // a non-zero hooks address (Uniswap v4)
+priceDeviationBps(price: number, token0Usd: number | null, token1Usd: number | null): number | null // |price / (token0Usd / token1Usd) − 1| × 1e4
+isStaleQuote(deviationBps: number | null): boolean // deviationBps ≥ STALE_QUOTE_MIN_DEVIATION_BPS (500)
 feasibleSpreadBps(point: SpreadPoint | undefined, mid: number): number | null // a stored point under today's cap
 computeGap(volume24hUsd: number | null, depth2Usd: number | null): GapMetrics
 volumeWindow(dataEndTs: number, hours?: number): VolumeWindow // [H − 24 h, H), H = start of the hour holding dataEndTs
@@ -85,8 +94,10 @@ tvlUsd(reserve0: bigint, reserve1: bigint, token0: TokenInfo, token1: TokenInfo,
 // pricing (pure graph over observed pool prices)
 derivePrices(edges: PriceEdge[], anchors: Record<Address, number>): Map<Address, DerivedPrice>
 //   Widest-path (max-bottleneck) search from the anchors (USDC = 1, other stables = 1) so that USD prices
-//   come through the deepest route. Tokens unreachable from any anchor are absent. The CLI weighs each pool edge
-//   by the thinner side of its ±2 % depth (apps/cli/src/pipeline/prices.ts), so a one-sided pool is no route.
+//   come through the deepest route. Tokens unreachable from any anchor are absent. A pool edge carries its ±2 % depth
+//   sides and is weighed when the search reaches it from a settled token: min(up × token1Usd, down × token0Usd), the
+//   settled side at its USD price and the other at the price the edge implies, so a one-sided pool is no route and
+//   the weight is in USD in one pass. The CLI builds the edges (apps/cli/src/pipeline/prices.ts); hooked pools are none.
 
 // Uniswap v4 fees (swap/protocolFee.ts)
 decodeV4ProtocolFee(packed: number): ProtocolFeePips // low 12 bits zeroForOne, high 12 bits oneForZero
@@ -138,7 +149,8 @@ as in a drained pool) the simulators return `complete = false` with zero amounts
 - **Range HHI**: inside the band [mid·(1−5 %), mid·(1+5 %)] split liquidity into tick ranges between consecutive initialised ticks; weight each range by `L_range × (√Pupper − √Plower)` (≈ token1 value of the range) clipped to the band; `rangeHhi = Σ share²`; `activeRangeShare` = share of the range containing the current tick.
 - **Owner concentration**: for each position overlapping the band, weight = `liquidity × clipped (√Pupper − √Plower)`; aggregate by owner; `top1Share`, `top3Share`, `hhi`, `count` (owners with weight > 0).
 - **Persistence (window W hours)**: samples = snapshots in the window with non-null depth2Usd; `stability = clamp(p10/median, 0, 1)`; `uptime = share of samples ≥ 0.5·median`. Both null when samples < 3 or the oldest and newest sample are less than `PERSISTENCE_MIN_COVERAGE = 25 %` of the window apart (6 h of 24 h, 42 h of 7 d); with ≥ 3 samples and a median of 0 both are 0 (a dead pool).
-- **Rating**: a pool is _rated_ when both ±2 % sides (`depthUsd[pct = 2].upUsd`, `.downUsd`) are known and the thinner one is at least `HEALTH_RATING_MIN_SIDE_USD = 5 000`; otherwise `grade = null` and `unratedReason` is `unpriced` (a side unknown), `one-sided` (the deeper side holds the floor, the thinner does not) or `thin`. The total and components of an unrated pool are still published.
+- **Rating**: a pool is _rated_ when both ±2 % sides (`depthUsd[pct = 2].upUsd`, `.downUsd`) are known and the thinner one is at least `HEALTH_RATING_MIN_SIDE_USD = 5 000`; otherwise `grade = null` and `unratedReason` is `hooked` (a Uniswap v4 pool with a hook: no depth, spread or concentration is computed), `unpriced` (a side unknown), `one-sided` (the deeper side holds the floor, the thinner does not) or `thin`, tested in that order. The total and components of an unrated pool are still published.
+- **Stale quote**: `priceDeviationBps = |price / (token0Usd / token1Usd) − 1| × 1e4` (null when a token has no USD price); stale when ≥ `STALE_QUOTE_MIN_DEVIATION_BPS = 500`. A stale pool's numbers are published as measured, but its depth is left out of the stats' depth sums and a depth sort puts it last.
 - **Health score** (0–100):
   - depth (max 35): `35 · clamp((log10(2 · min(up, down)) − 3) / 3, 0, 1)` → balanced-equivalent $1k = 0, $1M = 35; a one-sided pool scores 0. An unknown side → 0.
   - spread (max 25): `25 · clamp((log10(300) − log10(spread10kBps)) / (log10(300) − log10(10)), 0, 1)` → ≤10 bps = 25, ≥300 bps = 0. Null (infeasible at $10k) → 0.
@@ -222,7 +234,7 @@ Protocol specifics (addresses live in `src/addresses.ts`, overridable via `creat
 `node:sqlite` (`DatabaseSync`). `openDatabase(path | ':memory:')` runs migrations. Tables:
 - `tokens(address PK, symbol, name, decimals)`
 - `pools(id PK, dex, kind, address, pool_id, token0, token1, fee_pips, tick_spacing, stable, hooks, created_at_block, tracked INTEGER, first_seen_at)`
-- `snapshots(id PK AUTOINCREMENT, pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd, active_liquidity TEXT, depth_json, depth_usd_json, spreads_json, concentration_json)` + index `(pool_id, timestamp)`
+- `snapshots(id PK AUTOINCREMENT, pool_id, block_number, timestamp, price, token0_usd, token1_usd, tvl_usd, active_liquidity TEXT, depth_json, depth_usd_json, spreads_json, concentration_json, price_deviation_bps)` + index `(pool_id, timestamp)`; `price_deviation_bps` (schema version 4) is `PoolSnapshot.priceDeviationBps`, NULL in rows stored before it
 - `volume_hourly(pool_id, hour_start, volume_token0 TEXT, volume_token1 TEXT, volume_usd, swap_count, PK(pool_id, hour_start))`
 - `positions(pool_id, token_id TEXT, owner, tick_lower, tick_upper, liquidity TEXT, updated_block, PK(pool_id, token_id))`; rows under `<pool id>#catch-up` hold a windowed first scan that has not reached the head (never read as a pool's positions)
 - `prices(token PK, usd, via_json, updated_at)`
@@ -240,8 +252,8 @@ Retention: `snapshots.pruneBefore(ts, limit?)` (the oldest `limit` rows when giv
 
 `createApp(db, opts?: { staticDir?: string })` returns a Hono app. All responses JSON, bigints as decimal strings.
 - `GET /api/health` → `{ ok, poolCount, trackedCount, latestSnapshotAt, latestBlock }`
-- `GET /api/stats` → totals by dex: pools, tracked, scored, rated, depth2Usd sum, volume24hUsd sum, median health over rated pools
-- `GET /api/pools?sort=health|depth|volume|gap|tvl&dir=asc|desc&dex=&q=&minVolume=&rated=true|false&limit=&offset=` → `{ items: PoolSummary[], total }` (sorting by health puts unrated pools last in both directions)
+- `GET /api/stats` → totals by dex: pools, tracked, scored, rated, depth2Usd sum (stale quotes left out), volume24hUsd sum, median health over rated pools
+- `GET /api/pools?sort=health|depth|volume|gap|tvl&dir=asc|desc&dex=&q=&minVolume=&rated=true|false&limit=&offset=` → `{ items: PoolSummary[], total }` (sorting by health puts unrated pools last in both directions, sorting by depth stale quotes)
 - `GET /api/pools/:id` → `{ pool, latest: PoolSnapshot, score: HealthScore, gap, persistence24h, persistence7d, volume24hUsd }`
 - `GET /api/pools/:id/history?window=24h|7d` → `{ points: Array<{ timestamp, depth2Usd, spread10kBps, health, price }> }`
 - `GET /api/gaps?limit=` → ranked gaps feed (volume ≥ $10k) with pool summary + gap metrics
@@ -252,8 +264,9 @@ Retention: `snapshots.pruneBefore(ts, limit?)` (the oldest `limit` rows when giv
   note.
 - Static: when `staticDir` exists serve it with SPA fallback to `index.html`.
 
-`PoolSummary = { pool: PoolMeta, price, tvlUsd, depth2Usd, depth2UpUsd, depth2DownUsd, spread10kBps, health: { total, grade, rated, unratedReason }, gapScore, volume24hUsd, ownerTop1Share, updatedAt }`
-(`grade: HealthGrade | null`, `unratedReason: 'thin' | 'one-sided' | 'unpriced' | null`; `HealthScore` carries the same two fields).
+`PoolSummary = { pool: PoolMeta, price, tvlUsd, depth2Usd, depth2UpUsd, depth2DownUsd, spread10kBps, priceDeviationBps, staleQuote, health: { total, grade, rated, unratedReason }, gapScore, volume24hUsd, ownerTop1Share, updatedAt }`
+(`grade: HealthGrade | null`, `unratedReason: 'hooked' | 'unpriced' | 'one-sided' | 'thin' | null`; `HealthScore` carries the same two fields;
+`priceDeviationBps` is the newest snapshot's, `staleQuote` is core's `isStaleQuote` of it).
 `depth2UpUsd` / `depth2DownUsd` are the ±2 % level's `upUsd` (buy side) and `downUsd` (sell side) of the pool's newest
 snapshot, read from the stored `depth_usd_json` as core computed them; each is `null` when its token has no USD price
 (docs/METRICS.md) or the pool has no snapshot. They are listed, not sorted, so they are not denormalised columns.
@@ -270,7 +283,7 @@ it, and `apps/api/src/routes/webhookSecret.test.ts` fails when any part of it sh
 `depthwatch <command>` via `tsx` (`pnpm depthwatch …`). Env: `DEPTHWATCH_RPC_URL`, `DEPTHWATCH_LOGS_RPC_URL` (eth_getLogs only, default: `DEPTHWATCH_RPC_URL`), `DEPTHWATCH_LOG_CHUNK`, `DEPTHWATCH_DB`, `DEPTHWATCH_PORT` (else the platform's `PORT`), `DEPTHWATCH_TOP_POOLS`, `DEPTHWATCH_KEEP_DAYS` (`prune`, `run`, `start`), `DEPTHWATCH_SEED_TOKENS` (`--seed`, `start`); for `start` also `DEPTHWATCH_SNAPSHOT_INTERVAL`, `DEPTHWATCH_VOLUME_INTERVAL`, `DEPTHWATCH_POSITIONS_INTERVAL`, `DEPTHWATCH_POSITIONS_BUDGET`, `DEPTHWATCH_DISCOVER_BUDGET`, `DEPTHWATCH_SHUTDOWN_GRACE` (durations: `90s`, `30m`, `6h`, a plain number is seconds).
 - `discover [--dex …] [--from-block N]` — incremental factory log scan in windows of 50 log chunks; each window upserts its pools and advances sync_state in one transaction, so reruns resume.
   `--seed [--seed-token <address> …]`: no logs; `ChainReader.seedPools` for the pairs of the reference tokens plus the `--seed-token` ERC-20s (repeatable; `DEPTHWATCH_SEED_TOKENS`, comma-separated; lowercased; also read by `run --seed` and `start`), upsert, `seed:<dex>:lastBlock` = the seed block for each DEX whose seeder succeeded (log cursors untouched; pools already stored keep their creation block and are not searched again). A DEX whose seeder failed gets no marker and is logged; the step stores the other DEXes' pools, then fails naming it.
-- `snapshot [--top N] [--pool id…]` — readOverview for all pools → derive prices → rank by TVL → readState for top N → compute depth/spread/concentration → insert snapshots; also rebuild `prices`. One `MmSample` per active mandate of a snapshotted pool; a mandate on a concentrated pool whose positions are not published (`positions:<pool>:lastBlock` unset) is an attribution failure, no sample. Under `start`, a stop before the storing transaction stores nothing.
+- `snapshot [--top N] [--pool id…]` — readOverview for all pools → derive prices → rank by TVL → readState for top N → compute depth/spread/concentration (none for a hooked Uniswap v4 pool, which is also no price edge) and the price deviation → insert snapshots; also rebuild `prices`. One `MmSample` per active mandate of a snapshotted pool; a mandate on a concentrated pool whose positions are not published (`positions:<pool>:lastBlock` unset) is an attribution failure, no sample. Under `start`, a stop before the storing transaction stores nothing.
 - `volume [--hours 24]` — readSwaps for tracked pools, bucket hourly, USD via prices; incremental per pool (`volume:<pool>:lastBlock` / `volume:<pool>:fromTs`): a later pass starts at the hour that held the previous head and rewrites it, keeping earlier hours; pools without coverage of the window read all of it. Uniswap v3 and Slipstream pools share one log scan; progress (blocks and chunks done of the total, %, elapsed, ETA, backoffs) is logged every 30 s.
 - `positions` — readPositions for tracked concentrated pools and the concentrated pools of active mandates, upsert. Options `windowBlocks` / `budgetMs` (used by `start`): pools far behind are read in shared windows from the oldest cursor, a first scan stays staged until it reaches the head, a mandated pool without published positions reads to the head on its own range at once, and a spent budget starts no further pool or window.
 - `score` — for every tracked pool: persistence 24h/7d from snapshots, volume24h, health, gap → `scores`; rows of pools no longer tracked are deleted. volume24h sums the 24 whole hours before the hour of the last block `volume` read (`volume:lastTs`), via core `computeVolume24hUsd`.

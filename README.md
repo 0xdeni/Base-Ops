@@ -269,7 +269,7 @@ snapshotted and scored yet still answers on `/api/pools/:id` with `null` metrics
 | Route                                                | Returns                                                                                                                                                                                                                                                                                                      |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `GET /api/health`                                    | `{ ok, poolCount, trackedCount, latestSnapshotAt, latestBlock, source }` (`source` is `demo` or `live`); `503 { ok: false, error }` when the database cannot be read                                                                                                                                         |
-| `GET /api/stats`                                     | `{ byDex: [{ dex, pools, tracked, scored, rated, depth2Usd, volume24hUsd, medianHealth }], totals }`: per DEX and overall, the sum of ±2 % depth and of 24 h volume and the median health over rated pools (`null` when none is rated)                                                                       |
+| `GET /api/stats`                                     | `{ byDex: [{ dex, pools, tracked, scored, rated, depth2Usd, volume24hUsd, medianHealth }], totals }`: per DEX and overall, the sum of ±2 % depth (stale quotes left out) and of 24 h volume and the median health over rated pools (`null` when none is rated)                                               |
 | `GET /api/pools`                                     | `{ items: PoolSummary[], total }`; query `sort=health\|depth\|volume\|gap\|tvl` (default `health`), `dir=asc\|desc` (default `desc`), `dex`, `q` (substring of a token symbol or address, pool address or v4 pool id), `minVolume` (USD), `rated=true\|false`, `limit` (default 50, max 200), `offset`       |
 | `GET /api/pools/:id`                                 | `{ pool, tracked, latest, score, gap, persistence24h, persistence7d, volume24hUsd, scoredAt }`; `latest` is the newest snapshot; it and the score fields are `null` until the pool has been snapshotted and scored                                                                                           |
 | `GET /api/pools/:id/history?window=24h\|7d`          | `{ window, from, to, points: [{ timestamp, price, depth2Usd, spread10kBps, tvlUsd, health }] }`; the window ends at the pool's newest snapshot                                                                                                                                                               |
@@ -285,11 +285,14 @@ snapshotted and scored yet still answers on `/api/pools/:id` with `null` metrics
 | `GET /llms.txt`                                      | llms.txt index of the agent documents and the main routes; `text/plain; charset=utf-8`                                                                                                                                                                                                                       |
 | `GET /openapi.json`                                  | Hand-written OpenAPI 3.1 description of every GET route and its response schema; `application/json`                                                                                                                                                                                                          |
 
-`PoolSummary` is `{ pool, price, tvlUsd, depth2Usd, depth2UpUsd, depth2DownUsd, spread10kBps, health: { total, grade, rated, unratedReason }, gapScore, volume24hUsd, ownerTop1Share, updatedAt }`;
+`PoolSummary` is `{ pool, price, tvlUsd, depth2Usd, depth2UpUsd, depth2DownUsd, spread10kBps, priceDeviationBps, staleQuote, health: { total, grade, rated, unratedReason }, gapScore, volume24hUsd, ownerTop1Share, updatedAt }`;
 `depth2UpUsd` and `depth2DownUsd` are the buy and sell sides of the ±2 % depth from the newest snapshot (`null` for a
 side whose token has no USD price). `health` is always present: `grade` is `null` and `rated` false for a pool whose
-thinner ±2 % side holds under $5,000, with `unratedReason` `thin`, `one-sided` or `unpriced`; its `total` is kept. Every
-other `null` means "not measured (yet)".
+thinner ±2 % side holds under $5,000, with `unratedReason` `thin`, `one-sided` or `unpriced`, or for a Uniswap v4 pool
+with a hook (`hooked`, no depth, spread or concentration computed); its `total` is kept. `priceDeviationBps` is how far
+the pool's price is from the one its tokens' USD prices imply, and `staleQuote` is true from 500 bps: such a pool's depth
+is left out of the stats' depth sums and sorts last on depth (docs/METRICS.md, Stale quotes). Every other `null` means
+"not measured (yet)".
 
 ## For AI agents
 

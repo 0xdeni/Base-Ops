@@ -5,7 +5,9 @@
  * together with the rebuilt `prices` table.
  *
  * Uniswap v4 pools hold no reserves of their own (singleton PoolManager), so their TVL is unknown
- * (null) and they are ranked by the USD value of their ±2 % depth instead.
+ * (null) and they are ranked by the USD value of their ±2 % depth instead. A Uniswap v4 pool with a
+ * hook is not modelled (docs/METRICS.md, `hooked`): its snapshot holds its price but no depth,
+ * spread or concentration, and it is no price edge.
  *
  * Market-maker scorecards (docs/design/scorecards.md §5): pools with an active mandate are
  * always tracked, each gets one `MmSample` per active mandate right after its snapshot (same
@@ -25,6 +27,7 @@ import {
   computeDepth,
   computeEffectiveSpread,
   depthToUsd,
+  isHookedPool,
   type Mandate,
   type MmSample,
   midPrice,
@@ -32,6 +35,7 @@ import {
   type PoolSnapshot,
   type PoolState,
   type Position,
+  priceDeviationBps,
   tvlUsd,
 } from '@depthwatch/core'
 import { errorMessage, type Logger } from '../log.js'
@@ -148,8 +152,7 @@ export function buildSnapshot(
   if (!Number.isFinite(price) || price <= 0) throw new Error('pool has no usable mid price')
   const token0Usd = usdOf(prices, token0.address)
   const token1Usd = usdOf(prices, token1.address)
-  const depth = computeDepth(state, token0.decimals, token1.decimals)
-  return {
+  const base = {
     poolId: pool.id,
     blockNumber: state.blockNumber,
     timestamp: state.timestamp,
@@ -158,6 +161,14 @@ export function buildSnapshot(
     token1Usd,
     tvlUsd: poolTvlUsd(view, prices),
     activeLiquidity: state.kind === 'concentrated' ? state.liquidity : 0n,
+    priceDeviationBps: priceDeviationBps(price, token0Usd, token1Usd),
+  }
+  // The swap walk does not run a hook's code: no number is guessed for a hooked pool.
+  if (isHookedPool(pool))
+    return { ...base, depth: [], depthUsd: [], spreads: [], concentration: null }
+  const depth = computeDepth(state, token0.decimals, token1.decimals)
+  return {
+    ...base,
     depth,
     depthUsd: depthToUsd(depth, token0, token1, token0Usd, token1Usd),
     spreads: computeEffectiveSpread(state, token0, token1, token0Usd, token1Usd),

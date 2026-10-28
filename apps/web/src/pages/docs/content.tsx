@@ -47,6 +47,9 @@ export const SECTIONS: readonly MetricSection[] = [
         <p>
           {`The buy side is the money spent buying the first token to lift the price; the sell side is the first token sold to push it down. Both sides added at ±${u(2, '%')} give the headline number used for sorting and scoring. A stretch with no liquidity costs nothing to cross, as on chain, so when the ±${u(5, '%')} amount equals the ±${u(2, '%')} amount, nothing sits between the two prices. When the target lies past the liquidity the snapshot read, the side is marked “Liquidity runs out”, and the amount is what it took to get that far.`}
         </p>
+        <p>
+          {`A pool whose own price sits ${u(5, '%')} or more from the price its tokens’ dollar prices imply is marked “Stale price”: its depth is measured at a price nobody trades, so it stays out of the totals and sorts last by depth. A Uniswap v4 pool with a hook runs the hook’s own code on every swap, so its depth and spread are not modelled at all.`}
+        </p>
       </>
     ),
     figure: <DepthSchematic />,
@@ -130,7 +133,7 @@ export const SECTIONS: readonly MetricSection[] = [
           midpoint, with a note.
         </p>
         <p>
-          {`A grade only means something where there is liquidity to grade. A pool is rated when both sides within ±${u(2, '%')} are known and the thinner one holds at least $5K. Any other pool shows “Not rated” instead of a letter, with the reason: too thin to rate, too thin on one side, or no USD price. It keeps its score and its four parts, and stays in every list; the median health on Home and in the stats counts rated pools only.`}
+          {`A grade only means something where there is liquidity to grade. A pool is rated when both sides within ±${u(2, '%')} are known and the thinner one holds at least $5K. Any other pool shows “Not rated” instead of a letter, with the reason: too thin to rate, too thin on one side, no USD price, or a hooked pool that is not modelled. It keeps its score and its four parts, and stays in every list; the median health on Home and in the stats counts rated pools only.`}
         </p>
       </>
     ),
@@ -201,13 +204,14 @@ export const PRICES: MetricSection = {
   title: 'USD prices',
   body: (
     <p>
-      {`Every dollar figure comes from the pools themselves. Four stablecoins are the anchors: USDC, USDbC, DAI and USDT count as $1 by convention, whatever their own pools say. Every other token is priced through pools, along the route from an anchor whose weakest pool is the deepest, where a pool counts with the thinner of its two sides within ±${u(2, '%')}. Native ETH is tied to WETH one for one. A token that no route reaches has no USD price, and every dollar figure that needs it is unknown. This is a valuation convention for depth and volume, not an oracle: a stablecoin trading slightly off its peg still counts as $1.`}
+      {`Every dollar figure comes from the pools themselves. Four stablecoins are the anchors: USDC, USDbC, DAI and USDT count as $1 by convention, whatever their own pools say. Every other token is priced through pools, along the route from an anchor whose weakest pool is the deepest, where a pool counts with the thinner of its two sides within ±${u(2, '%')}, both in dollars as the route reaches it. A Uniswap v4 pool with a hook is no route. Native ETH is tied to WETH one for one. A token that no route reaches has no USD price, and every dollar figure that needs it is unknown. This is a valuation convention for depth and volume, not an oracle: a stablecoin trading slightly off its peg still counts as $1.`}
     </p>
   ),
   formula: [
     'anchors = USDC, USDbC, DAI and USDT at $1, by convention',
-    'edge    = a pool with a usable mid, at its price (token1 per token0)',
+    'edge    = a pool with a usable mid, at its price (token1 per token0), no v4 hook',
     `weight  = min(up × token1Usd, down × token0Usd) at ±${u(2, '%')}, the thinner side`,
+    '          the settled token at its USD price, the other at the price the pool implies',
     'route   = from an anchor, the path whose weakest edge weighs the most',
     'usd     = the anchor’s $1 times the pool prices along the route',
   ].join('\n'),

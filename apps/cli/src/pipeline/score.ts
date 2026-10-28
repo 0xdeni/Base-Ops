@@ -16,6 +16,8 @@ import {
   computePersistence,
   computeVolume24hUsd,
   GAP_FEED_MIN_VOLUME_USD,
+  isHookedPool,
+  type PoolMeta,
   type PoolSnapshot,
   scoringVolumeWindow,
   type VolumeWindow,
@@ -47,13 +49,17 @@ export interface ScoreResult {
 
 export const PERSISTENCE_WINDOWS_HOURS = Object.freeze({ day: 24, week: 168 })
 
-/** Score of one pool from its snapshot series (ascending), newest snapshot and 24 h volume. */
+/**
+ * Score of one pool from its snapshot series (ascending), newest snapshot and 24 h volume. `pool`
+ * (its `hooks`) marks a hooked Uniswap v4 pool, unrated with reason `hooked`.
+ */
 export function scorePool(
   poolId: string,
   series: readonly PoolSnapshot[],
   latest: PoolSnapshot,
   volume24hUsd: number | null,
   now: number,
+  pool?: Pick<PoolMeta, 'hooks'>,
 ): PoolScore {
   const samples = series.map((s) => ({
     timestamp: s.timestamp,
@@ -68,6 +74,7 @@ export function scorePool(
     ownerTop1Share: summary.ownerTop1Share,
     rangeHhi: latest.concentration?.rangeHhi ?? null,
     persistence: persistence24h,
+    hooked: pool !== undefined && isHookedPool(pool),
   })
   return {
     poolId,
@@ -123,6 +130,7 @@ export async function scoreStep(ctx: PipelineContext): Promise<ScoreResult> {
 
   const scores: PoolScore[] = []
   const weekAgo = now - PERSISTENCE_WINDOWS_HOURS.week * 3600
+  const metas = db.pools.getMany(ids)
   for (const id of ids) {
     const latest = db.snapshots.latestForPool(id)
     if (latest === undefined) {
@@ -138,7 +146,7 @@ export async function scoreStep(ctx: PipelineContext): Promise<ScoreResult> {
             coveredFromTs(db, id, end.block),
             db.volume.series(id, window.fromTs, window.toTs),
           )
-    const score = scorePool(id, series, latest, volume24hUsd, now)
+    const score = scorePool(id, series, latest, volume24hUsd, now, metas.get(id))
     scores.push(score)
     if (score.gap.gapScore !== null && (volume24hUsd ?? 0) >= GAP_FEED_MIN_VOLUME_USD) result.gaps++
   }

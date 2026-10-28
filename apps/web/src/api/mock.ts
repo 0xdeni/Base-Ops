@@ -7,7 +7,13 @@
  * found` 404, …) so the UI cannot tell the two apart. Histories are deterministic per pool id;
  * the two scorecards mirror the API seed (`mockScorecards.ts`).
  */
-import { DEXES, type Dex, GAP_FEED_MIN_VOLUME_USD, toJsonSafe } from '@depthwatch/core'
+import {
+  DEXES,
+  type Dex,
+  GAP_FEED_MIN_VOLUME_USD,
+  isStaleQuote,
+  toJsonSafe,
+} from '@depthwatch/core'
 import { renderBadge } from '../lib/badge.js'
 import { compareScorecards, SAMPLE_WINDOW_HOURS } from '../lib/scorecard.js'
 import { matchesQuery, sortSummaries } from '../lib/sort.js'
@@ -110,7 +116,10 @@ function dexStats(dex: Dex, rows: MockPool[]): DexStatsDto {
     tracked: rows.length,
     scored: rows.length,
     rated: rows.filter((p) => p.score.rated).length,
-    depth2Usd: rows.reduce((sum, p) => sum + (p.depth2Usd ?? 0), 0),
+    // As the API: a stale quote's depth stays out of the sum.
+    depth2Usd: rows
+      .filter((p) => !isStaleQuote(p.snapshot.priceDeviationBps))
+      .reduce((sum, p) => sum + (p.depth2Usd ?? 0), 0),
     volume24hUsd: sumKnown(rows.map((p) => p.volume24hUsd)),
     medianHealth: ratedMedian(rows),
   }

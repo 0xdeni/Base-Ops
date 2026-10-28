@@ -6,7 +6,8 @@
  * - spread (25):        25 · clamp((log10 300 − log10 spread10kBps) / (log10 300 − log10 10), 0, 1)
  * - concentration (20): owners known → 20 · (1 − top1Share), else 20 · (1 − rangeHhi), else 10
  * - persistence (20):   20 · (0.5 · stability + 0.5 · uptime), else 10 (unknown)
- * Rated: both sides known and the thinner at least HEALTH_RATING_MIN_SIDE_USD.
+ * Rated: not a hooked Uniswap v4 pool, both sides known and the thinner at least
+ * HEALTH_RATING_MIN_SIDE_USD.
  * Grade (rated pools only): A ≥ 80, B ≥ 65, C ≥ 50, D ≥ 35, else F.
  */
 
@@ -16,6 +17,7 @@ import {
   type HealthGrade,
   type HealthInputs,
   type HealthScore,
+  type PoolMeta,
   type UnratedReason,
 } from '../types.js'
 
@@ -54,8 +56,26 @@ export interface DepthRating {
   unratedReason: UnratedReason | null
 }
 
+/**
+ * A Uniswap v4 pool with a hook (a non-zero `hooks` address). Its swaps run the hook's code, which
+ * the pool's state does not describe, so it is not modelled (docs/METRICS.md, `hooked`).
+ */
+export function isHookedPool(pool: Pick<PoolMeta, 'hooks'>): boolean {
+  return typeof pool.hooks === 'string' && !/^0x0{40}$/i.test(pool.hooks)
+}
+
+export interface RateDepthOptions {
+  /** The pool is hooked (`isHookedPool`): unrated whatever its sides. */
+  hooked?: boolean
+}
+
 /** Rated or not, from the two ±2 % sides in USD (docs/METRICS.md, "Rated and unrated pools"). */
-export function rateDepth(upUsd: number | null, downUsd: number | null): DepthRating {
+export function rateDepth(
+  upUsd: number | null,
+  downUsd: number | null,
+  opts: RateDepthOptions = {},
+): DepthRating {
+  if (opts.hooked === true) return { rated: false, unratedReason: 'hooked' }
   if (!known(upUsd) || !known(downUsd)) return { rated: false, unratedReason: 'unpriced' }
   const thinner = Math.min(upUsd, downUsd)
   if (thinner >= HEALTH_RATING_MIN_SIDE_USD) return { rated: true, unratedReason: null }
@@ -130,7 +150,9 @@ export function computeHealthScore(inputs: HealthInputs): HealthScore {
   const total = round2(
     components.depth + components.spread + components.concentration + components.persistence,
   )
-  const { rated, unratedReason } = rateDepth(inputs.depth2UpUsd, inputs.depth2DownUsd)
+  const { rated, unratedReason } = rateDepth(inputs.depth2UpUsd, inputs.depth2DownUsd, {
+    hooked: inputs.hooked,
+  })
   return {
     total,
     grade: rated ? healthGrade(total) : null,

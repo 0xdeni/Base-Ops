@@ -8,7 +8,13 @@ import {
   buildStableSwapState,
   makeToken,
 } from '../testing.js'
-import { computeDepth, depthToUsd } from './depth.js'
+import {
+  computeDepth,
+  depthToUsd,
+  isStaleQuote,
+  priceDeviationBps,
+  STALE_QUOTE_MIN_DEVIATION_BPS,
+} from './depth.js'
 
 const L = 10n ** 21n
 
@@ -179,5 +185,39 @@ describe('depthToUsd', () => {
       downUsd: null,
       totalUsd: null,
     })
+  })
+})
+
+describe('priceDeviationBps / isStaleQuote', () => {
+  it('measures the BRETT/USDC pool of the live run: 17.962 USDC per BRETT at BRETT = $0.004652', () => {
+    const deviation = priceDeviationBps(17.962, 0.004652, 1)
+    expect(deviation).not.toBeNull()
+    expect((deviation ?? 0) / ((17.962 / 0.004652 - 1) * 10_000)).toBeCloseTo(1, 12)
+    expect(deviation).toBeGreaterThan(3.86e7)
+    expect(deviation).toBeLessThan(3.861e7)
+    expect(isStaleQuote(deviation)).toBe(true)
+  })
+
+  it("is 0 for a pool at its tokens' USD cross and symmetric in sign", () => {
+    expect(priceDeviationBps(2500, 2500, 1)).toBe(0)
+    expect(priceDeviationBps(1 / 1.2, 1, 1.2)).toBeCloseTo(0, 9)
+    expect(priceDeviationBps(2500 * 1.05, 2500, 1)).toBeCloseTo(500, 6)
+    expect(priceDeviationBps(2500 * 0.95, 2500, 1)).toBeCloseTo(500, 6)
+  })
+
+  it('is stale from 500 bps inclusive; unknown is not stale', () => {
+    expect(STALE_QUOTE_MIN_DEVIATION_BPS).toBe(500)
+    expect(isStaleQuote(500)).toBe(true)
+    expect(isStaleQuote(499.99)).toBe(false)
+    expect(isStaleQuote(0)).toBe(false)
+    expect(isStaleQuote(null)).toBe(false)
+  })
+
+  it('is null when a USD price is missing, zero or not finite', () => {
+    expect(priceDeviationBps(17.962, null, 1)).toBeNull()
+    expect(priceDeviationBps(17.962, 0.004652, null)).toBeNull()
+    expect(priceDeviationBps(17.962, 0, 1)).toBeNull()
+    expect(priceDeviationBps(17.962, Number.NaN, 1)).toBeNull()
+    expect(priceDeviationBps(0, 0.004652, 1)).toBeNull()
   })
 })

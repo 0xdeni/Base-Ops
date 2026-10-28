@@ -31,7 +31,8 @@ first.
   `lpFee` alone when the protocol fee is 0). So a 500-pip pool with a 125-pip protocol fee charges
   625 pips, a 3,000-pip pool with 500 charges 3,499. Depth and spread use the swap fee; `feePips`
   stays the LP fee. Uniswap v3's and Slipstream's protocol shares are cut from the LP fee and do
-  not change what a trader pays. A v4 hook that overrides the LP fee per swap is not modelled.
+  not change what a trader pays. A Uniswap v4 pool with a hook is not modelled at all (`hooked`,
+  see [Rated and unrated pools](#rated-and-unrated-pools)).
 - **Sides.** The **up** side is buy pressure on token0: the input is token1 and the price rises.
   The **down** side is sell pressure on token0: the input is token0 and the price falls. Depth
   and spread are reported for both sides; USD depth sums them, but the health score and the rating
@@ -47,8 +48,8 @@ first.
   known tick range and never extrapolated.
 - **Null semantics.** `null` means "not known", never "zero". A score component that needs an
   unknown input is scored 0 (depth, spread) or at the neutral midpoint with a note (concentration,
-  persistence), as detailed under the health score. A pool whose depth is too thin, one-sided or
-  unpriced is not graded at all.
+  persistence), as detailed under the health score. A pool whose depth is too thin, one-sided,
+  unpriced or not modelled (a hooked pool) is not graded at all.
 - **Levels.** Depth is computed at 1, 2 and 5 % (`DEPTH_LEVELS_PCT`); spread at $1,000, $10,000,
   $100,000 and $1,000,000 (`SPREAD_NOTIONALS_USD`). The ±2 % total and the $10k spread are the
   headline numbers used for sorting and scoring.
@@ -112,6 +113,31 @@ amounts with `reached = false`.
 
 A second example used throughout the health score below: a USDC/WETH pool whose ±2 % depth is
 $1.2M on each side, so `depth2Usd = $2.4M`.
+
+### Stale quotes
+
+**Question.** Is the pool's own price the market's?
+
+Depth is measured at the pool's own mid. A pool whose price arbitrage has left behind holds
+nothing on the side that would correct it, and still reports the depth of its other side, at a
+price nobody trades. With `token0Usd` and `token1Usd` the derived USD prices (see
+[USD prices](#usd-prices)):
+- `priceDeviationBps = |price / (token0Usd / token1Usd) − 1| × 10,000`: how far the pool's price
+  is from the price its tokens' USD prices imply. `null` when either token has no USD price.
+- The quote is **stale** (`staleQuote`) when `priceDeviationBps ≥ 500`
+  (`STALE_QUOTE_MIN_DEVIATION_BPS`, 5 %). A pool on a token's price route has a deviation of 0 by
+  construction (the route's prices are its prices), so only a pool that is no route can be stale.
+
+A stale pool's depth, spread and score are published as measured, since they describe the pool at
+its own price. Its ±2 % depth is left out of the depth sums (`GET /api/stats`, the Home
+headline), a depth sort puts it after the other pools in both directions, and the lists and the
+pool page flag it. A snapshot stored before the deviation was recorded reads `null` (not known),
+so its pool is not flagged until the next snapshot.
+
+**Worked example** (the live run at Base block 53,069,244). The Uniswap v3 BRETT/USDC 0.3 % pool
+quoted 17.962 USDC per BRETT while the price graph priced BRETT at $0.004652 and USDC at $1:
+`|17.962 / 0.004652 − 1| × 10,000 ≈ 3.86 × 10^7` bps, a stale quote. Its $32,059 of ±2 % depth,
+all on the up side, is no longer counted in the depth totals.
 
 ## Effective spread at N USD
 
@@ -319,6 +345,13 @@ within 2 %), and a letter
 for such a pool compares nothing. A pool is **rated** only when both sides of its ±2 % depth are
 known and the thinner side holds at least `HEALTH_RATING_MIN_SIDE_USD = $5,000`. Otherwise it is
 unrated, `grade` is `null` and `unratedReason` says why, tested in this order:
+- `hooked`: a Uniswap v4 pool with a hook (a non-zero `hooks` address). A hook runs its own code
+  around every swap (a fee of its own, a custom curve, amounts taken or added) that the pool's
+  state does not describe, so the swap walk would guess. Depth, spread and concentration are not
+  computed: the snapshot holds no depth levels, spread points or concentration, every number
+  derived from them is `null`, and the pool is no price route (see [USD prices](#usd-prices)).
+  Its price is still the pool's own. An allow-list of hooks that leave swaps unchanged may be
+  added later.
 - `unpriced`: a side's USD depth is `null` (its token has no USD price, or the snapshot has no
   ±2 % level).
 - `one-sided`: both sides are known, the deeper one holds at least the floor and the thinner one
@@ -406,8 +439,9 @@ the 50 rated pools of the first live database they give 7 A, 18 B, 9 C, 13 D and
 `health.total` over **rated** pools only, with the usual interpolation between the two middle
 values; the letter shown beside it is `healthGrade(median)`. The stats also carry `rated`, the
 number of rated pools, next to `scored`. `medianHealth` is `null` when no pool is rated. Unrated
-pools stay in every list, in the gaps feed and in the depth and volume sums; sorting by health puts
-them after the rated ones in both directions.
+pools stay in every list, in the gaps feed and in the depth and volume sums (only a
+[stale quote](#stale-quotes) leaves the depth sums); sorting by health puts them after the rated
+ones in both directions.
 
 Example: five scored pools with totals 85, 70, 55 (rated) and 20, 12 (unrated): `rated = 3`,
 `scored = 5`, `medianHealth = 70` (B). The median over all five would have been 55.
@@ -523,12 +557,23 @@ and `down = human(down.amountIn)`, the token0 that moves it 2 % down:
 - `weight = min(up × token1Usd, down × token0Usd)`: the thinner side, in USD.
 - A pool with no liquidity within 2 % on one side of its price has weight 0 and is no route,
   however deep its other side.
+- A Uniswap v4 pool with a hook (`hooked`) is no route.
 
-USD prices are what is being derived, so the search runs twice. The first pass values both sides
-in token1 at the pool's own price (`weight = min(up, down × price)`); the second values each side
-at its token's first-pass USD price, drops the edges whose tokens the first pass could not price,
-and gives the published prices. Because both sides count, an edge's weight can only be inflated
-when the first pass overprices both of its tokens.
+USD prices are what is being derived, so the search weighs each edge when it reaches it from a
+settled token, in one pass: the settled token's side at that token's USD price, the other side at
+the price this edge implies (`token1Usd = token0Usd / price` from token0, `token0Usd = token1Usd ×
+price` from token1). The weight is in USD whatever the tokens' units, so re-denominating a token
+(its amounts × k, its price ÷ k) changes no weight and no route. A pool that misprices the token
+it would price counts that token's side at its own wrong price: a stale pool that quotes a token
+1,000 times too cheap values its side of that token 1,000 times too low.
+
+**Worked example** (`apps/cli/src/pipeline/prices.units.test.ts`). USDC = $1; Aerodrome v2
+pools at 0.3 %: A/USDC holds 800 A and 80,000 USDC ($100 per A); B/USDC 10^9 B and 100,000 USDC
+($0.0001 per B); a stale A/B pool 2,000 A and 2,000,000 B, quoting A at 1,000 B ($0.10). Reached
+from B, the stale pool weighs $2.00 (19,961 B at $0.0001 against 20.37 A at its $0.10), A/USDC
+$798.43, so A is $100 through A/USDC. Weighed in token1 units, as an earlier two-pass search did
+first, the stale pool weighed 19,961 (B) against 798 (USDC) and A came out at $0.10; a second
+pass valuing the sides at that price left A/USDC $0.81 on its A side and kept $0.10.
 
 **Why the thinner side.** A pool's mid price is only as good as the trades that would correct it.
 When a pool's price drifts away from the market, arbitrage trades against it until the side it
@@ -571,16 +616,17 @@ reproduced by anyone with an RPC endpoint and this page.
 
 ## Where each metric lives
 
-| Metric                   | Module                                              | Function(s)                                                                                       |
-| ------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Depth                    | `packages/core/src/metrics/depth.ts`                | `computeDepth`, `depthToUsd`                                                                      |
-| Effective spread         | `packages/core/src/metrics/spread.ts`               | `computeEffectiveSpread`, `feasibleSpreadBps`, `SPREAD_MAX_LEG_IMPACT_BPS`                        |
-| Concentration            | `packages/core/src/metrics/concentration.ts`        | `computeConcentration`, `computeConcentrationForReserves`, `bandSqrtBounds`                       |
-| Persistence              | `packages/core/src/metrics/persistence.ts`          | `computePersistence`, `PERSISTENCE_MIN_COVERAGE`                                                  |
-| Health score, rating     | `packages/core/src/metrics/health.ts`               | `computeHealthScore`, `healthGrade`, `rateDepth`, `HEALTH_RATING_MIN_SIDE_USD`, `HEALTH_MAX`      |
-| Gap score                | `packages/core/src/metrics/gap.ts`                  | `computeGap`, `GAP_FEED_MIN_VOLUME_USD`                                                           |
-| TVL                      | `packages/core/src/metrics/tvl.ts`                  | `tvlUsd`                                                                                          |
-| 24 h volume              | `packages/core/src/metrics/volume.ts`               | `volumeWindow`, `scoringVolumeWindow`, `computeVolume24hUsd`                                      |
-| USD prices               | `packages/core/src/pricing.ts`                      | `derivePrices`; edge weights in `apps/cli/src/pipeline/prices.ts` (`edgeWeight`, `usdEdgeWeight`) |
-| Swap simulation          | `packages/core/src/swap/`                           | `simulateSwapExactIn`, `simulateSwapToPrice`, `midPrice`, `swapFeePips`, `v4SwapFeePips`          |
-| Tick and sqrt-price math | `packages/core/src/tickMath.ts`, `sqrtPriceMath.ts` | `getSqrtRatioAtTick`, `getTickAtSqrtRatio`, `sqrtPriceX96ToPrice`, `priceToSqrtPriceX96`          |
+| Metric                   | Module                                              | Function(s)                                                                                                        |
+| ------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Depth                    | `packages/core/src/metrics/depth.ts`                | `computeDepth`, `depthToUsd`                                                                                       |
+| Effective spread         | `packages/core/src/metrics/spread.ts`               | `computeEffectiveSpread`, `feasibleSpreadBps`, `SPREAD_MAX_LEG_IMPACT_BPS`                                         |
+| Concentration            | `packages/core/src/metrics/concentration.ts`        | `computeConcentration`, `computeConcentrationForReserves`, `bandSqrtBounds`                                        |
+| Persistence              | `packages/core/src/metrics/persistence.ts`          | `computePersistence`, `PERSISTENCE_MIN_COVERAGE`                                                                   |
+| Health score, rating     | `packages/core/src/metrics/health.ts`               | `computeHealthScore`, `healthGrade`, `rateDepth`, `isHookedPool`, `HEALTH_RATING_MIN_SIDE_USD`, `HEALTH_MAX`       |
+| Gap score                | `packages/core/src/metrics/gap.ts`                  | `computeGap`, `GAP_FEED_MIN_VOLUME_USD`                                                                            |
+| TVL                      | `packages/core/src/metrics/tvl.ts`                  | `tvlUsd`                                                                                                           |
+| 24 h volume              | `packages/core/src/metrics/volume.ts`               | `volumeWindow`, `scoringVolumeWindow`, `computeVolume24hUsd`                                                       |
+| USD prices               | `packages/core/src/pricing.ts`                      | `derivePrices` (edge weights in USD at relaxation); edges in `apps/cli/src/pipeline/prices.ts` (`buildPriceEdges`) |
+| Stale quotes             | `packages/core/src/metrics/depth.ts`                | `priceDeviationBps`, `isStaleQuote`, `STALE_QUOTE_MIN_DEVIATION_BPS`                                               |
+| Swap simulation          | `packages/core/src/swap/`                           | `simulateSwapExactIn`, `simulateSwapToPrice`, `midPrice`, `swapFeePips`, `v4SwapFeePips`                           |
+| Tick and sqrt-price math | `packages/core/src/tickMath.ts`, `sqrtPriceMath.ts` | `getSqrtRatioAtTick`, `getTickAtSqrtRatio`, `sqrtPriceX96ToPrice`, `priceToSqrtPriceX96`                           |
