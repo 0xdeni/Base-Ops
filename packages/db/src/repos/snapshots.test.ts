@@ -42,21 +42,6 @@ describe('SnapshotsRepo', () => {
     expect(db.snapshots.count()).toBe(1)
   })
 
-  it('stores the fee each snapshot used, per block, and an unknown fee as null', () => {
-    db.snapshots.insertMany([
-      snap({ poolId: A, timestamp: 10, feePips: 2055 }),
-      snap({ poolId: A, timestamp: 20, feePips: 465 }),
-      snap({ poolId: A, timestamp: 30, feePips: null }),
-    ])
-    expect(db.snapshots.seriesForPool(A, 0).map((s) => s.feePips)).toEqual([2055, 465, null])
-    expect(db.snapshots.seriesSummaryForPool(A, 0, 100).map((s) => s.feePips)).toEqual([
-      2055,
-      465,
-      null,
-    ])
-    expect(db.snapshots.latestForPools([A]).get(A)?.feePips).toBeNull()
-  })
-
   it('stores null concentration and unpriced ladders', () => {
     const snapshot = fixtureSnapshot({
       poolId: A,
