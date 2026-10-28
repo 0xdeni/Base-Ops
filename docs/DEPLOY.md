@@ -103,7 +103,13 @@ load balancer). `DEPTHWATCH_ADMIN_TOKEN` is a bearer token: `POST /api/mm` and `
 /api/mm/:id` send it in the `Authorization` header, which plain HTTP shows to everyone on the
 path. The image's commands above publish the port on `127.0.0.1` for that reason: the proxy on
 the host reaches `http://127.0.0.1:8787`, nothing else does. Set `DEPTHWATCH_PUBLIC_URL` to the
-proxy's address so the links the server prints are the public ones.
+proxy's address so the links the server prints are the public ones. The token must be at least 32
+characters (`openssl rand -hex 32`); `depthwatch` refuses a shorter one as a usage error (exit
+code 2) before it starts. Rate limits belong in the proxy too: the server has none. It logs one
+`request` line per request (method, path without the query string, status, milliseconds) and an
+`admin request refused` warning for every `401` on the write routes, with the reason (`missing
+token` or `wrong token`) and the peer address, which behind the proxy is the proxy's own; the
+proxy's access log has the client.
 
 ## Settings
 

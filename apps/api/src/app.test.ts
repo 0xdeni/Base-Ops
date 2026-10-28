@@ -1,6 +1,7 @@
 import { type Database, IN_MEMORY, openDatabase } from '@depthwatch/db'
 import type { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { RequestLogEntry } from './accessLog.js'
 import { createApp } from './app.js'
 import type { ErrorResponse, HealthResponse } from './dto.js'
 import { createSeededDatabase, type Seed } from './testing/seed.js'
@@ -187,6 +188,37 @@ describe('createApp', () => {
       expect(res.status).toBe(204)
       expect(res.headers.get('access-control-allow-origin')).toBe('*')
       expect(res.headers.get('access-control-allow-methods')).toBe('GET,HEAD,OPTIONS')
+    })
+  })
+
+  describe('access log (onRequest)', () => {
+    it('reports method, path, status and time of every request, never the query or a header', async () => {
+      const entries: RequestLogEntry[] = []
+      const logged = createApp(db, { now: () => seed.now, onRequest: (e) => entries.push(e) })
+      const secret = 'bearer-value-that-must-not-be-logged'
+      const headers = { authorization: `Bearer ${secret}`, cookie: 'session=abc' }
+      expect((await logged.request('/api/pools?q=weth&limit=5', { headers })).status).toBe(200)
+      expect((await logged.request('/api/nope?x=1')).status).toBe(404)
+      expect((await logged.request('/api/health', { method: 'HEAD' })).status).toBe(200)
+      expect(entries.map(({ ms: _ms, ...rest }) => rest)).toEqual([
+        { method: 'GET', path: '/api/pools', status: 200 },
+        { method: 'GET', path: '/api/nope', status: 404 },
+        { method: 'HEAD', path: '/api/health', status: 200 },
+      ])
+      for (const entry of entries) {
+        expect(Number.isInteger(entry.ms) && entry.ms >= 0).toBe(true)
+        expect(entry.authFailure).toBeUndefined()
+      }
+      const text = JSON.stringify(entries)
+      for (const leak of [secret, 'session', 'weth', '?']) expect(text).not.toContain(leak)
+    })
+
+    it('reports a failed handler with its 500', async () => {
+      const entries: RequestLogEntry[] = []
+      const failing = createApp(db, { onError: () => {}, onRequest: (e) => entries.push(e) })
+      db.close()
+      expect((await failing.request('/api/stats')).status).toBe(500)
+      expect(entries).toMatchObject([{ method: 'GET', path: '/api/stats', status: 500 }])
     })
   })
 

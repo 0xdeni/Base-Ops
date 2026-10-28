@@ -9,6 +9,7 @@ import type { Dex } from '@depthwatch/core'
 import {
   ConfigError,
   type Env,
+  parseAdminToken,
   parseBlock,
   parseDexes,
   parseDuration,
@@ -142,7 +143,10 @@ export interface Config {
   mandateFile: string | undefined
   /** Public base URL of this deployment (no trailing slash); undefined derives it from host/port. */
   publicUrl: string | undefined
-  /** Bearer token the API requires for mandate registration; undefined keeps those routes disabled. */
+  /**
+   * Bearer token the API requires for mandate registration (at least 32 characters); undefined
+   * keeps those routes disabled.
+   */
   adminToken: string | undefined
   /** `export --out`: where the static bundle is written. */
   outFile: string | undefined
@@ -355,7 +359,7 @@ export function loadConfig(env: Env, flags: CliFlags = {}): Config {
     logLevel: parseLogLevel(pick(flags.logLevel, env.DEPTHWATCH_LOG_LEVEL), DEFAULTS.logLevel),
     mandateFile: flags.file,
     publicUrl: parsePublicUrl(pick(flags.publicUrl, env.DEPTHWATCH_PUBLIC_URL)),
-    adminToken: pick(undefined, env.DEPTHWATCH_ADMIN_TOKEN),
+    adminToken: parseAdminToken(pick(undefined, env.DEPTHWATCH_ADMIN_TOKEN)),
     outFile: flags.out,
     exportDemo: flags.demo === true,
     exportNote: flags.note?.trim(),

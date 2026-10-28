@@ -122,6 +122,24 @@ export function parsePublicUrl(raw: string | undefined): string | undefined {
   return value.replace(/\/+$/, '')
 }
 
+/** Shortest `DEPTHWATCH_ADMIN_TOKEN` accepted: a bearer secret has to resist guessing. */
+export const MIN_ADMIN_TOKEN_LENGTH = 32
+
+/**
+ * `DEPTHWATCH_ADMIN_TOKEN`, trimmed: at least `MIN_ADMIN_TOKEN_LENGTH` characters, or undefined
+ * when unset. The error gives the length, never the token.
+ */
+export function parseAdminToken(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined
+  const token = raw.trim()
+  if (token.length < MIN_ADMIN_TOKEN_LENGTH)
+    throw new ConfigError(
+      `DEPTHWATCH_ADMIN_TOKEN must be at least ${MIN_ADMIN_TOKEN_LENGTH} characters, got ` +
+        `${token.length}: use \`openssl rand -hex 32\``,
+    )
+  return token
+}
+
 export function parseLogLevel(raw: string | undefined, fallback: LogLevel): LogLevel {
   if (raw === undefined) return fallback
   const value = raw.trim().toLowerCase()

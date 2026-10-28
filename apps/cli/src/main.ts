@@ -113,9 +113,10 @@ Options
   --top <n>           DEPTHWATCH_TOP_POOLS (default ${DEFAULTS.topPools})
   -h, --help          this text;  -v, --version
 
-Environment only: DEPTHWATCH_ADMIN_TOKEN, the bearer token serve, start and demo require for
-POST /api/mm and DELETE /api/mm/:id (unset: those routes answer 403 "registration disabled");
-DEPTHWATCH_SHUTDOWN_GRACE, how long start waits for the step in flight on SIGTERM (${d.shutdownGraceSeconds}).
+Environment only: DEPTHWATCH_ADMIN_TOKEN, the bearer token (at least 32 characters) serve, start
+and demo require for POST /api/mm and DELETE /api/mm/:id (unset: those routes answer 403
+"registration disabled"); DEPTHWATCH_SHUTDOWN_GRACE, how long start waits for the step in flight
+on SIGTERM (${d.shutdownGraceSeconds}).
 
 Exit codes: 0 ok, 1 error, 2 usage.`
 }

@@ -1,10 +1,17 @@
 /**
  * `serve`: the REST API plus the built dashboard (`apps/web/dist`, resolved relative to this file
- * so it works from any working directory) until the abort signal fires.
+ * so it works from any working directory) until the abort signal fires. Every request is logged
+ * (`request`, info) and every refused admin request warned about (`admin request refused`).
  */
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { type DataSource, type RunningServer, startServer, staticDirExists } from '@depthwatch/api'
+import {
+  type DataSource,
+  type RequestLogEntry,
+  type RunningServer,
+  startServer,
+  staticDirExists,
+} from '@depthwatch/api'
 import type { Database } from '@depthwatch/db'
 import { errorMessage, type Logger } from './log.js'
 
@@ -21,6 +28,12 @@ export function webDistDir(): string {
 export function resolveStaticDir(): string | undefined {
   const dir = webDistDir()
   return staticDirExists(dir) ? dir : undefined
+}
+
+/** The access log of the API as log lines: a refused admin request is a warning. */
+export function logRequest(log: Logger, entry: RequestLogEntry): void {
+  if (entry.authFailure !== undefined) log.warn('admin request refused', { ...entry })
+  else log.info('request', { ...entry })
 }
 
 export interface ServeOptions {
@@ -58,6 +71,7 @@ export async function serveApi(opts: ServeOptions): Promise<RunningServer> {
     source: opts.source,
     onError: (error, path) =>
       opts.log.error('request failed', { path, error: errorMessage(error) }),
+    onRequest: (entry) => logRequest(opts.log, entry),
   })
   const dashboard = staticDir ? 'served' : 'not built (run `pnpm build` for the dashboard)'
   const registration = opts.adminToken ? 'enabled' : 'disabled (set DEPTHWATCH_ADMIN_TOKEN)'

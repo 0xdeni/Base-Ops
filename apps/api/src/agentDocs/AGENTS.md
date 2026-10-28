@@ -268,7 +268,8 @@ those addresses own. Response: `{ items: ScorecardSummary[] }`, active mandates 
 name. Parameters: `pool` (exact pool id, at most 200 characters) and `active` (`true` or
 `false`, any case); without them every mandate is listed.
 
-`ScorecardSummary` fields: `mandate` (`id`, `name`, `poolId`, `marketMaker`, `addresses`,
+`ScorecardSummary` fields: `mandate` (`id`, `name`, `poolId` (lowercase, like every pool id),
+`marketMaker`, `addresses`,
 `kpis` (`minDepthUsd` per side, `bandPct`, `maxSpreadBps`, `spreadNotionalUsd`,
 `targetUptime`), `alertWebhookConfigured`, `alertAfterSamples`, `active`, `createdAt`,
 `notes`), `latest` (the newest sample or `null`), `uptime` (`h24`, `d7`, `d30`, each `windowHours`,
@@ -311,7 +312,8 @@ charset=utf-8`) and `GET /openapi.json` (`application/json`).
 
 Two write routes exist for the operator: `POST /api/mm` and `DELETE /api/mm/:id` register and
 remove mandates and need `Authorization: Bearer <token>` (`DEPTHWATCH_ADMIN_TOKEN`); a server
-without a token answers them with 403. They are not part of this guide or of `/openapi.json`.
+without a token answers them with 403, and a registration body over 64 KiB answers 413. They are
+not part of this guide or of `/openapi.json`.
 
 ## Examples
 

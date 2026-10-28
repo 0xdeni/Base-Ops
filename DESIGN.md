@@ -253,7 +253,11 @@ at the end of `discover` and `discover --seed`, and `close()` runs `PRAGMA optim
 
 ## API (apps/api)
 
-`createApp(db, opts?: { staticDir?: string })` returns a Hono app. All responses JSON, bigints as decimal strings.
+`createApp(db, opts?: { staticDir?, now?, onError?, adminToken?, source?, onRequest? })` returns a Hono app. All responses JSON,
+bigints as decimal strings. `onRequest(entry)` is the access log: one `{ method, path, status, ms }` per request, after it was
+answered, with the path only (never the query string or a header, so the admin token never reaches it); a 401 from the admin
+routes adds `authFailure: 'missing token' | 'wrong token'` and `client` (the peer address, when the server knows it). `serve`,
+`start` and `demo` log it as `request` (info) and `admin request refused` (warn).
 Every response is gzip- or deflate-compressed when `Accept-Encoding` allows it and carries an `ETag` that answers a
 matching `If-None-Match` with `304`. A successful `GET /api/*` response carries `Cache-Control: public, max-age=30`
 unless the route sets its own (the badge: `public, max-age=300`; a pool's history: `public, max-age=60`); `/api/health` sends none.

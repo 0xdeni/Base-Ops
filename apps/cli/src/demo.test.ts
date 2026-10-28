@@ -287,7 +287,7 @@ describe('demoCommand', () => {
     let url: string | undefined
     const done = demoCommand({
       config: loadConfig(
-        { DEPTHWATCH_ADMIN_TOKEN: 'demo-token' },
+        { DEPTHWATCH_ADMIN_TOKEN: 'demo-token-0123456789abcdef0123456789' },
         { port: '0', host: '127.0.0.1' },
       ),
       log: silentLogger,

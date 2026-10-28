@@ -93,9 +93,28 @@ describe('loadConfig', () => {
   })
 
   it('reads DEPTHWATCH_ADMIN_TOKEN from the environment only, ignoring blank values', () => {
-    expect(loadConfig({ DEPTHWATCH_ADMIN_TOKEN: 's3cret' }).adminToken).toBe('s3cret')
+    const token = 'a'.repeat(64)
+    expect(loadConfig({ DEPTHWATCH_ADMIN_TOKEN: token }).adminToken).toBe(token)
+    expect(loadConfig({ DEPTHWATCH_ADMIN_TOKEN: ` ${token}\n` }).adminToken).toBe(token)
     expect(loadConfig({ DEPTHWATCH_ADMIN_TOKEN: '   ' }).adminToken).toBeUndefined()
     expect(() => parseCliArgs(['serve', '--admin-token', 'x'])).toThrow(ConfigError)
+  })
+
+  it('rejects a DEPTHWATCH_ADMIN_TOKEN shorter than 32 characters without echoing it', () => {
+    expect(loadConfig({ DEPTHWATCH_ADMIN_TOKEN: 'b'.repeat(32) }).adminToken).toBe('b'.repeat(32))
+    for (const token of ['s3cret', 'c'.repeat(31), ` ${'d'.repeat(31)} `]) {
+      let error: unknown
+      try {
+        loadConfig({ DEPTHWATCH_ADMIN_TOKEN: token })
+      } catch (caught) {
+        error = caught
+      }
+      expect(error, token).toBeInstanceOf(ConfigError)
+      const message = (error as Error).message
+      expect(message).toMatch(/^DEPTHWATCH_ADMIN_TOKEN must be at least 32 characters, got \d+/)
+      expect(message).toContain('openssl rand -hex 32')
+      expect(message).not.toContain(token.trim())
+    }
   })
 
   it('reads the environment and lets flags win', () => {
