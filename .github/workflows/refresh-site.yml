@@ -1,0 +1,112 @@
+name: Refresh site
+
+# A free static copy of the dashboard (docs/DEPLOY.md, "A free static copy"): every three hours
+# the pipeline runs against Base mainnet on a GitHub runner, the database is kept in the Actions
+# cache between runs, and the static build is uploaded to Cloudflare Pages. It needs the
+# repository secrets DEPTHWATCH_RPC_URL, CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID; it runs
+# only on its schedule and by hand, never for a pull request, so no fork sees them.
+
+on:
+  schedule:
+    # Minute 23, every third hour (UTC). GitHub may start a scheduled run late.
+    - cron: "23 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refresh-site
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: refresh
+    runs-on: ubuntu-latest
+    # A first run seeds the pools of the reference tokens (about 15,000 requests, some 10 minutes
+    # on Alchemy's free tier); later runs take a few minutes.
+    timeout-minutes: 45
+    env:
+      DEPTHWATCH_RPC_URL: ${{ secrets.DEPTHWATCH_RPC_URL }}
+      # eth_getLogs goes to Base's public RPC unless the optional secret names another endpoint.
+      DEPTHWATCH_LOGS_RPC_URL: ${{ secrets.DEPTHWATCH_LOGS_RPC_URL || 'https://mainnet.base.org' }}
+      DEPTHWATCH_DB: ${{ github.workspace }}/.depthwatch/depthwatch.db
+      # Seven days of history is what the site shows; snapshots are kept at least 8 days.
+      DEPTHWATCH_KEEP_DAYS: "8"
+      # The Cloudflare Pages project, and so the site's address: https://depthwatch.pages.dev.
+      PAGES_PROJECT: depthwatch
+    steps:
+      - name: Check settings
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          missing=""
+          [ -n "$DEPTHWATCH_RPC_URL" ] || missing="$missing DEPTHWATCH_RPC_URL"
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || missing="$missing CLOUDFLARE_API_TOKEN"
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing (docs/DEPLOY.md, A free static copy)"
+            exit 1
+          fi
+      # Actions are pinned to commit SHAs; the comment names the release each SHA is.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+      - name: Install pnpm
+        run: npm install --global pnpm@10.28.0
+      - name: Cache pnpm store
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      # The newest saved database; none on the first run, which then starts from an empty one.
+      - name: Restore the database
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .depthwatch
+          key: depthwatch-db-${{ github.run_id }}
+          restore-keys: depthwatch-db-
+      - name: Discover (seed)
+        # A DEX whose factory reads fail is reported and seeded again next run; the others go on.
+        continue-on-error: true
+        run: |
+          mkdir -p .depthwatch
+          pnpm depthwatch discover --seed
+      - name: Snapshot
+        run: pnpm depthwatch snapshot
+      - name: Volume
+        # Base's public RPC may rate-limit a runner: the site is still published, and the score
+        # keeps the last complete 24 h window (null once it is older than a day).
+        continue-on-error: true
+        run: pnpm depthwatch volume
+      - name: Score
+        run: pnpm depthwatch score
+      - name: Prune
+        run: pnpm depthwatch prune
+      - name: Save the database
+        if: always() && hashFiles('.depthwatch/depthwatch.db') != ''
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .depthwatch
+          key: depthwatch-db-${{ github.run_id }}
+      - name: Export the bundle
+        run: >-
+          pnpm depthwatch export --out apps/web/static-data/bundle.json
+          --note "Read from Base mainnet by the Depthwatch pipeline, about every three hours, through a
+          free RPC plan. Each copy is a snapshot: it does not change until the next one replaces it."
+      - name: Build the static site
+        run: pnpm --filter @depthwatch/web build:static
+      - name: Publish to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          # The project is created on the first run; later runs report that it exists and go on.
+          npx --yes wrangler@4.150.0 pages project create "$PAGES_PROJECT" --production-branch main \
+            || echo "Pages project $PAGES_PROJECT exists or could not be created; deploying to it."
+          npx --yes wrangler@4.150.0 pages deploy apps/web/dist-static \
+            --project-name "$PAGES_PROJECT" --branch main --commit-dirty=true
