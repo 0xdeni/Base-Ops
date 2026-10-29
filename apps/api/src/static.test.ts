@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import type { Database } from '@depthwatch/db'
 import type { Hono } from 'hono'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from './app.js'
 import { ASSET_CACHE_CONTROL, STATIC_CACHE_CONTROL } from './caching.js'
 import { isApiPath, staticDirExists, wantsSpaFallback } from './static.js'
@@ -172,6 +172,32 @@ describe('static serving', () => {
       expect(res.headers.get('content-type')).toMatch(/^text\/html/)
       expect(await res.text()).toBe(INDEX_HTML)
       expect(res.headers.get('cache-control')).toBe(STATIC_CACHE_CONTROL)
+    })
+
+    // On Node 22.13 and 22.14 (undici 6.21) a garbage-collected clone leaves the original
+    // response unusable ("Body has already been read"): the CI run of fd21bba failed this way.
+    it('tags files, the fallback and API answers without cloning a response', async () => {
+      const clone = vi.spyOn(Response.prototype, 'clone')
+      try {
+        const requests: Array<[string, Record<string, string>]> = [
+          ['/', {}],
+          ['/pools/x', {}],
+          ['/assets/app-old.js', { accept: 'text/html' }],
+          ['/assets/index-1gtripqj.js', {}],
+          ['/assets/index-1gtripqj.js', { 'accept-encoding': 'gzip' }],
+          ['/api/health', {}],
+          ['/api/pools', {}],
+        ]
+        for (const [path, headers] of requests) {
+          const res = await app.request(path, { headers })
+          expect(res.status, path).toBe(200)
+          expect(res.headers.get('etag'), path).toMatch(/^(W\/)?"[0-9a-f]{40}"$/)
+          await res.arrayBuffer()
+        }
+        expect(clone).not.toHaveBeenCalled()
+      } finally {
+        clone.mockRestore()
+      }
     })
 
     it('leaves a 404 uncached', async () => {
