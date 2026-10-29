@@ -26,7 +26,7 @@ bundle and build modes) and §5 (tests) remain the contract and are cited by DES
 Header: logo + wordmark (links to `/`), nav **Pools · Gaps · Scorecards · Methodology**, data
 freshness on the right (block, "updated … ago"). On phones the nav stays one row (scrollable if
 needed) and freshness moves under it or into the footer. Footer on every page: "Open source ·
-no token · no custody · read-only", repository link (`https://github.com/0xdeni/Base-Ops`), data
+no token · no custody · read-only", repository link (`https://github.com/0xdeni/depthwatch`), data
 source line ("Synthetic demo world" in demo/static demo mode, else "Base mainnet").
 
 **Home** sections, in order:

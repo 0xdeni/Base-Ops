@@ -31,7 +31,7 @@ METRICS.md reproduced by a test.
 
 ### Week 2: chain adapters and offline demo
 
-- Discovery, overview, state (tick-bitmap walk), swaps and positions readers for the four DEXes,
+- Discovery, overview, state (tick-bitmap walk), swaps and positions readers for the six DEXes,
   multicall batched, chunked `getLogs`, incremental sync state.
 - Fixture transport and recording transport.
 - `depthwatch demo` serves the full dashboard from a synthetic fixture set with no network.
@@ -132,7 +132,8 @@ onboarding items of weeks 7–8 remain open.
 
 ### Milestones
 
-- Weeks 5–6: registration model, attribution for all four DEXes, sampling inside `snapshot`, API
+- Weeks 5–6: registration model, attribution for every DEX (all six since Aero v2 and Aero
+  Slipstream were added), sampling inside `snapshot`, API
   routes. **Delivered.** Acceptance: a sample reproduces by hand from public data following the
   procedure in SCORECARDS.md (block number, pool state, holdings, core functions); attribution
   tests cover positions inside, outside and straddling the band, LP-share scaling and gauge-staked
@@ -146,7 +147,7 @@ onboarding items of weeks 7–8 remain open.
 
 ## Layer 3: Mandate escrow (only once Layers 1 and 2 have users)
 
-On-chain market-making agreements where fees release against verified KPIs. This layer is not
+Onchain market-making agreements where fees release against verified KPIs. This layer is not
 started until the scorecards have been used by real projects for at least one month and at least
 one project and one market maker have asked for it.
 

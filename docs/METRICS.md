@@ -104,7 +104,7 @@ side whose token has no USD price is `null`.
   2^96` and `Δtoken0 = L × (√Pb − √Pa) × 2^96 / (√Pa × √Pb)`, input rounded up and output rounded
   down; `liquidityNet` applied at every initialised tick crossed. Steps stop exactly where the
   contract's do (the next initialised tick or the edge of the current 256-slot tick-bitmap
-  word), so the amounts match on-chain results to the wei. On Uniswap v4 the walk runs with the
+  word), so the amounts match onchain results to the wei. On Uniswap v4 the walk runs with the
   swap fee (LP fee combined with the direction's protocol fee): the same price move then needs
   `1e6 / (1e6 − swapFee)` times the net input, while the amount out is unchanged.
 - Constant product (Aerodrome v2 volatile): closed form. The net input that moves `reserve1 /

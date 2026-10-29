@@ -14,7 +14,7 @@ visible before a fix exists.
 Report it privately through GitHub's vulnerability reporting form for this repository, the
 "Report a vulnerability" button on the Security tab:
 
-https://github.com/0xdeni/Base-Ops/security/advisories/new
+https://github.com/0xdeni/depthwatch/security/advisories/new
 
 If that page says private reporting is not enabled, open an issue that says only that you have a
 security report and would like a private channel, with no details; a maintainer replies with one.

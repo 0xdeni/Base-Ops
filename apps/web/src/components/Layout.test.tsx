@@ -124,7 +124,7 @@ describe('route changes', () => {
     expect(isInAppHref('#/pools')).toBe(true)
     expect(isInAppHref('/AGENTS.md')).toBe(true)
     expect(isInAppHref('//evil.example')).toBe(false)
-    expect(isInAppHref('https://github.com/0xdeni/Base-Ops')).toBe(false)
+    expect(isInAppHref('https://github.com/0xdeni/depthwatch')).toBe(false)
   })
 })
 
@@ -256,17 +256,18 @@ describe('demo line and footer (ia-v3 §3.1, §3.3)', () => {
     expect(within(screen.getByRole('contentinfo')).getByText('Data: Base mainnet')).toBeTruthy()
   })
 
-  it('carries the promise, "Built on Base" in plain text and the Methodology, API and GitHub links', () => {
+  it('carries the promise, the independence line in plain text and the Methodology, API and GitHub links', () => {
     renderAt('/mm')
     const footer = screen.getByRole('contentinfo')
     expect(footer.querySelector('.foot-say')?.textContent).toBe(
-      'Open source and read-only. No token, no custody. Built on Base: it indexes Uniswap, Aerodrome and Aero pools on Base mainnet. Data: the in-repo mock.',
+      'Open source and read-only. No token, no custody. It indexes Uniswap, Aerodrome and Aero pools on Base mainnet. Independent: not affiliated with or endorsed by Base. Data: the in-repo mock.',
     )
+    expect(footer.textContent).not.toMatch(/Built on Base/)
     expect(footer.querySelector('img, svg[aria-label]')).toBeNull()
     const href = (name: string) => within(footer).getByRole('link', { name }).getAttribute('href')
     expect(href('Methodology')).toBe('/methodology')
     expect(href('API')).toBe('/AGENTS.md')
-    expect(href('GitHub')).toBe('https://github.com/0xdeni/Base-Ops')
+    expect(href('GitHub')).toBe('https://github.com/0xdeni/depthwatch')
     expect(footer.textContent).not.toContain('·')
     expect(footer.textContent).not.toMatch(/partner/i)
   })

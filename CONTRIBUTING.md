@@ -120,6 +120,11 @@ types, and test every reader through the fixture transport.
 
 ## Base name and brand
 
+Depthwatch is an independent project: it is not a Base partner and is not endorsed by Base. It
+reads Base mainnet over JSON-RPC and deploys nothing on Base, so no page, badge, post or listing
+says or implies a partnership or an endorsement. Write the name as "Base" and "onchain" as one
+word.
+
 Base's name, logo and "Built on Base" style marks are Base's brand, not the project's. Before
 any of them appears in the README, the dashboard, badges, social posts or a directory listing,
 the use must follow Base's brand guidelines at <https://base.org/brand>, in particular the

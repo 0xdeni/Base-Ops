@@ -147,7 +147,7 @@ Every v2 route and query parameter keeps its meaning. New parameters are additiv
 
 Three short groups, no middle dots:
 1. The wordmark and "Open source and read-only. No token, no custody."
-2. Links: Methodology, API, GitHub (`github.com/0xdeni/Base-Ops`).
+2. Links: Methodology, API, GitHub (`github.com/0xdeni/depthwatch`).
 3. "Data: synthetic demo world", "Data: Base mainnet" or "Data: in-repo mock".
 
 ### 3.4 Loading and errors (all pages)

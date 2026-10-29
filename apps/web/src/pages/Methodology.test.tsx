@@ -16,7 +16,7 @@ import { METHODOLOGY_ANSWER, SECTIONS, WIDE_QUERY } from './Methodology.js'
 
 const NB = ' '
 const ANCHORS = ['depth', 'spread', 'concentration', 'persistence', 'health', 'gaps', 'scorecards']
-const REPO = 'https://github.com/0xdeni/Base-Ops'
+const REPO = 'https://github.com/0xdeni/depthwatch'
 
 let hash = ''
 let navigate: NavigateFunction = () => undefined
@@ -188,7 +188,9 @@ describe('Methodology: sections', () => {
   it('says an empty stretch costs nothing to cross and when a depth side runs out', () => {
     renderAt('/methodology')
     const depth = section('depth').textContent ?? ''
-    expect(depth).toContain('A stretch with no liquidity costs nothing to cross, as on chain')
+    expect(depth).toContain(
+      'A stretch with no liquidity costs nothing to cross, as it does onchain',
+    )
     expect(depth).toContain('When the target lies past the liquidity the snapshot read')
     expect(depth).not.toMatch(/marked exhausted/)
   })

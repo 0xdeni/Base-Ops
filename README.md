@@ -1,6 +1,34 @@
 # Depthwatch
 
-An open liquidity observatory for Base mainnet. Depthwatch indexes Uniswap v3, Uniswap v4, Aerodrome
+Depthwatch is an open-source liquidity observatory for Base mainnet. For each Uniswap, Aerodrome
+and Aero pool it tracks, it measures how much buying or selling it takes to move the price and
+what a trade of a given size costs, and publishes the numbers through a dashboard, a REST API and
+a command-line pipeline. A pool's size (its TVL) answers neither question; the liquidity close to
+the current price does.
+
+Depthwatch is independent: it is not affiliated with or endorsed by Base, it deploys nothing on
+Base and sends no transactions; it only reads Base mainnet over JSON-RPC.
+
+**Why depth, not size.** Two WETH/USDC pools on Aero, in one snapshot of Base mainnet at block
+53,219,391 (28 October 2026, 22:55 UTC):
+
+| Pool                         | TVL     | Depth within ±2 % | $100,000 round trip |
+| ---------------------------- | ------- | ----------------- | ------------------- |
+| [Aero v2][aero-v2-weth]      | $6.59 M | $66,414           | 656.6 bps ($6,566)  |
+| [Aero Slipstream][aero-weth] | $6.89 M | $2.87 M           | 9.9 bps ($99)       |
+
+[aero-v2-weth]: https://basescan.org/address/0x800eb395b577b234c5065c8e0ccb0f3a1401b2c2
+[aero-weth]: https://basescan.org/address/0x4a7af46bc8abc00048c6c7920a1488daf568366c
+
+The two pools hold about the same capital. The v2 pool spreads its reserves over every possible
+price; in the Slipstream pool LPs place liquidity in price ranges, much of it near the current
+price. So the Slipstream pool has 43 times the depth within ±2 %, and buying and selling $100,000
+of WETH costs $99 there against $6,566 in the v2 pool, fees included (0.30 % a swap in the v2
+pool, 0.0345 % in the Slipstream pool at that block). Depth is both sides added: the USDC that
+lifts the price 2 % plus the WETH that pushes it 2 % down, valued in USD
+([docs/METRICS.md](docs/METRICS.md)).
+
+Depthwatch indexes Uniswap v3, Uniswap v4, Aerodrome
 (v2 AMM and Slipstream concentrated) and Aero (v2 AMM and Slipstream concentrated) pools on Base:
 every pool of those factories with log discovery, or the pools between the 15 reference tokens (plus
 any `--seed-token`) with `discover --seed`. On 2026-10-21 Aerodrome moved to a new platform, Aero,
@@ -21,13 +49,13 @@ the market maker's addresses, the depth and spread KPIs from its agreement) and 
 scorecard with uptime over 24 h / 7 d / 30 d, computed from the liquidity those addresses own
 and reproducible block by block. See [Market-maker scorecards](#market-maker-scorecards).
 
-**Status: MVP under active development; not yet validated against Base mainnet at scale.** The
-math is unit-tested against hand-computed values and a brute-force simulator, and the pipeline runs
-end to end against recorded fixtures, but coverage of the long tail of pools, USD pricing of thinly
-traded tokens and RPC cost at full scale are still being measured. Numbers from a live deployment
-should be read with that in mind until the validation milestone in [docs/ROADMAP.md](docs/ROADMAP.md)
-is reached. What has run on mainnet so far, and what it cost, is in
-[Measured on Base, 2026-10-25](#measured-on-base-2026-10-25) and
+**Status: MVP under active development; not yet validated against Base mainnet at scale.** The math
+is unit-tested against hand-computed values and a brute-force simulator, and the pipeline runs end
+to end against a synthetic fixture set, but coverage of the long tail of pools, USD pricing of
+thinly traded tokens and RPC cost at full scale are still being measured. Numbers from a live
+deployment should be read with that in mind until the validation milestone in
+[docs/ROADMAP.md](docs/ROADMAP.md) is reached. What has run on mainnet so far, and what it cost, is
+in [Measured on Base, 2026-10-25](#measured-on-base-2026-10-25) and
 [2026-10-28](#measured-on-base-2026-10-28).
 
 ## What it measures
@@ -65,6 +93,8 @@ the block it was read at and says that it does not update.
 Requirements: Node ≥ 22.13 (see `.nvmrc`) and pnpm 10 (`corepack enable` is enough).
 
 ```sh
+git clone https://github.com/0xdeni/depthwatch.git
+cd depthwatch
 pnpm install
 cp .env.example .env             # set DEPTHWATCH_RPC_URL to a Base mainnet JSON-RPC endpoint
 
@@ -75,7 +105,7 @@ pnpm depthwatch score            # persistence 24h/7d, health score and gap scor
 pnpm depthwatch serve            # REST API on :8787, plus the dashboard when apps/web/dist exists
 ```
 
-A first seed is about 13,400 requests (about 10 minutes on Alchemy's free tier, some 45 minutes
+A first seed is about 14,600 requests (about 10 minutes on Alchemy's free tier, some 50 minutes
 at the public endpoint's 5 requests a second); a rerun takes seconds. A plain
 `pnpm depthwatch discover` finds every pool of the indexed factories from their logs instead: from
 the factories' deployment blocks that is about 97,000 `eth_getLogs` at the default 2,000-block
@@ -92,8 +122,8 @@ command, flag or value). A pass that stored nothing because every item failed (`
 failed step, stops with exit 1 after three passes in a row in which every step that reads the
 chain failed, so cron or a supervisor notices a revoked key instead of serving a stale site. Logs
 go to stderr; stdout carries only program output: the `--help` and `--version` text, the URL line
-of `serve`, `start` and `demo`, and the scorecard URL, listing and JSON of `mm register`,
-`mm list` and `mm show`.
+of `serve`, `start` and `demo`, the summary line of `export`, and the scorecard URL, listing and
+JSON of `mm register`, `mm list` and `mm show`.
 
 Or run the whole pipeline on a loop (`--once` runs a single pass; each pass indexes the LP
 positions of the pools with an active mandate, `--with-positions` those of every tracked pool):
@@ -143,7 +173,7 @@ same meaning. Flags win over the environment, which wins over `./.env`. Duration
 | `DEPTHWATCH_LOGS_RPC_URL`       | `--logs-rpc-url`       | `DEPTHWATCH_RPC_URL`   | Endpoint for `eth_getLogs` only (`discover`, `volume`, `positions`); everything else stays on `DEPTHWATCH_RPC_URL`. Unset, logs use the main endpoint. See [Running on a free RPC](#running-on-a-free-rpc).                                                                                                                                                                                                                                 |
 | `DEPTHWATCH_DB`                 | `--db`                 | `depthwatch.db`        | SQLite file; created and migrated on first run. `demo` ignores it: in-memory unless `--db` is given.                                                                                                                                                                                                                                                                                                                                        |
 | `DEPTHWATCH_PORT`               | `--port`               | `PORT`, else `8787`    | Port for `serve`, `start` and `demo`. Unset, the `PORT` a hosting platform sets is used.                                                                                                                                                                                                                                                                                                                                                    |
-| `DEPTHWATCH_HOST`               | `--host`               | `0.0.0.0`              | Interface for `serve` and `demo`.                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `DEPTHWATCH_HOST`               | `--host`               | `0.0.0.0`              | Interface for `serve`, `start` and `demo`.                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `DEPTHWATCH_TOP_POOLS`          | `--top`                | `200`                  | Pools (ranked by TVL) that get full depth snapshots.                                                                                                                                                                                                                                                                                                                                                                                        |
 | `DEPTHWATCH_KEEP_DAYS`          | `--keep-days`          | `30`                   | `prune`, `run`, `start`: days of snapshots and hourly volume kept (snapshots at least 8). Scorecard samples keep 35 days, alerts 90.                                                                                                                                                                                                                                                                                                        |
 | `DEPTHWATCH_SEED_TOKENS`        | `--seed-token`         | none                   | Token addresses seeded besides the reference tokens, comma-separated (the flag repeats): `discover --seed`, `run --seed` and `start` also ask each DEX for their pairs with the reference tokens and with each other, e.g. a project's own token.                                                                                                                                                                                           |
@@ -184,18 +214,18 @@ multicalls and block headers stay on `DEPTHWATCH_RPC_URL`; with one URL nothing 
   depthwatch score
   ```
 
-  or `DEPTHWATCH_LOG_CHUNK=10 depthwatch run --seed --once`. At 10 blocks per request, volume
-  costs one `eth_getLogs` per 10 blocks per event source (three for six DEXes: Uniswap v3 and both
+  or `DEPTHWATCH_LOG_CHUNK=10 depthwatch run --seed --once`. At 10 blocks per request, volume costs
+  one `eth_getLogs` per 10 blocks per event source (three for six DEXes: Uniswap v3 and both
   Slipstreams share one, Aerodrome v2 and Aero v2 another): the first pass reads 24 h, about 13,600
-  requests and about 1.0 M compute units with all six DEXes tracked (the measured pass, read
-  before Uniswap v3 and Slipstream shared a filter, is in
-  [Measured on Base](#measured-on-base-2026-10-25)). A later pass starts at the hour that held the
-  previous pass's head, so it rereads up to an hour: about 100 requests per event source five
-  minutes after the last pass, about 300 an hour after. Keeping volume current therefore reads
-  every block at least once per source, at least about 13,000 requests (about 1.0 M units) a day,
-  and a 5-minute loop rereads so much that it costs about ten times that. A looping `run` does not
-  fit a 30 M-unit/month free plan: run single passes when you need fresh numbers (a month covers
-  fewer than 30 daily ones).
+  requests and about 1.0 M compute units with all six DEXes tracked (the pass measured on 2026-10-28
+  read 13,593 chunks in 15,855 HTTP requests, 2,256 of them answered HTTP 429 and retried, about
+  1.02 M units: [Measured on Base, 2026-10-28](#measured-on-base-2026-10-28)). A later pass starts
+  at the hour that held the previous pass's head, so it rereads up to an hour: about 100 requests
+  per event source five minutes after the last pass, about 300 an hour after. Keeping volume current
+  therefore reads every block at least once per source, at least about 13,000 requests (about 1.0 M
+  units) a day, and a 5-minute loop rereads so much that it costs about ten times that. A looping
+  `run` does not fit a 30 M-unit/month free plan: run single passes when you need fresh numbers (a
+  month covers fewer than 30 daily ones).
 
   `discover --seed` asks each DEX's factory (StateView for Uniswap v4) for every pair of the
   reference tokens in `packages/chain/src/addresses.ts` and of the tokens given with `--seed-token`
@@ -389,11 +419,11 @@ or `SYMBOL (0x3f5b…a4ee)` when the name is shared too; the address stays the i
 
 ## For AI agents
 
-Base presents itself as the chain for onchain trading, payments and agents; Depthwatch belongs
-to the trading pillar, measuring the liquidity that trades on Base execute against.
+Base presents itself as the chain for onchain trading, payments and agents; Depthwatch measures
+the liquidity that trades on Base execute against.
 - [AGENTS.md](AGENTS.md) at the repository root is for coding agents working on this repository:
   layout, commands, the conventions that bite, where Base contract addresses come from.
-- Every running server (`depthwatch serve`, `depthwatch demo`) serves the documents for agents
+- Every running server (`depthwatch serve`, `start` and `demo`) serves the documents for agents
   that use the API: [`/AGENTS.md`](apps/api/src/agentDocs/AGENTS.md) (conventions and units,
   every GET route, curl examples, how to pick a pool for a trade),
   [`/llms.txt`](apps/api/src/agentDocs/llms.txt) (an llms.txt index) and
@@ -443,8 +473,9 @@ acceptance criteria and explicit non-goals are in [docs/ROADMAP.md](docs/ROADMAP
    persistence, health score, gaps feed; public API and dashboard; validated against mainnet.
 2. **Market-maker scorecards (weeks 5–8; engineering delivered, see above).** A project registers
    its market maker's addresses and KPIs (minimum depth, maximum spread, target uptime) and gets a
-   live public scorecard computed from the same data. Onboarding of the first projects is open.
-3. **Mandate escrow (only once 1 and 2 have users).** On-chain market-making agreements whose fees
+   live public scorecard computed from the same data. Onboarding the first projects is the open
+   milestone: no project has a scorecard yet.
+3. **Mandate escrow (only once 1 and 2 have users).** Onchain market-making agreements whose fees
    release against verified KPIs.
 
 Flashblocks (sub-block preconfirmations, live on Base mainnet since July 2025) are a roadmap item

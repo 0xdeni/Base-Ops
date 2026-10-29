@@ -28,7 +28,7 @@ makers in one pool, or one agreement renegotiated under a new id).
 | `name`                   | Display name of the agreement, at most 120 characters                                                                                                                                                                                                     | —       |
 | `poolId`                 | A pool id as the observatory uses it: `<dex>:0x<pool address>` for `uniswap-v3`, `aerodrome-v2`, `aerodrome-slipstream`, `aero-v2` and `aero-slipstream`, `uniswap-v4:0x<poolId>` (64 hex digits) for Uniswap v4; any case is accepted, stored lowercase  | —       |
 | `marketMaker`            | Display name of the market maker, at most 120 characters                                                                                                                                                                                                  | —       |
-| `addresses`              | The market maker's on-chain identities, lowercase, at least one and at most 50 (see [Attribution](#attribution))                                                                                                                                          | —       |
+| `addresses`              | The market maker's onchain identities, lowercase, at least one and at most 50 (see [Attribution](#attribution))                                                                                                                                           | —       |
 | `kpis.minDepthUsd`       | USD depth the market maker must provide on **each** side (price up and price down) at `±bandPct`                                                                                                                                                          | —       |
 | `kpis.bandPct`           | Half-width of the band in percent                                                                                                                                                                                                                         | `2`     |
 | `kpis.maxSpreadBps`      | Maximum effective spread, in bps, measured on the market maker's liquidity alone; `null` = no spread KPI                                                                                                                                                  | `null`  |
@@ -110,10 +110,11 @@ tracked pool) and `depthwatch start` in the pass that finds such a mandate, so a
 waits one pass at most. Once a pool is indexed and holds no positions at all, the method is
 `none`: nothing can be attributed and the sample is a breach (rule 1 below).
 
-A Uniswap v4 pool with a hook is not modelled (METRICS.md, "Rated and unrated pools": the hook
-runs its own swap code, so the swap walk would guess its depth and spread). Its mandates are
-attribution failures (`hooked pool: not modelled`) at every pass and get no sample, so they record
-no uptime, no breach and no alert, whatever the pool's positions.
+A hooked pool is not modelled (METRICS.md, "Rated and unrated pools": a Uniswap v4 pool with a
+hook, or an Aero Slipstream pool off the reviewed swap hook or charging each block's first swap an
+initial fee; the hook runs its own swap code, so the swap walk would guess its depth and spread).
+Its mandates are attribution failures (`hooked pool: not modelled`) at every pass and get no
+sample, so they record no uptime, no breach and no alert, whatever the pool's positions.
 
 ### Measurement
 
@@ -448,7 +449,7 @@ against the state read in steps 1 and 2.
   between the last positions run and the snapshot block is attributed with its indexed liquidity,
   while the pool state is read at the snapshot block. A mandated concentrated pool whose positions are not indexed yet is not sampled (an
   attribution failure); once indexed, a pool without any position samples as `method: 'none'`,
-  a breach by rule 1. Aerodrome v2 holdings are read at the snapshot block and have no lag.
+  a breach by rule 1. Aerodrome v2 and Aero v2 holdings are read at the snapshot block and have no lag.
 - **Band width.** The snapshot reads ticks for at least ±10 % around the price. A `bandPct` beyond
   the known tick range reports the depth up to the edge of what was read, not the full band.
 - **USD prices.** Depth is measured in USD at the observatory's derived prices (a widest-path
