@@ -1,5 +1,12 @@
 # Depthwatch
 
+[![CI][ci-badge]][ci] [![Refresh site][refresh-badge]][refresh]
+
+[ci-badge]: https://github.com/0xdeni/depthwatch/actions/workflows/ci.yml/badge.svg
+[ci]: https://github.com/0xdeni/depthwatch/actions/workflows/ci.yml
+[refresh-badge]: https://github.com/0xdeni/depthwatch/actions/workflows/refresh-site.yml/badge.svg
+[refresh]: https://github.com/0xdeni/depthwatch/actions/workflows/refresh-site.yml
+
 Depthwatch is an open-source liquidity observatory for Base mainnet. For each Uniswap, Aerodrome
 and Aero pool it tracks, it measures how much buying or selling it takes to move the price and
 what a trade of a given size costs, and publishes the numbers through a dashboard, a REST API and
@@ -8,6 +15,12 @@ the current price does.
 
 Depthwatch is independent: it is not affiliated with or endorsed by Base, it deploys nothing on
 Base and sends no transactions; it only reads Base mainnet over JSON-RPC.
+
+**Live copy.** <https://depthwatch.pages.dev> is a static copy of the dashboard. This repository's
+Refresh site workflow reads Base mainnet and publishes a new copy about every three hours; each
+page says when it was read, and there is no API. The workflow's first run, on 29 October 2026,
+had no 24 h volume and so an empty gaps feed: Base's public RPC refused the runner's `eth_getLogs`
+requests ([A free static copy](docs/DEPLOY.md#a-free-static-copy)).
 
 **Why depth, not size.** Two WETH/USDC pools on Aero, in one snapshot of Base mainnet at block
 53,219,391 (28 October 2026, 22:55 UTC):
@@ -53,10 +66,11 @@ and reproducible block by block. See [Market-maker scorecards](#market-maker-sco
 is unit-tested against hand-computed values and a brute-force simulator, and the pipeline runs end
 to end against a synthetic fixture set, but coverage of the long tail of pools, USD pricing of
 thinly traded tokens and RPC cost at full scale are still being measured. Numbers from a live
-deployment should be read with that in mind until the validation milestone in
-[docs/ROADMAP.md](docs/ROADMAP.md) is reached. What has run on mainnet so far, and what it cost, is
-in [Measured on Base, 2026-10-25](#measured-on-base-2026-10-25) and
-[2026-10-28](#measured-on-base-2026-10-28).
+deployment, the live copy above included, should be read with that in mind until the validation
+milestone in [docs/ROADMAP.md](docs/ROADMAP.md) is reached. What has run on mainnet so far, and
+what it cost, is in [Measured on Base, 2026-10-25](#measured-on-base-2026-10-25) and
+[2026-10-28](#measured-on-base-2026-10-28); the live copy's first run, on 29 October 2026, is in
+[docs/DEPLOY.md](docs/DEPLOY.md#a-free-static-copy).
 
 ## What it measures
 
@@ -86,7 +100,9 @@ depth butterfly of the pools that hold it, three facts (24 h volume, median heal
 and previews of the gaps feed and the market-maker scorecards. `pnpm depthwatch demo` serves it
 from the synthetic fixture set with no RPC endpoint. `depthwatch export` and
 `pnpm --filter @depthwatch/web build:static` turn a live database into a static copy that names
-the block it was read at and says that it does not update.
+the block it was read at and says that it does not update. The live copy at
+<https://depthwatch.pages.dev> is such a build, replaced by a new one about every three hours
+([A free static copy](docs/DEPLOY.md#a-free-static-copy)).
 
 ## Quick start
 
@@ -338,8 +354,8 @@ budget in the logs; [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#running-as-a-ser
 explains the schedule. The `Dockerfile` at the root packages that process as an image and
 [deploy/compose.yaml](deploy/compose.yaml) runs it; the [Docker](docs/DEPLOY.md#docker) section
 of docs/DEPLOY.md has the commands. Without a server, a scheduled GitHub Actions workflow
-publishes a static copy to Cloudflare Pages about every three hours at no cost
-([A free static copy](docs/DEPLOY.md#a-free-static-copy)).
+publishes a static copy to Cloudflare Pages about every three hours at no cost; this repository's
+copy is <https://depthwatch.pages.dev> ([A free static copy](docs/DEPLOY.md#a-free-static-copy)).
 
 `serve`, `start` and `demo` listen on `0.0.0.0` unless `--host` says otherwise and log one
 `request` line per request (method, path without the query string, status, milliseconds) and an

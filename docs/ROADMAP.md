@@ -64,6 +64,9 @@ database; the dashboard has no backend-specific code (`VITE_MOCK=1` still works)
   discrepancies.
 - Measure and document RPC usage per cycle; tune chunk sizes and `--top`.
 - Public deployment with the API and dashboard; persistence 24h/7d populated for tracked pools.
+  **Open.** Since 29 October 2026 a public static copy of the dashboard, without the API, has been
+  at <https://depthwatch.pages.dev>, replaced about every three hours
+  ([DEPLOY.md](DEPLOY.md#a-free-static-copy)).
 
 Acceptance: the 7-day run completes without manual restarts; the swap cross-check report is
 committed under `docs/validation/`; the README status note is updated from "not yet validated" to a

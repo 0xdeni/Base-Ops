@@ -4,6 +4,14 @@
   "private": true,
   "description": "Depthwatch: an open-source liquidity observatory for Base mainnet. Depth at ±1/2/5%, effective spread, LP concentration, liquidity persistence and a Liquidity Health Score for Uniswap v3/v4, Aerodrome and Aero pools on Base: every pool of those factories with log discovery, or the pools between the reference tokens with discover --seed.",
   "license": "MIT",
+  "homepage": "https://depthwatch.pages.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xdeni/depthwatch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/0xdeni/depthwatch/issues"
+  },
   "type": "module",
   "packageManager": "pnpm@10.28.0",
   "engines": {
