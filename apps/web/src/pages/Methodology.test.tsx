@@ -188,7 +188,9 @@ describe('Methodology: sections', () => {
   it('says an empty stretch costs nothing to cross and when a depth side runs out', () => {
     renderAt('/methodology')
     const depth = section('depth').textContent ?? ''
-    expect(depth).toContain('A stretch with no liquidity costs nothing to cross, as on chain')
+    expect(depth).toContain(
+      'A stretch with no liquidity costs nothing to cross, as it does onchain',
+    )
     expect(depth).toContain('When the target lies past the liquidity the snapshot read')
     expect(depth).not.toMatch(/marked exhausted/)
   })

@@ -776,7 +776,7 @@
           },
           "reached": {
             "type": "boolean",
-            "description": "False when the known tick range ended before the target price (or the pool cannot move); the amounts are then totals to that point. A stretch with no liquidity inside the known range is crossed at no cost, as on chain, so the target is reached."
+            "description": "False when the known tick range ended before the target price (or the pool cannot move); the amounts are then totals to that point. A stretch with no liquidity inside the known range is crossed at no cost, as it is onchain, so the target is reached."
           }
         }
       },

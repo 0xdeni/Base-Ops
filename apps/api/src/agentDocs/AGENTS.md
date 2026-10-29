@@ -8,7 +8,7 @@ has been over 24 h and 7 d, and a 0–100 Liquidity Health Score. This server an
 over HTTP.
 
 Typical use: an agent about to trade on Base checks how deep the pool is on the side it will
-trade and what a round trip costs at its size, then verifies on chain and executes elsewhere.
+trade and what a round trip costs at its size, then verifies onchain and executes elsewhere.
 Depthwatch does not execute, route or quote trades, holds no funds, and its USD prices are a
 valuation convention, not an oracle.
 
@@ -31,8 +31,8 @@ curl -s "$DW/api/health"
 ```json
 {
   "ok": true,
-  "poolCount": 6,
-  "trackedCount": 6,
+  "poolCount": 8,
+  "trackedCount": 8,
   "latestSnapshotAt": 1792713600,
   "latestScoredAt": 1792713600,
   "snapshotAgeSeconds": 0,
@@ -92,7 +92,7 @@ as a different pool, not as a change to the old one.
   it down by p %. `amountOut` is what the trader receives on the way. `reached: false` means
   the known tick range ended before the target (or the pool cannot move): the amounts are then
   totals to that point, not depth. A stretch with no liquidity inside the known range costs
-  nothing to cross, as on chain, so the target is reached and a 5 % amount equal to the 2 %
+  nothing to cross, as it does onchain, so the target is reached and a 5 % amount equal to the 2 %
   amount means no liquidity sits between them. `latest.depthUsd[]` holds `upUsd`, `downUsd` and
   `totalUsd` (both sides summed; only the priced side when one token has no USD price) per level.
 - **`depth2Usd`** (pool lists, history, gaps, stats) is the ±2 % total: up side plus down side
@@ -132,7 +132,7 @@ as a different pool, not as a change to the old one.
   latest snapshot's reading (for a pool never snapshotted, the reading at discovery),
   `latest.feePips` and each history point's `feePips` the fee that snapshot used (`null` before
   it was stored). A trade a block later can pay another fee, so on
-  these pools check the fee on chain before sizing a trade. The dashboard marks them "dynamic".
+  these pools check the fee onchain before sizing a trade. The dashboard marks them "dynamic".
   Aero v2 pools charge the factory's base fee in bps (× 100 here); MEV taxes and per-caller fee
   discounts are not modelled.
 - **Concentration**, inside ±5 % of the mid price: `rangeHhi` (0..1, 1 = all in-band liquidity
@@ -410,6 +410,15 @@ curl -s "$DW/api/tokens/$WETH?sort=depth&limit=200" | jq --arg usdc "$USDC" \
     "updatedAt": 1792713600
   },
   {
+    "id": "aero-slipstream:0x0d89706050d77de3c23b79a963b403be3d608d55",
+    "depth2Usd": 9329158.619842798,
+    "depth2UpUsd": 5030253.01868,
+    "depth2DownUsd": 4298905.601162797,
+    "spread10kBps": 37.30624555010988,
+    "grade": "A",
+    "updatedAt": 1792713600
+  },
+  {
     "id": "uniswap-v3:0x77ebf3fa47dacd6c5ab06f521057260dea765327",
     "depth2Usd": 5276721.133927226,
     "depth2UpUsd": 2964808.046273,
@@ -467,7 +476,8 @@ curl -s "$DW/api/pools/uniswap-v3:0x77ebf3fa47dacd6c5ab06f521057260dea765327" | 
   "spreads": [
     { "notionalUsd": 1000, "spreadBps": 10.079739320059604 },
     { "notionalUsd": 10000, "spreadBps": 10.77486194497076 },
-    { "notionalUsd": 100000, "spreadBps": 17.724762294089828 }
+    { "notionalUsd": 100000, "spreadBps": 17.724762294089828 },
+    { "notionalUsd": 1000000, "spreadBps": 87.09151895527575 }
   ],
   "top1Share": 0.6584035311406606,
   "uptime24h": 1
@@ -484,7 +494,7 @@ and could withdraw most of the depth at once. Depth as a raw amount: the
 Other calls:
 
 ```sh
-curl -s "$DW/api/pools?sort=depth&dex=aerodrome-slipstream&limit=10"    # deepest Slipstream pools
+curl -s "$DW/api/pools?sort=depth&dex=aerodrome-slipstream&limit=10"    # deepest Aerodrome Slipstream pools
 curl -s "$DW/api/pools?q=aero&minVolume=100000"                         # pools with AERO, >= $100k volume
 curl -s "$DW/api/pools/uniswap-v3:0x77ebf3fa47dacd6c5ab06f521057260dea765327/history?window=7d"
 curl -s "$DW/api/gaps?minVolume=50000&limit=20"                         # volume outrunning depth
@@ -528,7 +538,7 @@ Say the trade is: buy token X with N USD worth of token Y on Base.
 7. **Check freshness and prices.** `latest.timestamp` against the current time; `token0Usd` /
    `token1Usd` come from Depthwatch's own price graph (`GET /api/tokens/:address` shows `via`).
    A pool with `latest.priceDeviationBps` of 500 or more quotes a stale price: skip it.
-8. **Verify on chain, then execute elsewhere.** Every number describes the pool at
+8. **Verify onchain, then execute elsewhere.** Every number describes the pool at
    `latest.blockNumber`, and the pool's state can change with every Base block. Before trading,
    read the pool's current state or a DEX quote through an RPC endpoint, and set a slippage
    limit from that, not from Depthwatch.
@@ -576,7 +586,7 @@ The `message` wording comes from the validator and may change; match on status a
 
 ## Base network reference
 
-Depthwatch indexes Base Mainnet only. For on-chain verification:
+Depthwatch indexes Base Mainnet only. For onchain verification:
 - Base Mainnet: chain id `8453`, public RPC `https://mainnet.base.org` (rate-limited), explorer
   `https://basescan.org` (pools at `https://basescan.org/address/<pool address>`).
 - Base Sepolia (`84532`, `https://sepolia.base.org`, `https://sepolia.basescan.org`) is not

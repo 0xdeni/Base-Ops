@@ -1,6 +1,6 @@
 /**
  * The footer (docs/design/visual-v4.md §5.1): the ink block in both themes. From 1024 px one row of
- * three columns: the wordmark at 28 px; the promise, "Built on Base" in plain text and the data
+ * three columns: the wordmark at 28 px; the promise, the independence line in plain text and the data
  * source named once (D7), in `--on-ink-2`; the links Methodology, API and GitHub as 44 px targets
  * (44 × 44 on a coarse pointer). Phones stack them in that order.
  */
@@ -26,7 +26,7 @@ const DATA_LINE: Readonly<Record<DataSourceKind, string>> = {
 }
 
 export const FOOTER_PROMISE =
-  'Open source and read-only. No token, no custody. Built on Base: it indexes Uniswap, Aerodrome and Aero pools on Base mainnet.'
+  'Open source and read-only. No token, no custody. It indexes Uniswap, Aerodrome and Aero pools on Base mainnet. Independent: not affiliated with or endorsed by Base.'
 
 export function Footer({ source }: { source: DataSourceKind }) {
   return (

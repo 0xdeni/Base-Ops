@@ -115,7 +115,7 @@ export function noMandates(snapshot: boolean): string {
 
 /** What a scorecard is, under the empty state (§5.12). */
 export const SCORECARD_LINE =
-  'A scorecard checks the depth a market maker promised against what is on chain at every snapshot.'
+  'A scorecard checks the depth a market maker promised against what is onchain at every snapshot.'
 
 /** The definition behind the dotted "KPIs" in the scorecards takeaway (D8). */
 export const KPIS_DEFINITION =

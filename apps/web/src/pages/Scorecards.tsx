@@ -46,7 +46,7 @@ const VIEWS: ReadonlyArray<{ value: View; label: string }> = [
 ]
 
 export const SCORECARD_LEAD =
-  'A scorecard checks the depth a market maker promised against what is on chain at every snapshot.'
+  'A scorecard checks the depth a market maker promised against what is onchain at every snapshot.'
 
 /** `?active=true|false` → the filter; anything else means all (v2's parameter, unchanged). */
 export function readFilter(value: string | null): ActiveFilter {
