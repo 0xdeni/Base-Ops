@@ -337,7 +337,9 @@ minutes before pruning, a sixth of that at `start`'s 30 minutes) and how to foll
 budget in the logs; [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#running-as-a-service)
 explains the schedule. The `Dockerfile` at the root packages that process as an image and
 [deploy/compose.yaml](deploy/compose.yaml) runs it; the [Docker](docs/DEPLOY.md#docker) section
-of docs/DEPLOY.md has the commands.
+of docs/DEPLOY.md has the commands. Without a server, a scheduled GitHub Actions workflow
+publishes a static copy to Cloudflare Pages about every three hours at no cost
+([A free static copy](docs/DEPLOY.md#a-free-static-copy)).
 
 `serve`, `start` and `demo` listen on `0.0.0.0` unless `--host` says otherwise and log one
 `request` line per request (method, path without the query string, status, milliseconds) and an
