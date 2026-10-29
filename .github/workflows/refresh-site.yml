@@ -14,6 +14,8 @@ on:
 
 permissions:
   contents: read
+  # To list the saved databases when a restore finds none (Stop if a saved database was lost).
+  actions: read
 
 concurrency:
   group: refresh-site
@@ -22,22 +24,25 @@ concurrency:
 jobs:
   refresh:
     name: refresh
+    # Only the default branch publishes and keeps the database: a run by hand from another branch
+    # would deploy that branch's build and save its database in that branch's cache.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # A first run seeds the pools of the reference tokens (about 15,000 requests, some 10 minutes
     # on Alchemy's free tier); later runs take a few minutes.
     timeout-minutes: 45
     env:
-      DEPTHWATCH_RPC_URL: ${{ secrets.DEPTHWATCH_RPC_URL }}
-      # eth_getLogs goes to Base's public RPC unless the optional secret names another endpoint.
-      DEPTHWATCH_LOGS_RPC_URL: ${{ secrets.DEPTHWATCH_LOGS_RPC_URL || 'https://mainnet.base.org' }}
       DEPTHWATCH_DB: ${{ github.workspace }}/.depthwatch/depthwatch.db
       # Seven days of history is what the site shows; snapshots are kept at least 8 days.
       DEPTHWATCH_KEEP_DAYS: "8"
       # The Cloudflare Pages project, and so the site's address: https://depthwatch.pages.dev.
       PAGES_PROJECT: depthwatch
     steps:
+      # Secrets are given only to the steps that use them: the RPC endpoints to the three steps
+      # that read the chain, the Cloudflare token to the publish step.
       - name: Check settings
         env:
+          DEPTHWATCH_RPC_URL: ${{ secrets.DEPTHWATCH_RPC_URL }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
@@ -63,25 +68,50 @@ jobs:
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-store-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
-      # The newest saved database; none on the first run, which then starts from an empty one.
+      # The newest saved database. The key never matches exactly (run and attempt are new), so the
+      # newest entry by prefix is restored, and every attempt can save its own.
       - name: Restore the database
+        id: restore-db
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .depthwatch
-          key: depthwatch-db-${{ github.run_id }}
+          key: depthwatch-db-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: depthwatch-db-
+      # A failed restore is reported like a miss. Only a repository with no saved database (the
+      # first run, or every entry evicted) may start from an empty one; otherwise the run stops,
+      # the published copy stays as it was, and an empty history is never saved over the old one.
+      - name: Stop if a saved database was lost
+        if: steps.restore-db.outputs.cache-matched-key == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          saved=$(gh cache list --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF" --key depthwatch-db- --limit 1 --json key --jq length)
+          if [ "$saved" != "0" ]; then
+            echo "::error::A saved database exists but was not restored; nothing was changed. The next run tries again."
+            exit 1
+          fi
       - name: Discover (seed)
         # A DEX whose factory reads fail is reported and seeded again next run; the others go on.
         continue-on-error: true
+        env:
+          DEPTHWATCH_RPC_URL: ${{ secrets.DEPTHWATCH_RPC_URL }}
         run: |
           mkdir -p .depthwatch
           pnpm depthwatch discover --seed
       - name: Snapshot
+        env:
+          DEPTHWATCH_RPC_URL: ${{ secrets.DEPTHWATCH_RPC_URL }}
         run: pnpm depthwatch snapshot
       - name: Volume
         # Base's public RPC may rate-limit a runner: the site is still published, and the score
         # keeps the last complete 24 h window (null once it is older than a day).
         continue-on-error: true
+        # A throttled endpoint must not use up the job's time: past this the step fails alone.
+        timeout-minutes: 15
+        env:
+          DEPTHWATCH_RPC_URL: ${{ secrets.DEPTHWATCH_RPC_URL }}
+          # eth_getLogs goes to Base's public RPC unless the optional secret names another endpoint.
+          DEPTHWATCH_LOGS_RPC_URL: ${{ secrets.DEPTHWATCH_LOGS_RPC_URL || 'https://mainnet.base.org' }}
         run: pnpm depthwatch volume
       - name: Score
         run: pnpm depthwatch score
@@ -92,21 +122,33 @@ jobs:
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .depthwatch
-          key: depthwatch-db-${{ github.run_id }}
+          key: depthwatch-db-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Export the bundle
         run: >-
           pnpm depthwatch export --out apps/web/static-data/bundle.json
           --note "Read from Base mainnet by the Depthwatch pipeline, about every three hours, through a
           free RPC plan. Each copy is a snapshot: it does not change until the next one replaces it."
+      # Nothing seeded or snapshotted (every DEX failed on a first run): keep the published copy.
+      - name: Check the bundle
+        run: |
+          node -e 'const b = JSON.parse(require("node:fs").readFileSync("apps/web/static-data/bundle.json", "utf8")); if (b.pools.length === 0) { console.log("::error::The bundle holds no pools; the published copy is kept."); process.exit(1) }'
       - name: Build the static site
-        run: pnpm --filter @depthwatch/web build:static
+        run: |
+          pnpm --filter @depthwatch/web build:static
+          # Without a top-level 404.html, Pages answers every unknown path, /api/... included, with
+          # index.html and HTTP 200; this copy has no API.
+          printf '%s\n' '<!doctype html><meta charset="utf-8"><title>Not found</title><p>Not found. This static copy of Depthwatch has no API; the dashboard is at <a href="/">/</a>.</p>' > apps/web/dist-static/404.html
+      # No secret is in this step's environment and no install script runs: uploading a directory
+      # of static files needs neither workerd nor esbuild.
+      - name: Install wrangler
+        run: npm install --global --ignore-scripts --no-audit wrangler@4.150.0
       - name: Publish to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           # The project is created on the first run; later runs report that it exists and go on.
-          npx --yes wrangler@4.150.0 pages project create "$PAGES_PROJECT" --production-branch main \
+          wrangler pages project create "$PAGES_PROJECT" --production-branch main \
             || echo "Pages project $PAGES_PROJECT exists or could not be created; deploying to it."
-          npx --yes wrangler@4.150.0 pages deploy apps/web/dist-static \
+          wrangler pages deploy apps/web/dist-static \
             --project-name "$PAGES_PROJECT" --branch main --commit-dirty=true

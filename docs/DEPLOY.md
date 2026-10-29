@@ -234,8 +234,9 @@ Without a server, `.github/workflows/refresh-site.yml` publishes a static copy o
 Cloudflare Pages about every three hours, at no cost: a GitHub runner restores the database from
 the Actions cache, runs `discover --seed`, `snapshot`, `volume`, `score` and `prune`, saves the
 database back, exports the bundle and uploads the static build. The copy has every page and the
-agent documents, but no API (`/api/…` routes, scorecard registration) and no data newer than its
-last run; each page says when it was read. It suits a public site while no server runs.
+agent documents, but no API (`/api/…` routes answer 404, and there is no scorecard registration)
+and no data newer than its last run; each page says when it was read. It suits a public site
+while no server runs.
 1. **Cloudflare.** Create a free account. Note the Account ID (Workers & Pages, right-hand
    column) and create an API token: My Profile, API Tokens, Create Token, Create Custom Token,
    with the permission Account, Cloudflare Pages, Edit.
@@ -243,20 +244,33 @@ last run; each page says when it was read. It suits a public site while no serve
    secrets: `DEPTHWATCH_RPC_URL` (a Base mainnet endpoint, for example Alchemy's with its key),
    `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. `DEPTHWATCH_LOGS_RPC_URL` is optional; unset,
    `eth_getLogs` goes to Base's public RPC ([The logs endpoint](#the-logs-endpoint)).
-3. **First run.** Actions, Refresh site, Run workflow. The first run seeds the pools of the
-   reference tokens (about 15,000 requests, some 10 minutes on Alchemy's free tier), creates the
-   Pages project `depthwatch` and publishes to `https://depthwatch.pages.dev`; the deploy step
-   prints the address, which carries a suffix when that name is taken. Later runs take a few
-   minutes.
+3. **First run.** Actions, Refresh site, Run workflow (on `main`). The first run seeds the pools of
+   the reference tokens (about 15,000 requests, some 10 minutes on Alchemy's free tier), creates
+   the Pages project `depthwatch` and publishes it. Its publish step prints the site's address
+   (`It will be available at https://depthwatch.pages.dev/`, with a suffix when that name is
+   taken). The `Take a peek over at https://<id>.depthwatch.pages.dev` line of every run is that
+   run's own deployment, which never changes: share the address without the `<id>.` part. Later
+   runs take a few minutes.
 
-Each run snapshots the 200 tracked pools (about 14,000 Alchemy compute units, so about 3.4 M a month
-at eight runs a day) and keeps 8 days of history (`DEPTHWATCH_KEEP_DAYS=8`). Base's public RPC may
-rate-limit a runner; then the `volume` step fails alone: the copy is still published, and the score
-keeps the last complete 24 h window until it is a day old. Set `DEPTHWATCH_LOGS_RPC_URL` to a keyed
-endpoint that accepts 2,000-block ranges if that happens often. GitHub evicts a cache entry that no
-run has read for 7 days; a run that finds no database seeds again and its history starts over. A
-custom domain is added in the Pages project (Custom domains). The secrets are read only by scheduled
-and manual runs of this workflow, never by a pull request.
+Each run snapshots the 200 tracked pools (about 14,000 Alchemy compute units, so about 3.4 M a
+month at eight runs a day) and keeps 8 days of history (`DEPTHWATCH_KEEP_DAYS=8`). Base's public
+RPC may rate-limit a runner; then the `volume` step fails alone: the copy is still published, and
+the score keeps the last complete 24 h window until it is a day old. Set `DEPTHWATCH_LOGS_RPC_URL`
+to a keyed endpoint that accepts 2,000-block ranges if that happens often. A run that cannot
+restore a saved database stops without publishing or saving, so a passing cache error never
+replaces the history; only when no saved database exists (the first run, or every entry evicted
+after 7 days unread) does a run seed again and start the history over. A run that ends with no
+pools at all publishes nothing.
+
+In a public repository GitHub disables a scheduled workflow after 60 days without repository
+activity, such as a push: the copy then stays at its last run, and 7 days later its database is
+evicted. Actions, Refresh site, Enable workflow starts it again. The `pages.dev` address is the
+free one. A domain of your own is registered and paid for separately; add it in the Pages project
+(Custom domains) before creating any DNS record: a subdomain then needs a CNAME record to the
+`pages.dev` address at its DNS host, and an apex domain needs its nameservers on Cloudflare.
+Repository secrets reach workflow runs started from this repository's own branches, never a pull
+request from a fork; only people with write access can start those, and this workflow publishes
+only from `main`.
 
 ## Upgrading
 
