@@ -9,7 +9,7 @@
   },
   "externalDocs": {
     "description": "Metric definitions with worked examples",
-    "url": "https://github.com/0xdeni/Base-Ops/blob/main/docs/METRICS.md"
+    "url": "https://github.com/0xdeni/depthwatch/blob/main/docs/METRICS.md"
   },
   "servers": [
     {

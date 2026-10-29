@@ -124,7 +124,7 @@ describe('route changes', () => {
     expect(isInAppHref('#/pools')).toBe(true)
     expect(isInAppHref('/AGENTS.md')).toBe(true)
     expect(isInAppHref('//evil.example')).toBe(false)
-    expect(isInAppHref('https://github.com/0xdeni/Base-Ops')).toBe(false)
+    expect(isInAppHref('https://github.com/0xdeni/depthwatch')).toBe(false)
   })
 })
 
@@ -266,7 +266,7 @@ describe('demo line and footer (ia-v3 §3.1, §3.3)', () => {
     const href = (name: string) => within(footer).getByRole('link', { name }).getAttribute('href')
     expect(href('Methodology')).toBe('/methodology')
     expect(href('API')).toBe('/AGENTS.md')
-    expect(href('GitHub')).toBe('https://github.com/0xdeni/Base-Ops')
+    expect(href('GitHub')).toBe('https://github.com/0xdeni/depthwatch')
     expect(footer.textContent).not.toContain('·')
     expect(footer.textContent).not.toMatch(/partner/i)
   })

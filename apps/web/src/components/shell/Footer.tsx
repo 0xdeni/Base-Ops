@@ -7,7 +7,7 @@
 import { Link } from 'react-router-dom'
 import { Wordmark } from './Logo.js'
 
-export const REPO_URL = 'https://github.com/0xdeni/Base-Ops'
+export const REPO_URL = 'https://github.com/0xdeni/depthwatch'
 
 /**
  * The API documentation the build ships next to index.html (AGENTS.md, from apps/api's agent

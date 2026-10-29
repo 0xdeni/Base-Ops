@@ -8,8 +8,8 @@ Links below are relative to this file. On a Depthwatch server they resolve to `/
 
 - [AGENTS.md](./AGENTS.md): conventions and units, every GET route with parameters and response fields, curl examples, how to pick a pool for a trade, errors, caching
 - [openapi.json](./openapi.json): OpenAPI 3.1 description of every GET route and its response schema
-- [Metric definitions](https://github.com/0xdeni/Base-Ops/blob/main/docs/METRICS.md): formulas, null semantics and worked examples for every number
-- [Market-maker scorecards](https://github.com/0xdeni/Base-Ops/blob/main/docs/SCORECARDS.md): mandates, attribution, uptime and badges
+- [Metric definitions](https://github.com/0xdeni/depthwatch/blob/main/docs/METRICS.md): formulas, null semantics and worked examples for every number
+- [Market-maker scorecards](https://github.com/0xdeni/depthwatch/blob/main/docs/SCORECARDS.md): mandates, attribution, uptime and badges
 
 ## API
 
@@ -21,5 +21,5 @@ Links below are relative to this file. On a Depthwatch server they resolve to `/
 
 ## Optional
 
-- [Source code](https://github.com/0xdeni/Base-Ops): MIT-licensed repository (pipeline, API, dashboard)
+- [Source code](https://github.com/0xdeni/depthwatch): MIT-licensed repository (pipeline, API, dashboard)
 - [Base documentation index](https://docs.base.org/llms.txt): Base's own docs, the first source for Base network and integration questions

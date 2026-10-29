@@ -16,7 +16,7 @@ import { METHODOLOGY_ANSWER, SECTIONS, WIDE_QUERY } from './Methodology.js'
 
 const NB = ' '
 const ANCHORS = ['depth', 'spread', 'concentration', 'persistence', 'health', 'gaps', 'scorecards']
-const REPO = 'https://github.com/0xdeni/Base-Ops'
+const REPO = 'https://github.com/0xdeni/depthwatch'
 
 let hash = ''
 let navigate: NavigateFunction = () => undefined

@@ -326,7 +326,7 @@ The logo mark is a mid-price axis with three bid and three ask rungs (±1/2/5 %)
 **Footer:**
 - Style: 1 px `--border` top, `--surface` background, `margin-top:var(--s-8)`, `--fs-sm` muted.
 - Inner row: flex wrap, gap 8 px 24 px, `min-height:72px`.
-- Contents in order: the 18 px mark with "Depthwatch" (650, `--fs-base`, `--text`); "Open source · no token · no custody · read-only"; the accent link "github.com/0xdeni/Base-Ops" → `https://github.com/0xdeni/Base-Ops`; and the data line, pushed right with `margin-left:auto`: "Data: Synthetic demo world" or "Data: Base mainnet".
+- Contents in order: the 18 px mark with "Depthwatch" (650, `--fs-base`, `--text`); "Open source · no token · no custody · read-only"; the accent link "github.com/0xdeni/depthwatch" → `https://github.com/0xdeni/depthwatch`; and the data line, pushed right with `margin-left:auto`: "Data: Synthetic demo world" or "Data: Base mainnet".
 - Phone: the items stack, left-aligned.
 
 **Section heads:**
