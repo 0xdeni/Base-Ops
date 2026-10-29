@@ -1,7 +1,9 @@
 /**
  * The reader against the HTTP answers of real endpoints, replayed by a fake `fetch` behind viem's
- * own `http()` transport: Alchemy's free tier (HTTP 400, -32600, 10-block `eth_getLogs`) and Base's
- * public endpoint (HTTP 429, -32011). Also: `rpcUrl` / `logsRpcUrl` routing by URL, and swap
+ * own `http()` transport: Alchemy's free tier (HTTP 400, -32600, 10-block `eth_getLogs`), Base's
+ * public endpoint (HTTP 429, -32011), Tenderly's public gateway (HTTP 200, -32602, a span or result
+ * limit in the error's `data`), Pocket (HTTP 400, -32602, a scan-work cap in `data`) and an answer
+ * over viem's response size limit. Also: `rpcUrl` / `logsRpcUrl` routing by URL, and swap
  * timestamps that cost a handful of headers however small the log chunk is.
  */
 import type { Hex } from '@depthwatch/core'
@@ -17,6 +19,8 @@ import {
   basePublicRateLimitResponse,
   createFakeRpcFetch,
   type FakeRpcOptions,
+  pocketScanWorkTooLargeResponse,
+  tenderlyPublicGetLogs,
 } from './fixtures/fakeRpc.js'
 import { LogRangeLimitError } from './internal/logErrors.js'
 import { type CreateChainReaderOptions, createChainReader } from './reader.js'
@@ -177,6 +181,86 @@ describe('Base public endpoint: HTTP 429, -32011 "request limit reached"', () =>
     )
     expect(count('eth_getLogs')).toBe(3)
     expect(sleeps).toEqual([])
+  })
+})
+
+describe("Tenderly's public gateway: HTTP 200, -32602, the reason only in the error's data", () => {
+  const spans = (calls: readonly { method: string; fromBlock?: bigint; toBlock?: bigint }[]) =>
+    calls
+      .filter((c) => c.method === 'eth_getLogs')
+      .map((c) => [c.fromBlock ?? 0n, c.toBlock ?? 0n] as const)
+
+  it('splits 2,000-block chunks straight to the stated 1,000 and keeps that size', async () => {
+    const { reader, calls } = overHttp(
+      world(),
+      { getLogs: tenderlyPublicGetLogs() },
+      { logChunkSize: 2_000 },
+    )
+    expect(await reader.discoverPools('uniswap-v3', 1n, 4_000n)).toHaveLength(2)
+    expect(spans(calls)).toEqual([
+      [1n, 2_000n],
+      [1n, 1_000n],
+      [1_001n, 2_000n],
+      [2_001n, 3_000n],
+      [3_001n, 4_000n],
+    ])
+  })
+
+  it('halves a range that would return more than 20,000 results', async () => {
+    const { reader, calls } = overHttp(
+      world(),
+      { getLogs: tenderlyPublicGetLogs((from, to) => to - from + 1n > 250n) },
+      { logChunkSize: 1_000 },
+    )
+    expect(await reader.discoverPools('uniswap-v3', 1n, 1_000n)).toHaveLength(1)
+    expect(spans(calls).map(([from, to]) => to - from + 1n)).toEqual([
+      1_000n,
+      500n,
+      250n,
+      250n,
+      500n,
+      250n,
+      250n,
+    ])
+  })
+})
+
+describe('Pocket: HTTP 400, -32602, a scan-work cap in the data', () => {
+  it('halves the rejected range until it is served', async () => {
+    const { reader, count } = overHttp(
+      world(),
+      {
+        getLogs: ({ id, fromBlock, toBlock }) =>
+          toBlock - fromBlock + 1n > 500n ? pocketScanWorkTooLargeResponse(id) : undefined,
+      },
+      { logChunkSize: 2_000 },
+    )
+    expect(await reader.discoverPools('uniswap-v3', 1n, 2_000n)).toHaveLength(2)
+    expect(count('eth_getLogs')).toBe(7) // 2 000 → 1 000 → 500 + 500, twice
+  })
+})
+
+describe("viem's response size limit (maxResponseBodySize, 10 MiB by default)", () => {
+  it('halves a range whose answer is over the limit', async () => {
+    const big = (id: unknown) =>
+      new Response(`${JSON.stringify({ jsonrpc: '2.0', id, result: [] })}${' '.repeat(20_000)}`, {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    const rpc = createFakeRpcFetch(world(), {
+      getLogs: ({ id, fromBlock, toBlock }) =>
+        toBlock - fromBlock + 1n > 500n ? big(id) : undefined,
+    })
+    const reader = createChainReader({
+      transport: http(URL, { fetchFn: rpc.fetch, retryCount: 0, maxResponseBodySize: 10_000 }),
+      logChunkSize: 1_000,
+    })
+    expect(await reader.discoverPools('uniswap-v3', 1n, 1_000n)).toHaveLength(1)
+    const logs = rpc.calls.filter((c) => c.method === 'eth_getLogs')
+    expect(logs.map((c) => [c.fromBlock, c.toBlock])).toEqual([
+      [1n, 1_000n],
+      [1n, 500n],
+      [501n, 1_000n],
+    ])
   })
 })
 

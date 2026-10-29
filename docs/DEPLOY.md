@@ -156,10 +156,23 @@ current there would cost more than its monthly units, so the logs go elsewhere:
   needs its own outbound IP: on hosts whose traffic leaves from shared addresses, neighbours use up
   that limit and every request is answered HTTP 429. Base's documentation describes the public
   endpoint as not meant for production.
+- **Tenderly's public gateway**, `https://gateway.tenderly.co/public/base`, needs no key either. It
+  serves at most 1,001 blocks (`toBlock` − `fromBlock` = 1,000) and 20,000 results per
+  `eth_getLogs` (its documentation says 3,000), and 1 GB of answers a day per IP address, then
+  HTTP 429 with JSON-RPC error -32005 (<https://docs.tenderly.co/node-rpc/overview.md>, "Public
+  endpoint limits"). Its documentation calls public endpoints rate-limited and points production
+  use to a dedicated node (<https://docs.tenderly.co/platform/supported-networks.md>). It refuses
+  a range over either limit with -32602 `invalid params` and the reason in the error's `data`,
+  which the reader reads: a span is split to 1,000 blocks, too many results halved. Set
+  `DEPTHWATCH_LOG_CHUNK=250`: the busiest 400 blocks of 28-29 October 2026 held 12,916 swaps of
+  about 0.9 KB each, more than the 10 MiB answer viem accepts (a larger answer is halved too, at
+  the cost of the request). The Refresh site workflow uses it
+  ([A free static copy](#a-free-static-copy)).
 - **If the server's address gets HTTP 429** all the time (`eth_getLogs backoff reason=rate-limit`
   warnings that never stop), use a keyed endpoint that accepts at least 2,000-block ranges, or set
   `DEPTHWATCH_LOG_CHUNK` to the largest range it accepts (a provider capped at 1,000 blocks:
-  `DEPTHWATCH_LOG_CHUNK=1000`). The first full discovery can still be run against the public RPC.
+  `DEPTHWATCH_LOG_CHUNK=1000`, or less where busy windows pass its result or answer-size cap, as on
+  Tenderly's gateway above). The first full discovery can still be run against the public RPC.
 
 ## Following it
 
@@ -243,8 +256,9 @@ while no server runs. This repository's copy has been at <https://depthwatch.pag
    with the permission Account, Cloudflare Pages, Edit.
 2. **GitHub.** In the repository, Settings, Secrets and variables, Actions, add three repository
    secrets: `DEPTHWATCH_RPC_URL` (a Base mainnet endpoint, for example Alchemy's with its key),
-   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. `DEPTHWATCH_LOGS_RPC_URL` is optional; unset,
-   `eth_getLogs` goes to Base's public RPC ([The logs endpoint](#the-logs-endpoint)).
+   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. `DEPTHWATCH_LOGS_RPC_URL` is optional: the
+   `volume` step sends `eth_getLogs` to it first, then to Tenderly's public gateway
+   ([The logs endpoint](#the-logs-endpoint)).
 3. **First run.** Actions, Refresh site, Run workflow (on `main`). The first run seeds the pools of
    the reference tokens, creates the Pages project `depthwatch` and publishes it. Its publish step
    prints the site's address (`It will be available at https://depthwatch.pages.dev/`, with a
@@ -259,17 +273,29 @@ while no server runs. This repository's copy has been at <https://depthwatch.pag
    few minutes: pools already stored keep their creation block, so the seed costs only the factory
    reads.
 
-Each run snapshots the 200 tracked pools (about 14,000 Alchemy compute units, so about 3.4 M a
-month at eight runs a day) and keeps 8 days of history (`DEPTHWATCH_KEEP_DAYS=8`). Base's public
-RPC may rate-limit a runner; then the `volume` step fails alone: the copy is still published, and
-the score keeps the last complete 24 h window until it is a day old. On 29 October 2026 the public
-RPC refused the runner's first `eth_getLogs` (JSON-RPC error -32011, `request limit reached`) and
-all eight retries, so the first copy was published with no 24 h volume and an empty gaps feed. Set
-`DEPTHWATCH_LOGS_RPC_URL` to a keyed endpoint that accepts 2,000-block ranges if that happens
-often. A run that cannot restore a saved database stops without publishing or saving, so a passing
-cache error never replaces the history; only when no saved database exists (the first run, or
-every entry evicted after 7 days unread) does a run seed again and start the history over. A run
-that ends with no pools at all publishes nothing.
+Each run snapshots the 200 tracked pools (about 14,000 Alchemy compute units, so about 3.4 M a month
+at eight runs a day) and keeps 8 days of history (`DEPTHWATCH_KEEP_DAYS=8`). The `volume` step sends
+`eth_getLogs` to the optional secret `DEPTHWATCH_LOGS_RPC_URL` first, at 2,000-block chunks for at
+most 300 s, then to Tenderly's public gateway at 250-block chunks for at most 420 s. Each try is a
+fresh process, killed with everything it started once its time is up; a killed pass stores
+nothing. If both fail, the step fails alone: the copy is still published, and the score keeps
+the last complete 24 h window until it is a day old. On 29 October 2026 the step sent its logs to
+Base's public RPC, which refused the runner's first `eth_getLogs` (JSON-RPC error -32011,
+`request limit reached`) and all eight retries, so the first copy was published with no 24 h volume
+and an empty gaps feed. That RPC allows 5 `eth_getLogs` a second per IP address and runners share
+addresses, so the workflow no longer tries it. The gateway needs no key. Measured from outside
+GitHub on 29 October 2026, it served a first volume pass for 200 pools (25 h of blocks) in 78 s at
+400-block chunks, at the CLI's own pace (6 requests rate-limited and retried), and 12 h for 552
+pools in 255 requests at 250-block chunks, none refused, with the measuring script spacing requests
+at least 1 s apart. At the CLI's own pace the 250-block pass is untested, and from a runner the
+gateway is untested. Its documentation calls public endpoints rate-limited and not for production:
+if the step fails often, set `DEPTHWATCH_LOGS_RPC_URL` to a keyed endpoint, such as Ankr's Freemium
+plan (3,000-block ranges, <https://www.ankr.com/docs/rpc-service/service-plans/>) or Infura (10,000
+results per request, <https://docs.infura.io/reference/base/json-rpc-methods/eth_getlogs>). A run
+that cannot restore a saved database stops without publishing or saving, so a passing cache error
+never replaces the history; only when no saved database exists (the first run, or every entry
+evicted after 7 days unread) does a run seed again and start the history over. A run that ends with
+no pools at all publishes nothing.
 
 In a public repository, as this one is, GitHub disables a scheduled workflow after 60 days without
 repository activity, such as a push: the copy then stays at its last run, and 7 days later its

@@ -104,16 +104,41 @@ jobs:
           DEPTHWATCH_RPC_URL: ${{ secrets.DEPTHWATCH_RPC_URL }}
         run: pnpm depthwatch snapshot
       - name: Volume
-        # Base's public RPC may rate-limit a runner: the site is still published, and the score
-        # keeps the last complete 24 h window (null once it is older than a day).
+        # If every logs endpoint fails, the site is still published, and the score keeps the last
+        # complete 24 h window (null once it is older than a day).
         continue-on-error: true
-        # A throttled endpoint must not use up the job's time: past this the step fails alone.
+        # A throttled endpoint must not use up the job's time: past this the step fails alone. The
+        # tries below take at most 300 + 420 s.
         timeout-minutes: 15
+        # eth_getLogs endpoints, in order, until one pass succeeds:
+        # 1. the optional secret DEPTHWATCH_LOGS_RPC_URL, at the default 2,000-block chunk;
+        # 2. Tenderly's public gateway, no key. Measured on 29 October 2026, it serves at most
+        #    1,001 blocks and 20,000 results per eth_getLogs (its docs say 3,000 results). Its docs
+        #    give 1 GB of answers a day per IP (https://docs.tenderly.co/node-rpc/overview.md,
+        #    "Public endpoint limits") and call public endpoints rate-limited, production use
+        #    taking a dedicated node (https://docs.tenderly.co/platform/supported-networks.md).
+        #    250-block chunks keep the densest window measured under both limits and under viem's
+        #    10 MiB answer limit.
+        # Base's public RPC is not tried: it allows 5 eth_getLogs a second per IP, runners share
+        # IPs, and on 29 October 2026 it refused the runner's first request (HTTP 429, -32011).
+        # A try past its time gets SIGKILL, which timeout sends to its whole process group. With
+        # SIGTERM, pnpm would exit at once and the CLI under it, which does not stop on the first
+        # SIGTERM and honours any Retry-After, would keep running and could store its pass over a
+        # later try's. A killed pass stores nothing: its only write is one final transaction. The
+        # endpoint reaches the CLI through its environment, never its arguments.
         env:
           DEPTHWATCH_RPC_URL: ${{ secrets.DEPTHWATCH_RPC_URL }}
-          # eth_getLogs goes to Base's public RPC unless the optional secret names another endpoint.
-          DEPTHWATCH_LOGS_RPC_URL: ${{ secrets.DEPTHWATCH_LOGS_RPC_URL || 'https://mainnet.base.org' }}
-        run: pnpm depthwatch volume
+          SECRET_LOGS_RPC_URL: ${{ secrets.DEPTHWATCH_LOGS_RPC_URL }}
+        run: |
+          pass() { DEPTHWATCH_LOG_CHUNK="$2" timeout --signal=KILL "$1" pnpm depthwatch volume; }
+          if [ -n "$SECRET_LOGS_RPC_URL" ]; then
+            echo "Volume through the DEPTHWATCH_LOGS_RPC_URL secret"
+            DEPTHWATCH_LOGS_RPC_URL="$SECRET_LOGS_RPC_URL" pass 300s 2000 && exit 0
+            echo "::warning::Volume through DEPTHWATCH_LOGS_RPC_URL failed (exit $?);" \
+              "trying Tenderly's public gateway."
+          fi
+          echo "Volume through Tenderly's public gateway"
+          DEPTHWATCH_LOGS_RPC_URL=https://gateway.tenderly.co/public/base pass 420s 250
       - name: Score
         run: pnpm depthwatch score
       - name: Prune

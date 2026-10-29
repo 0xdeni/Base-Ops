@@ -20,7 +20,9 @@ Base and sends no transactions; it only reads Base mainnet over JSON-RPC.
 Refresh site workflow reads Base mainnet and publishes a new copy about every three hours; each
 page says when it was read, and there is no API. The workflow's first run, on 29 October 2026,
 had no 24 h volume and so an empty gaps feed: Base's public RPC refused the runner's `eth_getLogs`
-requests ([A free static copy](docs/DEPLOY.md#a-free-static-copy)).
+requests. The workflow now sends them to the endpoint in the optional `DEPTHWATCH_LOGS_RPC_URL`
+secret, if set, then to Tenderly's public gateway, not yet tried from a runner
+([A free static copy](docs/DEPLOY.md#a-free-static-copy)).
 
 **Why depth, not size.** Two WETH/USDC pools on Aero, in one snapshot of Base mainnet at block
 53,219,391 (28 October 2026, 22:55 UTC):
@@ -219,7 +221,19 @@ multicalls and block headers stay on `DEPTHWATCH_RPC_URL`; with one URL nothing 
   request of each log scan (one per event source for `volume`; `positions` starts no further pool
   after the first refusal) with an error that names the provider's limit and the two fixes: set
   `DEPTHWATCH_LOGS_RPC_URL` to an endpoint that accepts larger ranges, or, for small scans, set
-  `DEPTHWATCH_LOG_CHUNK` to the limit.
+  `DEPTHWATCH_LOG_CHUNK` to the limit. A stated limit of at least 100 blocks gets ranges split to
+  it instead (Tenderly's public gateway: 1,000), and a range refused for its result count, or whose
+  answer is over viem's 10 MiB, is halved. The reason is read from the JSON-RPC error's message
+  and, for a -32602 "invalid params", from its `data`, where some providers put it.
+- **Without a key**, Tenderly's public gateway, `https://gateway.tenderly.co/public/base`, serves
+  `eth_getLogs` of at most 1,001 blocks and 20,000 results (measured; its documentation says 3,000
+  results), and 1 GB of answers a day per IP address
+  ([Public endpoint limits](https://docs.tenderly.co/node-rpc/overview.md)). Its public endpoints
+  are rate-limited, and production use takes a dedicated node
+  ([Supported networks](https://docs.tenderly.co/platform/supported-networks.md)). Use it with
+  `DEPTHWATCH_LOG_CHUNK=250`, which keeps busy windows under both limits and under viem's 10 MiB;
+  the Refresh site workflow does when its optional `DEPTHWATCH_LOGS_RPC_URL` secret is unset or
+  fails ([The logs endpoint](docs/DEPLOY.md#the-logs-endpoint)).
 - **On a 10-block plan** (Alchemy's free tier), seed instead of scanning factory logs, then run
   the other steps as usual, `volume` at the plan's limit:
 
