@@ -430,15 +430,21 @@ a provider that accepts wider spans.
   is not a JSON-RPC error, so it comes from a proxy, not from the node. Both HTTP transports the
   reader builds from URLs have viem's own retries off, so a rate-limited endpoint is not hit again
   at once.
-- **Range limits.** A rejected range is split, never below min(100 blocks, `--log-chunk`). A
+- **Range limits.** A rejected range is split, never below min(100 blocks, `--log-chunk`). The
+  provider's text is read from the JSON-RPC error's message and, for a -32602, from its `data`,
+  where Tenderly's public gateway and Pocket put the reason behind a bare "invalid params"; another
+  code's `data` (a -32603's "context deadline exceeded") never turns a retry into a split. A
   provider that states its maximum (Alchemy's free tier, HTTP 400 / -32600: "you can make
-  eth_getLogs requests with up to a 10 block range") is split to that size when it is at or above
-  the floor, and otherwise stops the command at once with one error naming the limit and the two
-  fixes: a logs endpoint that accepts larger ranges, or `DEPTHWATCH_LOG_CHUNK` set to the limit
-  for small scans. A chunk the endpoint accepts is never split, so `--log-chunk 10` on a 10-block
-  plan works. `run` stops on that error too, since no later pass could succeed. Scans already
-  started each send their first request: one per event source for `volume`, one per factory for
-  `discover`, and `positions` starts no further pool once one has failed this way.
+  eth_getLogs requests with up to a 10 block range"; Tenderly's public gateway, in `data`: "maximum
+  1000 blocks") is split to that size when it is at or above the floor, and otherwise stops the
+  command at once with one error naming the limit and the two fixes: a logs endpoint that accepts
+  larger ranges, or `DEPTHWATCH_LOG_CHUNK` set to the limit for small scans. Without a stated
+  maximum the range is halved: "more than 20000 results", Pocket's "scan work too large", and
+  viem's `ResponseBodyTooLargeError` (an answer over the transport's `maxResponseBodySize`, 10 MiB
+  by default), read by its name. A chunk the endpoint accepts is never split, so `--log-chunk 10`
+  on a 10-block plan works. `run` stops on that error too, since no later pass could succeed. Scans
+  already started each send their first request: one per event source for `volume`, one per
+  factory for `discover`, and `positions` starts no further pool once one has failed this way.
 - **A 10-block plan.** `snapshot` and `score` need no logs. `volume` for 24 h is 45,300 blocks:
   4,531 `eth_getLogs` per event source with tracked pools plus at most seven headers, about 13,600
   requests with all six DEXes (three sources) tracked (on a plan that meters about 75 compute

@@ -1,6 +1,9 @@
 /**
  * What an `eth_getLogs` failure means, read from the error and its `cause` chain (viem wraps the
- * provider's JSON-RPC error; `details` carries the provider's own text):
+ * provider's JSON-RPC error; `details` carries the provider's message, and `RpcRequestError` keeps
+ * the error's `data` field, which some providers use for the only useful text: Tenderly's public
+ * gateway and Pocket answer -32602 "invalid params" with the reason in `data`, so the `data` of a
+ * -32602 is read for a range; any other code's `data` never changes the kind):
  *
  * - `rate-limit`: HTTP 429, JSON-RPC code 429 / -32007, or a rate-limit message → retry the same
  *   range after a backoff.
@@ -11,8 +14,10 @@
  *   from a proxy or gateway, never from the node rejecting the range: "upstream request timeout"
  *   on a 504 is weather, not a range limit, and is never read as one.
  * - `range`: the provider rejected the range itself (span or result size) → split it. When the
- *   message states the provider's maximum span (Alchemy free: "up to a 10 block range"), that
- *   number is returned as `statedMax`.
+ *   message or `data` states the provider's maximum span (Alchemy free: "up to a 10 block range";
+ *   Tenderly's public gateway: "maximum 1000 blocks"), that number is returned as `statedMax`.
+ *   viem's `ResponseBodyTooLargeError` (an answer over the transport's `maxResponseBodySize`,
+ *   10 MiB by default) is read as a range too: a narrower range returns fewer logs.
  * - `other`: anything else (reverts, fixture misses, bad params), and a `RetryExhaustedError`,
  *   whose retries are already spent → fail.
  */
@@ -50,6 +55,9 @@ const STATED_MAX_RES: readonly RegExp[] = [
   /block range (?:limit|max(?:imum)?)(?: is| of)?:? *\(?([\d,_]+)/i,
   // dRPC: "ranges over 10000 blocks are not supported"
   /ranges? (?:over|above|greater than|larger than|exceeding) ([\d,_]+) blocks?/i,
+  // Tenderly's public gateway, in `data`: "Block range too large for public access: maximum 1000
+  // blocks. Try with this block range [0x…, 0x…], or use an access key for larger ranges."
+  /\bmaximum ([\d,_]+) blocks?\b/i,
 ]
 
 /** HTTP statuses of a gateway or proxy that is busy or timed out (520-524: Cloudflare's own). */
@@ -58,6 +66,8 @@ const TRANSIENT_HTTP_STATUS: ReadonlySet<number> = new Set([
 ])
 const RATE_LIMIT_CODES: ReadonlySet<number> = new Set([429, -32007])
 const RETRY_EXHAUSTED = 'RetryExhaustedError'
+/** viem's error for an answer larger than the transport's `maxResponseBodySize`. */
+const BODY_TOO_LARGE = 'ResponseBodyTooLargeError'
 
 interface ErrorLevel {
   name?: unknown
@@ -66,6 +76,7 @@ interface ErrorLevel {
   message?: unknown
   shortMessage?: unknown
   details?: unknown
+  data?: unknown
   headers?: unknown
   cause?: unknown
 }
@@ -82,11 +93,36 @@ function levels(err: unknown): ErrorLevel[] {
 
 const str = (value: unknown): string => (typeof value === 'string' ? value : '')
 
+/** Characters kept of a JSON-RPC error's `data` (revert data can run to kilobytes of hex). */
+const MAX_DATA = 500
+
+/** The JSON-RPC error's `data` of one level as text: a string, or an object as brief JSON. */
+function dataText(level: ErrorLevel): string {
+  const { data } = level
+  let text = typeof data === 'string' ? data : ''
+  if (typeof data === 'object' && data !== null) {
+    try {
+      text = JSON.stringify(data) ?? ''
+    } catch {
+      text = '' // a bigint or a cycle: nothing worth reading
+    }
+  }
+  return text.length > MAX_DATA ? text.slice(0, MAX_DATA) : text
+}
+
 /** The text of one level: viem keeps the provider's message in `details`. */
 function levelText(level: ErrorLevel): string {
   const details = str(level.details)
   return details !== '' ? `${str(level.shortMessage)} ${details}` : str(level.message)
 }
+
+/**
+ * JSON-RPC codes whose `data` is read, and only for a range: Tenderly's public gateway and Pocket
+ * answer -32602 with the reason there. viem keeps `data` on `RpcRequestError` (the typed errors
+ * built on it, such as `InvalidParamsRpcError`, on their cause). Any other code's `data` (a
+ * -32603 "context deadline exceeded", a 429's) never turns a retry into a split.
+ */
+const DATA_REASON_CODES: ReadonlySet<number> = new Set([-32602])
 
 const MULTIPLIERS: Readonly<Record<string, bigint>> = { k: 1_000n, m: 1_000_000n }
 
@@ -127,13 +163,25 @@ export function redactUrls(text: string): string {
   })
 }
 
-/** The provider's message: the first `details` in the chain, else the innermost message. */
+/** JSON-RPC's own messages for its standard error codes: they do not say what went wrong. */
+const GENERIC_DETAILS_RE =
+  /^(?:invalid (?:params|parameters|request|argument)|internal error|server error)\.?$/i
+const HEX_RE = /^0x[0-9a-f]*$/i
+
+/**
+ * The provider's message: the first `details` in the chain, else the innermost message. A generic
+ * `details` ("invalid params") gives way to the first `data` text that is not bare hex (revert
+ * data), so Tenderly's "Block range too large …" is shown, not "invalid params".
+ */
 function providerMessage(chain: readonly ErrorLevel[]): string {
-  const withDetails = chain.find((level) => str(level.details) !== '')
+  const details = str(chain.find((level) => str(level.details) !== '')?.details)
+  const data = chain.map(dataText).find((text) => text !== '' && !HEX_RE.test(text))
   const text =
-    withDetails !== undefined
-      ? str(withDetails.details)
-      : str(chain.findLast((level) => str(level.message) !== '')?.message)
+    data !== undefined && GENERIC_DETAILS_RE.test(details.trim())
+      ? data
+      : details !== ''
+        ? details
+        : str(chain.findLast((level) => str(level.message) !== '')?.message)
   const line = redactUrls(text).replace(/\s+/g, ' ').trim()
   return line.length > 300 ? `${line.slice(0, 297)}...` : line
 }
@@ -154,7 +202,12 @@ export function classifyLogsError(err: unknown): LogsErrorInfo {
 
   if (chain.some((level) => level.name === RETRY_EXHAUSTED)) return info('other')
   if (chain.some((level) => level.name === 'TimeoutError')) return info('transient')
-  const statedMax = statedMaxLogRange(text)
+  // By name, not by the "exceeded" of its message: a narrower range is a smaller answer.
+  if (chain.some((level) => level.name === BODY_TOO_LARGE)) return info('range')
+  const rangeText = codes.some((code) => DATA_REASON_CODES.has(code))
+    ? `${text} ${chain.map(dataText).join(' ')}`
+    : text
+  const statedMax = statedMaxLogRange(rangeText)
   if (statedMax !== undefined) return info('range', statedMax)
   if (
     statuses.includes(429) ||
@@ -166,7 +219,7 @@ export function classifyLogsError(err: unknown): LogsErrorInfo {
   // otherwise read a gateway timeout as a rejected range (see the header).
   if (statuses.some((status) => status === undefined || TRANSIENT_HTTP_STATUS.has(status)))
     return info('transient')
-  if (codes.includes(-32005) || RANGE_ERROR_RE.test(text)) return info('range')
+  if (codes.includes(-32005) || RANGE_ERROR_RE.test(rangeText)) return info('range')
   if (codes.includes(-32603)) return info('transient')
   return info('other')
 }

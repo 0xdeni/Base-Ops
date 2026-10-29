@@ -70,7 +70,8 @@ static copy at <https://depthwatch.pages.dev> about every three hours from `main
    are `<dex>:<lowercase address>` or `uniswap-v4:<poolId>`.
 3. **Hermetic tests.** `pnpm test` never reaches the network. Chain code goes through
    `createFixtureTransport`, or `createFakeRpcFetch` behind viem's `http()` when the HTTP error
-   path matters (it replays Alchemy's free-tier 400 and Base's public 429 verbatim); db and API
+   path matters (it replays Alchemy's free-tier 400, Base's public 429 and the -32602 answers of
+   Tenderly's public gateway and Pocket, reason in `data`, verbatim); db and API
    tests use `openDatabase(':memory:')` and `app.request()`; the web uses the mock client. A test
    that needs the network is a bug.
 4. **Metrics are defined once, in [docs/METRICS.md](docs/METRICS.md), and implemented once, in
@@ -118,13 +119,20 @@ Depthwatch supports Base Mainnet only (`BASE_CHAIN_ID = 8453` in core).
 
 The public mainnet RPC is rate-limited and rejects large `eth_getLogs` spans, hence the default
 `DEPTHWATCH_LOG_CHUNK` of 2000 blocks. Rate limits and gateway failures are retried with capped
-backoff, then fail as an ordinary `RetryExhaustedError`; a logs endpoint that cannot serve the
-chunk (Alchemy's free tier: 10 blocks) stops with `LogRangeLimitError` after the first request of
-each log scan (one per DEX for `volume`) rather than crawling, and works with
-`DEPTHWATCH_LOG_CHUNK=10` for small scans such as `volume`; `discover --seed` finds the
-reference-token pools from factory views without any `eth_getLogs` (README "Running on a free
-RPC"). Base Sepolia is not indexed; if testnet settings are ever needed, take them from Base's
-Sepolia documentation, not from third-party chain lists.
+backoff, then fail as an ordinary `RetryExhaustedError`; a logs endpoint that cannot serve the chunk
+(Alchemy's free tier: 10 blocks) stops with `LogRangeLimitError` after the first request of each log
+scan (one per DEX for `volume`) rather than crawling, and works with `DEPTHWATCH_LOG_CHUNK=10` for
+small scans such as `volume`; `discover --seed` finds the reference-token pools from factory views
+without any `eth_getLogs` (README "Running on a free RPC"). `classifyLogsError`
+(`packages/chain/src/internal/logErrors.ts`) reads the provider's text from the JSON-RPC error's
+message and, for a -32602 only, its `data` (Tenderly's public gateway and Pocket answer -32602
+"invalid params" with the reason only in `data`): a stated maximum (`statedMax`; Tenderly: 1,000
+blocks) at or above the floor splits ranges to it, and a refused result count or viem's
+`ResponseBodyTooLargeError` (an answer over 10 MiB) halves them. The Refresh site workflow reads
+logs from the optional `DEPTHWATCH_LOGS_RPC_URL` secret, then from Tenderly's public gateway at
+250-block chunks ([docs/DEPLOY.md](docs/DEPLOY.md#the-logs-endpoint)). Base Sepolia is not indexed;
+if testnet settings are ever needed, take them from Base's Sepolia documentation, not from
+third-party chain lists.
 
 ## Where to look things up
 

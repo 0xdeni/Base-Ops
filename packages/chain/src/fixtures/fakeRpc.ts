@@ -8,7 +8,10 @@
  *
  * The provider answers below replay what the real endpoints sent when measured:
  * Alchemy's free tier answers a wide `eth_getLogs` with HTTP 400 and JSON-RPC error -32600, Base's
- * public endpoint answers a rate-limited one with HTTP 429 and JSON-RPC error -32011.
+ * public endpoint answers a rate-limited one with HTTP 429 and JSON-RPC error -32011, Tenderly's
+ * public gateway answers a span over 1,001 blocks or over 20,000 results with HTTP 200 and -32602
+ * "invalid params", and Pocket answers too many addresses × blocks with HTTP 400 and -32602
+ * "Invalid params"; those two put the reason only in the error's `data` (measured 2026-10-29).
  */
 import { hexToBigInt } from 'viem'
 import {
@@ -111,6 +114,69 @@ export function basePublicRateLimitResponse(id: unknown): Response {
       'x-ratelimit-remaining': '0',
       'x-ratelimit-reset': '1',
     },
+  )
+}
+
+/** Tenderly's public gateway's stated `eth_getLogs` span; it serves toBlock - fromBlock = 1000. */
+export const TENDERLY_PUBLIC_LOG_RANGE = 1_000n
+
+/**
+ * Tenderly's public gateway (https://gateway.tenderly.co/public/base) for an `eth_getLogs` from
+ * `fromBlock` over its span limit: HTTP 200, the reason only in `data`, verbatim.
+ */
+export function tenderlyRangeTooLargeResponse(id: unknown, fromBlock: bigint): Response {
+  const data =
+    'Block range too large for public access: maximum 1000 blocks. Try with this block range ' +
+    `[${hex(fromBlock)}, ${hex(fromBlock + TENDERLY_PUBLIC_LOG_RANGE)}], ` +
+    'or use an access key for larger ranges.'
+  return json({ jsonrpc: '2.0', id, error: { code: -32602, message: 'invalid params', data } })
+}
+
+/**
+ * Tenderly's public gateway for an `eth_getLogs` over 20,000 results (its documentation says
+ * 3,000): HTTP 200, the reason only in `data`, verbatim; it suggests the first half of the range.
+ */
+export function tenderlyTooManyResultsResponse(
+  id: unknown,
+  fromBlock: bigint,
+  toBlock: bigint,
+): Response {
+  const half = fromBlock + (toBlock - fromBlock) / 2n
+  const data =
+    'Query returned more than 20000 results. Try with this block range ' +
+    `[${hex(fromBlock)}, ${hex(half)}].`
+  return json({ jsonrpc: '2.0', id, error: { code: -32602, message: 'invalid params', data } })
+}
+
+/**
+ * `getLogs` rule: Tenderly's public gateway, which rejects spans over 1,001 blocks and, through
+ * `tooMany`, the ranges that would return more than 20,000 results.
+ */
+export function tenderlyPublicGetLogs(
+  tooMany: (fromBlock: bigint, toBlock: bigint) => boolean = () => false,
+): (request: FakeLogsRequest) => Response | undefined {
+  return ({ id, fromBlock, toBlock }) =>
+    toBlock - fromBlock > TENDERLY_PUBLIC_LOG_RANGE
+      ? tenderlyRangeTooLargeResponse(id, fromBlock)
+      : tooMany(fromBlock, toBlock)
+        ? tenderlyTooManyResultsResponse(id, fromBlock, toBlock)
+        : undefined
+}
+
+/** Pocket's message for an `eth_getLogs` over its addresses × blocks cap, verbatim. */
+export const POCKET_SCAN_WORK_MESSAGE =
+  "getLogs scan work too large: addresses x blocks exceeds this endpoint's cap; narrow the block " +
+  'range or split the address list'
+
+/** Pocket (https://base.api.pocket.network) over that cap: HTTP 400, the reason only in `data`. */
+export function pocketScanWorkTooLargeResponse(id: unknown): Response {
+  return json(
+    {
+      jsonrpc: '2.0',
+      id,
+      error: { code: -32602, message: 'Invalid params', data: POCKET_SCAN_WORK_MESSAGE },
+    },
+    400,
   )
 }
 

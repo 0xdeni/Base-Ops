@@ -5,11 +5,20 @@
  */
 
 import type { Hex, Transport } from 'viem'
-import { custom, HttpRequestError, hexToBigInt, RpcRequestError, TimeoutError } from 'viem'
+import {
+  custom,
+  HttpRequestError,
+  hexToBigInt,
+  InvalidParamsRpcError,
+  ResponseBodyTooLargeError,
+  RpcRequestError,
+  TimeoutError,
+} from 'viem'
 import { describe, expect, it } from 'vitest'
 import { uniswapV3FactoryAbi } from './abi/uniswapV3Factory.js'
 import { BASE_ADDRESSES as A } from './addresses.js'
 import { addLogs, makeLog, registerLogsError } from './fixtures/builders.js'
+import { POCKET_SCAN_WORK_MESSAGE } from './fixtures/fakeRpc.js'
 import type { LogRetryEvent } from './internal/context.js'
 import { classifyLogsError, LogRangeLimitError } from './internal/logErrors.js'
 import { eventTopics } from './internal/logs.js'
@@ -329,5 +338,61 @@ describe('classifyLogsError', () => {
     expect(classifyLogsError(new TimeoutError({ body: {}, url: URL })).kind).toBe('transient')
     expect(classifyLogsError(rpc(3, 'execution reverted')).kind).toBe('other')
     expect(classifyLogsError(new Error('Fixture has no answer for eth_getLogs')).kind).toBe('other')
+  })
+
+  it("reads the error's data where details only say invalid params (Tenderly, Pocket)", () => {
+    // As viem raises them: InvalidParamsRpcError for -32602, the data on its RpcRequestError cause.
+    const invalidParams = (message: string, data: unknown) =>
+      new InvalidParamsRpcError(
+        new RpcRequestError({ body: {}, url: URL, error: { code: -32602, message, data } }),
+      )
+    const span =
+      'Block range too large for public access: maximum 1000 blocks. Try with this block range ' +
+      '[0x32c47b0, 0x32c4b98], or use an access key for larger ranges.'
+    expect(classifyLogsError(invalidParams('invalid params', span))).toMatchObject({
+      kind: 'range',
+      statedMax: 1_000n,
+      providerMessage: span,
+    })
+    const results =
+      'Query returned more than 20000 results. Try with this block range [0x32bef8b, 0x32bf17e].'
+    expect(classifyLogsError(invalidParams('invalid params', results))).toMatchObject({
+      kind: 'range',
+      statedMax: undefined,
+      providerMessage: results,
+    })
+    expect(
+      classifyLogsError(invalidParams('Invalid params', POCKET_SCAN_WORK_MESSAGE)),
+    ).toMatchObject({
+      kind: 'range',
+      statedMax: undefined,
+      providerMessage: POCKET_SCAN_WORK_MESSAGE,
+    })
+    // Without data it stays a failure; an object is read as brief JSON, a URL cut to its origin.
+    expect(classifyLogsError(invalidParams('invalid params', undefined))).toMatchObject({
+      kind: 'other',
+      providerMessage: 'invalid params',
+    })
+    expect(
+      classifyLogsError(invalidParams('invalid params', { reason: 'see https://x.example/k/1' })),
+    ).toMatchObject({ kind: 'other', providerMessage: '{"reason":"see https://x.example"}' })
+    // Bare hex (revert data) is not a message: the details stay, and so does the kind.
+    const hexData = new RpcRequestError({
+      body: {},
+      url: URL,
+      error: { code: -32603, message: 'internal error', data: '0x08c379a0' },
+    })
+    expect(classifyLogsError(hexData)).toMatchObject({
+      kind: 'transient',
+      providerMessage: 'internal error',
+    })
+  })
+
+  it("reads viem's ResponseBodyTooLargeError as a range to split, by its name", () => {
+    const tooLarge = new ResponseBodyTooLargeError({ maxSize: 10_485_760, size: 11_000_000 })
+    expect(classifyLogsError(tooLarge)).toMatchObject({ kind: 'range', statedMax: undefined })
+    expect(classifyLogsError({ name: 'ResponseBodyTooLargeError', message: 'too big' }).kind).toBe(
+      'range',
+    )
   })
 })
