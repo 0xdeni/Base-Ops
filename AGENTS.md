@@ -54,7 +54,9 @@ and build:static in that order and all must pass (`pnpm check:all` runs them loc
 moves the server; live commands (`discover`, `snapshot`, `volume`, `positions`, `run`, `start`,
 `mm sample`) need `DEPTHWATCH_RPC_URL` and are never needed for tests; `DEPTHWATCH_LOGS_RPC_URL`
 (or `--logs-rpc-url`, default: the main URL) moves every `eth_getLogs`, and nothing else, to a
-second endpoint.
+second endpoint. The Refresh site workflow (`.github/workflows/refresh-site.yml`) publishes the
+static copy at <https://depthwatch.pages.dev> about every three hours from `main`
+([docs/DEPLOY.md](docs/DEPLOY.md#a-free-static-copy)).
 
 ## Conventions that bite
 
